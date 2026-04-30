@@ -1,0 +1,40 @@
+name: BayonHub CI
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: bayonhub-app/package-lock.json
+
+      - name: Install
+        run: cd bayonhub-app && npm ci
+
+      - name: Lint
+        run: cd bayonhub-app && npm run lint
+
+      - name: Build (attempt 1)
+        run: cd bayonhub-app && npm run build
+
+      - name: Build (attempt 2 — verify stability)
+        run: cd bayonhub-app && npm run build
+
+      - name: Verify chunk sizes
+        run: |
+          cd bayonhub-app
+          INDEX_SIZE=$(find dist/assets -name "index-*.js" | xargs wc -c | tail -1 | awk '{print $1}')
+          MAX_SIZE=512000
+          if [ "$INDEX_SIZE" -gt "$MAX_SIZE" ]; then
+            echo "FAIL: index chunk too large: ${INDEX_SIZE} bytes (max ${MAX_SIZE})"
+            exit 1
+          fi
+          echo "PASS: index chunk size ${INDEX_SIZE} bytes"

@@ -1,0 +1,26 @@
+name: BayonHub API CI
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: bayonhub-api/package-lock.json
+
+      - name: Install
+        run: cd bayonhub-api && npm ci
+
+      - name: TypeScript check
+        run: cd bayonhub-api && npm run lint
+
+      - name: Build
+        run: cd bayonhub-api && npm run build

@@ -1,0 +1,37 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: bayonhub
+      POSTGRES_USER: bayonhub
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  api:
+    build: ./bayonhub-api
+    env_file: ./bayonhub-api/.env
+    depends_on: [postgres, redis]
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+
+  web:
+    build: ./bayonhub-app
+    ports:
+      - "80:80"
+    depends_on: [api]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
