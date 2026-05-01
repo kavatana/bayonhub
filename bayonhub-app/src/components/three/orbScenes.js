@@ -1,9 +1,4 @@
-import { PerspectiveCamera } from "three/src/cameras/PerspectiveCamera.js"
-import { Float32BufferAttribute } from "three/src/core/BufferAttribute.js"
-import { Color } from "three/src/math/Color.js"
-import { MeshBasicMaterial } from "three/src/materials/MeshBasicMaterial.js"
-import { Mesh } from "three/src/objects/Mesh.js"
-import { Scene } from "three/src/scenes/Scene.js"
+import * as THREE from "three"
 import { SVGRenderer } from "three/examples/jsm/renderers/SVGRenderer.js"
 
 const CUBE_VERTICES = [
@@ -32,18 +27,18 @@ function createRenderer(host, camera) {
 }
 
 function createWireCube(size, material) {
-  const mesh = new Mesh(undefined, material)
-  mesh.geometry.setAttribute("position", new Float32BufferAttribute(CUBE_VERTICES, 3))
+  const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material)
+  mesh.geometry.setAttribute("position", new THREE.Float32BufferAttribute(CUBE_VERTICES, 3))
   mesh.scale.set(size, size, size)
   return mesh
 }
 
 export function mountHeroOrbScene(host) {
   const targetRotation = { x: 0, y: 0 }
-  const scene = new Scene()
-  const camera = new PerspectiveCamera(45, 1, 0.1, 100)
-  const primaryColor = new Color(getComputedStyle(host).color)
-  const material = new MeshBasicMaterial({
+  const scene = new THREE.Scene()
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100)
+  const primaryColor = new THREE.Color(getComputedStyle(host).color)
+  const material = new THREE.MeshBasicMaterial({
     color: primaryColor,
     transparent: true,
     opacity: 0.84,
@@ -83,10 +78,10 @@ export function mountHeroOrbScene(host) {
 }
 
 export function mountEmptyOrbScene(host) {
-  const scene = new Scene()
-  const camera = new PerspectiveCamera(45, 1, 0.1, 100)
-  const primaryColor = new Color(getComputedStyle(host).color)
-  const material = new MeshBasicMaterial({
+  const scene = new THREE.Scene()
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100)
+  const primaryColor = new THREE.Color(getComputedStyle(host).color)
+  const material = new THREE.MeshBasicMaterial({
     color: primaryColor,
     transparent: true,
     opacity: 0.76,

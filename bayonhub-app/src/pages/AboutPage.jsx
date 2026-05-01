@@ -57,7 +57,7 @@ export default function AboutPage() {
       </Helmet>
 
       <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-        <section className="rounded-2xl bg-neutral-950 px-5 py-10 text-white sm:px-8" data-animate>
+        <section className="rounded-2xl bg-neutral-950 px-5 py-10 text-white sm:px-8 bg-skyline bg-skyline-10" data-animate>
           <p className="text-sm font-black uppercase tracking-wide text-primary-light">{t("about.founded")}</p>
           <h1 className="mt-3 font-display text-4xl font-black sm:text-5xl">{t("app.name")}</h1>
           <p className="mt-4 max-w-3xl text-base text-neutral-300 sm:text-lg">{t("footer.tagline")}</p>

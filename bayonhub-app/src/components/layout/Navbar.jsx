@@ -520,7 +520,9 @@ export default function Navbar() {
                 navigateSearch(query)
               }}
             >
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+              <button type="submit" className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-primary transition-colors" aria-label={t("nav.search")}>
+                <Search className="h-4 w-4" />
+              </button>
               <input
                 className="h-10 w-full rounded-full border border-neutral-200 bg-white/95 pl-11 pr-20 text-sm font-semibold text-neutral-900 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10 dark:bg-neutral-800 dark:border-neutral-700 dark:text-white dark:placeholder-neutral-500"
                 onChange={(event) => {
@@ -637,9 +639,9 @@ export default function Navbar() {
                     <div className="mt-3 grid gap-2 pl-12">
                       {category.subcategories.slice(0, 5).map((subcategory) => (
                         <Link
-                          className="text-sm font-semibold text-neutral-500 transition hover:text-primary"
-                          key={subcategory.id}
-                          to={`/category/${category.slug}/${subcategory.slug}`}
+                           className="text-sm font-semibold text-neutral-500 transition hover:text-primary"
+                           key={subcategory.id}
+                           to={`/category/${category.slug}/${subcategory.slug}`}
                         >
                           {t(`category.${subcategory.id}`)}
                         </Link>
@@ -695,7 +697,7 @@ export default function Navbar() {
                 onClick={saveCurrentSearch}
                 type="button"
               >
-                <BookmarkPlus className="h-5 w-5" aria-hidden="true" />
+                <BookmarkPlus className="h-5 w-5" aria-label="Save search" />
               </button>
             ) : null}
             {query ? (

@@ -37,27 +37,7 @@ function GoogleIcon() {
   )
 }
 
-function AngkorWatSilhouette() {
-  return (
-    <div className="mt-6 flex justify-center opacity-15">
-      <svg aria-hidden="true" className="w-4/5 max-w-xs fill-current text-primary sm:w-full" viewBox="0 0 300 60">
-        <rect x="135" y="10" width="30" height="50" />
-        <polygon points="150,0 135,10 165,10" />
-        <rect x="100" y="20" width="20" height="40" />
-        <polygon points="110,12 100,20 120,20" />
-        <rect x="180" y="20" width="20" height="40" />
-        <polygon points="190,12 180,20 200,20" />
-        <rect x="60" y="28" width="18" height="32" />
-        <polygon points="69,20 60,28 78,28" />
-        <rect x="222" y="28" width="18" height="32" />
-        <polygon points="231,20 222,28 240,28" />
-        <rect x="40" y="55" width="220" height="5" />
-        <rect x="78" y="35" width="22" height="25" />
-        <rect x="200" y="35" width="22" height="25" />
-      </svg>
-    </div>
-  )
-}
+
 
 export default function AuthModal() {
   const { t } = useTranslation()
@@ -138,18 +118,26 @@ export default function AuthModal() {
       <Overlay
         ariaLabel={title}
         backdropClassName="z-[90] grid p-0 md:place-items-center md:p-4"
-        className="flex h-full w-full flex-col overflow-auto bg-white p-5 shadow-2xl md:h-auto md:max-w-md md:rounded-2xl dark:bg-neutral-900"
+        className="flex h-full w-full flex-col overflow-auto bg-white p-0 shadow-2xl md:h-auto md:max-w-2xl md:flex-row md:rounded-2xl dark:bg-neutral-900"
         onClose={close}
         open={open}
       >
-        <header className="flex items-center justify-between gap-4">
-          <h2 className="text-xl font-black text-neutral-900 dark:text-white">{title}</h2>
-          <button className="grid h-10 w-10 place-items-center rounded-full border border-neutral-200 dark:border-neutral-700" onClick={close} type="button" aria-label={t("ui.close")}>
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </header>
-        {children}
-        <AngkorWatSilhouette />
+        {/* Left Column: Content */}
+        <div className="flex flex-1 flex-col p-5 md:w-3/5">
+          <header className="flex items-center justify-between gap-4">
+            <h2 className="text-xl font-black text-neutral-900 dark:text-white">{title}</h2>
+            <button className="grid h-10 w-10 place-items-center rounded-full border border-neutral-200 dark:border-neutral-700" onClick={close} type="button" aria-label={t("ui.close")}>
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
+          </header>
+          {children}
+        </div>
+
+        {/* Right Column: Decorative (Desktop Only) */}
+        <div 
+          className="hidden md:block md:w-2/5 rounded-r-2xl bg-bayon-line bg-bayon-line-6 min-h-[400px]" 
+          aria-hidden="true" 
+        />
       </Overlay>
     )
   }

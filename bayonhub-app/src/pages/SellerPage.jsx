@@ -81,8 +81,14 @@ export default function SellerPage() {
       </Helmet>
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-          <div className="relative h-44 bg-neutral-200 sm:h-[300px]">
-            {seller ? <img alt={seller.sellerName} className="h-full w-full object-cover" src={banner} /> : null}
+          <div className="relative h-44 sm:h-[300px] overflow-hidden">
+            {store.banner || seller?.bannerKey ? (
+              <img alt={seller.sellerName} className="h-full w-full object-cover" src={banner} />
+            ) : (
+              <div className="relative w-full h-full bg-gradient-to-r from-neutral-100 to-neutral-50 dark:from-neutral-800 dark:to-neutral-900 bg-bayon-sketch bg-bayon-sketch-10 overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-t from-white/50 to-transparent dark:from-neutral-900/50 pointer-events-none z-10" />
+              </div>
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
           </div>
           <div className="relative px-5 pb-5">

@@ -1,9 +1,10 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useDropzone } from "react-dropzone"
 import toast from "react-hot-toast"
 import { useTranslation } from "../../hooks/useTranslation"
 import { CATEGORIES } from "../../lib/categories"
 import { useAuthStore } from "../../store/useAuthStore"
+import { createMerchantProfile, getMerchantProfile, updateMerchantProfile } from "../../api/merchant"
 import Button from "../ui/Button"
 
 function useImageDrop(onImage) {
@@ -34,9 +35,21 @@ export default function StoreTab() {
     telegram: user?.store?.telegram || "",
     aboutEn: user?.store?.aboutEn || "",
     aboutKm: user?.store?.aboutKm || "",
+    merchantId: user?.store?.merchantId || "",
+    taxIdentificationNumber: user?.store?.taxIdentificationNumber || "",
+    businessDomain: user?.store?.businessDomain || "RETAIL",
+    khqrConfigurationStatus: user?.store?.khqrConfigurationStatus || false,
+    initialCatalogEndpoints: (user?.store?.initialCatalogEndpoints || []).join("\n"),
+    merchantName: user?.store?.merchantName || "",
+    contactEmail: user?.store?.contactEmail || "",
+    contactPhone: user?.store?.contactPhone || "",
+    telegramChannel: user?.store?.telegramChannel || "",
     hours: user?.store?.hours || Object.fromEntries(["mon", "tue", "wed", "thu", "fri", "sat", "sun"].map((day) => [day, { open: true, from: "08:00", to: "18:00" }])),
     ...user?.store,
   }))
+  const [merchantStatus, setMerchantStatus] = useState("idle")
+  const [saving, setSaving] = useState(false)
+  const [merchantError, setMerchantError] = useState("")
   const bannerDrop = useImageDrop((banner) => setStore((current) => ({ ...current, banner })))
   const logoDrop = useImageDrop((logo) => setStore((current) => ({ ...current, logo })))
 
@@ -51,9 +64,83 @@ export default function StoreTab() {
     }))
   }
 
-  function save() {
-    updateUser({ store })
-    toast.success(t("dashboard.savedSuccess"))
+  useEffect(() => {
+    if (!store.merchantId) return
+
+    let cancelled = false
+    async function loadMerchant() {
+      try {
+        const profile = await getMerchantProfile(store.merchantId)
+        if (cancelled) return
+        if (profile) {
+          setMerchantStatus("loaded")
+          setMerchantError("")
+        }
+      } catch {
+        if (cancelled) return
+        setMerchantStatus("idle")
+        setMerchantError("")
+      }
+    }
+
+    loadMerchant()
+    return () => {
+      cancelled = true
+    }
+  }, [store.merchantId])
+
+  async function save() {
+    setSaving(true)
+    setMerchantError("")
+    const nextStore = {
+      ...store,
+      merchantId: store.merchantId || (typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `merchant-${Date.now()}`),
+    }
+
+    try {
+      updateUser({ store: nextStore })
+      setStore(nextStore)
+
+      const endpoints = nextStore.initialCatalogEndpoints
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+
+      const hasMerchantData = Boolean(
+        nextStore.taxIdentificationNumber &&
+        nextStore.businessDomain &&
+        endpoints.length,
+      )
+
+      if (hasMerchantData) {
+        const payload = {
+          merchant_id: nextStore.merchantId,
+          tax_identification_number: nextStore.taxIdentificationNumber,
+          business_domain: nextStore.businessDomain,
+          khqr_configuration_status: Boolean(nextStore.khqrConfigurationStatus),
+          initial_catalog_endpoints: endpoints,
+          merchant_name: nextStore.merchantName || undefined,
+          contact_email: nextStore.contactEmail || undefined,
+          contact_phone: nextStore.contactPhone || undefined,
+          telegram_channel: nextStore.telegramChannel || undefined,
+        }
+
+        if (merchantStatus === "loaded") {
+          await updateMerchantProfile(nextStore.merchantId, payload)
+        } else {
+          await createMerchantProfile(payload)
+          setMerchantStatus("loaded")
+        }
+      }
+
+      toast.success(t("dashboard.savedSuccess"))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t("ui.error")
+      setMerchantError(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -113,7 +200,76 @@ export default function StoreTab() {
           <textarea className="min-h-32 rounded-xl border border-neutral-200 p-3 outline-none focus:border-primary" maxLength={500} onChange={(event) => update("aboutKm", event.target.value)} value={store.aboutKm || ""} />
         </label>
       </div>
-      <Button className="justify-self-start" onClick={save}>{t("dashboard.saveStore")}</Button>
+      <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-black text-neutral-900">{t("merchant.onboardingTitle")}</h3>
+            <p className="text-sm text-neutral-500">{t("merchant.onboardingSubtitle")}</p>
+          </div>
+          {merchantStatus === "loaded" ? (
+            <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-widest text-emerald-700">
+              {t("merchant.onboarded")}
+            </span>
+          ) : null}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-2 text-sm font-bold text-neutral-700">
+            {t("merchant.merchantId")}
+            <input className="h-11 rounded-xl border border-neutral-200 bg-neutral-100 px-3 text-sm text-neutral-700 outline-none" readOnly value={store.merchantId || t("merchant.generatedOnSave")} />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-neutral-700">
+            {t("merchant.taxId")}
+            <input className="h-11 rounded-xl border border-neutral-200 px-3 outline-none focus:border-primary" maxLength={50} onChange={(event) => update("taxIdentificationNumber", event.target.value)} value={store.taxIdentificationNumber || ""} />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-neutral-700">
+            {t("merchant.businessDomain")}
+            <select className="h-11 rounded-xl border border-neutral-200 bg-white px-3 outline-none focus:border-primary" onChange={(event) => update("businessDomain", event.target.value)} value={store.businessDomain}>
+              {[
+                { id: "RETAIL", label: t("merchant.domainRetail") },
+                { id: "WHOLESALE", label: t("merchant.domainWholesale") },
+                { id: "ELECTRONICS", label: t("merchant.domainElectronics") },
+                { id: "AUTOMOTIVE", label: t("merchant.domainAutomotive") },
+                { id: "REAL_ESTATE", label: t("merchant.domainRealEstate") },
+                { id: "SERVICES", label: t("merchant.domainServices") },
+                { id: "FOOD", label: t("merchant.domainFood") },
+                { id: "AGRI", label: t("merchant.domainAgri") },
+                { id: "FASHION", label: t("merchant.domainFashion") },
+              ].map(({ id, label }) => (
+                <option key={id} value={id}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-neutral-700 sm:col-span-2">
+            {t("merchant.catalogEndpoints")}
+            <textarea className="min-h-24 rounded-xl border border-neutral-200 p-3 outline-none focus:border-primary" placeholder={t("merchant.catalogHelp")} onChange={(event) => update("initialCatalogEndpoints", event.target.value)} value={store.initialCatalogEndpoints || ""} />
+          </label>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-2 text-sm font-bold text-neutral-700">
+            {t("merchant.merchantName")}
+            <input className="h-11 rounded-xl border border-neutral-200 px-3 outline-none focus:border-primary" maxLength={100} onChange={(event) => update("merchantName", event.target.value)} value={store.merchantName || ""} />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-neutral-700">
+            {t("merchant.contactEmail")}
+            <input className="h-11 rounded-xl border border-neutral-200 px-3 outline-none focus:border-primary" type="email" maxLength={100} onChange={(event) => update("contactEmail", event.target.value)} value={store.contactEmail || ""} />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-neutral-700">
+            {t("merchant.contactPhone")}
+            <input className="h-11 rounded-xl border border-neutral-200 px-3 outline-none focus:border-primary" maxLength={24} onChange={(event) => update("contactPhone", event.target.value)} value={store.contactPhone || ""} />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-neutral-700">
+            {t("merchant.telegramChannel")}
+            <input className="h-11 rounded-xl border border-neutral-200 px-3 outline-none focus:border-primary" maxLength={80} onChange={(event) => update("telegramChannel", event.target.value)} value={store.telegramChannel || ""} />
+          </label>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {merchantError ? <p className="text-sm font-bold text-red-600">{merchantError}</p> : null}
+          <Button onClick={save} disabled={saving} type="button">
+            {t("merchant.onboardButton")}
+          </Button>
+        </div>
+      </section>
+      <Button className="justify-self-start" onClick={save} disabled={saving}>{t("dashboard.saveStore")}</Button>
     </div>
   )
 }

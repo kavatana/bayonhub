@@ -168,9 +168,16 @@ export async function getListings(filters: ListingFilters) {
     const searchResults = await prisma.$queryRaw<{ id: string }[]>`
       SELECT id
       FROM "Listing"
-      WHERE search_vector @@ plainto_tsquery('english', ${q})
+      WHERE (
+        search_vector @@ websearch_to_tsquery('english', ${q})
+        OR title % ${q}
+        OR title ILIKE ${`%${q}%`}
+      )
       AND status = 'ACTIVE'
-      ORDER BY ts_rank(search_vector, plainto_tsquery('english', ${q})) DESC, "createdAt" DESC
+      ORDER BY 
+        ts_rank(search_vector, websearch_to_tsquery('english', ${q})) DESC,
+        similarity(title, ${q}) DESC,
+        "createdAt" DESC
       LIMIT ${limit}
     `
     const ids = searchResults.map((result) => result.id)
@@ -187,7 +194,11 @@ export async function getListings(filters: ListingFilters) {
     const countResult = await prisma.$queryRaw<{ count: bigint }[]>`
       SELECT COUNT(*)::bigint AS count
       FROM "Listing"
-      WHERE search_vector @@ plainto_tsquery('english', ${q})
+      WHERE (
+        search_vector @@ websearch_to_tsquery('english', ${q})
+        OR title % ${q}
+        OR title ILIKE ${`%${q}%`}
+      )
       AND status = 'ACTIVE'
     `
     const total = Number(countResult[0]?.count || 0)

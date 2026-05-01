@@ -11,7 +11,7 @@ import {
   updateListing as updateListingApi,
 } from "../api/listings"
 import { API_BASE_URL, STORAGE_KEYS } from "../api/client"
-import { storage } from "../lib/storage"
+import { storage, asyncStorage } from "../lib/storage"
 import { buildLeadPayload } from "../lib/validation"
 
 const defaultFilters = {
@@ -48,10 +48,24 @@ export const useListingStore = create((set, get) => ({
   isFetchingMore: false,
   loading: false,
   error: null,
-  savedIds: storage.get(STORAGE_KEYS.saved, []),
-  savedSnapshots: storage.get(STORAGE_KEYS.savedSnapshots, {}),
-  recentlyViewed: storage.get(RECENTLY_VIEWED_KEY, []),
-  savedSearches: storage.get(SAVED_SEARCHES_KEY, []),
+  savedIds: [], // Will be loaded in initialize()
+  savedSnapshots: {},
+  recentlyViewed: [],
+  savedSearches: [],
+
+  initialize: async () => {
+    const savedIds = await asyncStorage.get(STORAGE_KEYS.saved, [])
+    const savedSnapshots = await asyncStorage.get(STORAGE_KEYS.savedSnapshots, {})
+    const recentlyViewed = await asyncStorage.get(RECENTLY_VIEWED_KEY, [])
+    const savedSearches = await asyncStorage.get(SAVED_SEARCHES_KEY, [])
+    
+    set({ 
+      savedIds, 
+      savedSnapshots, 
+      recentlyViewed, 
+      savedSearches 
+    })
+  },
 
   fetchListings: async (filters = {}) => {
     const selectedProvince = storage.get("bayonhub:selectedProvince", "all")
@@ -255,7 +269,7 @@ export const useListingStore = create((set, get) => ({
         set({ error: error.message })
       })
     }
-    storage.set(STORAGE_KEYS.leads, [lead, ...leads])
+    asyncStorage.set(STORAGE_KEYS.leads, [lead, ...leads])
     return lead
   },
 
@@ -284,6 +298,11 @@ export const useListingStore = create((set, get) => ({
         ? bumpListing(get().currentListing)
         : get().currentListing
     set({ listings, currentListing })
+    
+    // Background sync to IndexedDB
+    if (persistedHasListing) {
+      asyncStorage.set(STORAGE_KEYS.listings, persistedListings.map(bumpListing))
+    }
   },
 
   toggleSaved: (id, listing) => {
@@ -303,8 +322,8 @@ export const useListingStore = create((set, get) => ({
         savedAt: new Date().toISOString(),
       }
     }
-    storage.set(STORAGE_KEYS.saved, savedIds)
-    storage.set(STORAGE_KEYS.savedSnapshots, snapshots)
+    asyncStorage.set(STORAGE_KEYS.saved, savedIds)
+    asyncStorage.set(STORAGE_KEYS.savedSnapshots, snapshots)
     set({ savedIds, savedSnapshots: snapshots })
     if (API_BASE_URL) {
       const request = exists ? unsaveListingApi(id) : saveListingApi(id)

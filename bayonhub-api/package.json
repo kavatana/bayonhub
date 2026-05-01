@@ -10,6 +10,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
+    "import:listings": "tsx scripts/import-listings.ts",
+    "import:sample": "tsx scripts/import-listings.ts data/sample-listings.csv",
     "lint": "tsc --noEmit"
   },
   "keywords": [],

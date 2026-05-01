@@ -26,7 +26,7 @@ function categoryForListing(listing) {
 
 export default function ListingPage() {
   const { id } = useParams()
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const navigate = useNavigate()
   const listing = useListingStore((state) => state.currentListing)
   const listings = useListingStore((state) => state.listings)
@@ -124,10 +124,16 @@ export default function ListingPage() {
   return (
     <PageTransition className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <Helmet>
+        <meta charSet="UTF-8" />
         <title>{t("seo.listingTitle", { title: listing.title, price: formatPrice(listing.price, listing.currency) })}</title>
         <meta name="description" content={description.slice(0, 160)} />
+        <meta property="og:title" content={t("seo.listingTitle", { title: listing.title, price: formatPrice(listing.price, listing.currency) })} />
+        <meta property="og:description" content={description.slice(0, 160)} />
         <meta property="og:image" content={getListingImage(listing)} />
+        <meta property="og:url" content={listingUrl} />
         <meta property="og:type" content="product" />
+        <meta property="og:site_name" content="BayonHub" />
+        <meta property="og:locale" content={language === "km" ? "km_KH" : "en_US"} />
         <link rel="canonical" href={listingUrl} />
         {productJson ? <script type="application/ld+json">{JSON.stringify(productJson)}</script> : null}
       </Helmet>

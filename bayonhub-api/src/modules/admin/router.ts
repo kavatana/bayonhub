@@ -1,12 +1,17 @@
 import { Router } from "express"
-import { ListingStatus, ReportStatus, Role, VerificationTier } from "@prisma/client"
+import fs from "fs"
+import { KYCStatus, ListingStatus, ReportStatus, Role, VerificationTier } from "@prisma/client"
 
+import { getLocalPrivateDocumentPath, getPrivateDocumentReadUrl } from "../../lib/s3"
 import { requireAdmin, requireAuth } from "../../middleware/auth"
 import {
   getAdminListings,
+  getPendingKycApplications,
   getReports,
   getStats,
   getUsers,
+  importListings,
+  updateKycApplication,
   updateListingStatus,
   updateReport,
   updateUserRole,
@@ -62,6 +67,62 @@ router.put("/reports/:id", async (req, res, next) => {
   }
 })
 
+router.get("/kyc", async (_req, res, next) => {
+  try {
+    const applications = await getPendingKycApplications()
+    res.status(200).json({ applications })
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.get("/kyc/:id/document/:field", async (req, res, next) => {
+  try {
+    const field = req.params.field
+    if (field !== "idFront" && field !== "idBack" && field !== "selfie") {
+      throw createHttpError(400, "Invalid KYC document field")
+    }
+    const applicationId = getParam(req.params.id, "KYC application id")
+    const application = await getPendingKycApplications().then((applications) =>
+      applications.find((item: { id: string }) => item.id === applicationId),
+    )
+    if (!application) throw createHttpError(404, "KYC application not found")
+    const key =
+      field === "idFront" ? application.idFrontKey : field === "idBack" ? application.idBackKey : application.selfieKey
+    if (!key) throw createHttpError(404, "KYC document not found")
+    const signedUrl = await getPrivateDocumentReadUrl(key)
+    if (signedUrl) {
+      res.redirect(signedUrl)
+      return
+    }
+    const filepath = getLocalPrivateDocumentPath(key)
+    if (!fs.existsSync(filepath)) throw createHttpError(404, "KYC document not found")
+    res.sendFile(filepath)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.put("/kyc/:id", async (req, res, next) => {
+  try {
+    const rawStatus = req.body.status as KYCStatus
+    const allowedKycStatuses: KYCStatus[] = [KYCStatus.APPROVED, KYCStatus.REJECTED, KYCStatus.NEEDS_RESUBMIT]
+    if (!allowedKycStatuses.includes(rawStatus)) {
+      throw createHttpError(400, "Invalid KYC status")
+    }
+    const status = rawStatus
+    const application = await updateKycApplication(
+      getParam(req.params.id, "KYC application id"),
+      req.user!.id,
+      status,
+      typeof req.body.note === "string" ? req.body.note : undefined,
+    )
+    res.status(200).json({ application })
+  } catch (error) {
+    next(error)
+  }
+})
+
 router.get("/listings", async (req, res, next) => {
   try {
     const result = await getAdminListings(
@@ -82,6 +143,15 @@ router.put("/listings/:id/status", async (req, res, next) => {
     }
     const listing = await updateListingStatus(getParam(req.params.id, "listing id"), status)
     res.status(200).json(listing)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.post("/listings/import", async (req, res, next) => {
+  try {
+    const result = await importListings(req.body.listings)
+    res.status(200).json(result)
   } catch (error) {
     next(error)
   }

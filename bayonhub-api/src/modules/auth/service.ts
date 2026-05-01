@@ -122,7 +122,9 @@ export async function sendOTP(phone: string): Promise<{ success: true }> {
     }
   } else {
     console.warn("[Twilio] Not configured — OTP logged to console only. Set TWILIO_* vars for production.")
-    console.log(`[DEV OTP] ${phone}: ${code}`)
+    console.log("=".repeat(40))
+    console.log(`  [DEV OTP] ${phone}: ${code}  `)
+    console.log("=".repeat(40))
   }
   return { success: true }
 }

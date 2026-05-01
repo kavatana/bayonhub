@@ -6,13 +6,16 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: "#E53935",
-          dark: "#B71C1C",
-          light: "#EF9A9A"
+          DEFAULT: "#C62828", // Deep Bayon Red
+          dark: "#991B1B",
+          light: "#F87171",
+          accent: "#AD1457", // Silk Pink
         },
         neutral: {
-          50: "#FAFAFA",
-          900: "#0A0A0A"
+          50: "#F9FAFB", // Soft Paper White
+          100: "#F3F4F6",
+          200: "#E5E7EB", // Stone Gray
+          900: "#111827",
         }
       },
       fontFamily: {

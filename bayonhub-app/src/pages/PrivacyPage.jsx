@@ -14,7 +14,7 @@ export default function PrivacyPage() {
   ]
 
   return (
-    <PageTransition className={pageClass}>
+    <PageTransition className={`${pageClass} bg-skyline bg-skyline-8`}>
       <Helmet>
         <title>{t("privacy.pageTitle")}</title>
       </Helmet>

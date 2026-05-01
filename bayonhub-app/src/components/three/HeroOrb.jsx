@@ -13,6 +13,7 @@ function OrbFallback() {
 export default function HeroOrb() {
   const [mobile, setMobile] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [shouldRender3D, setShouldRender3D] = useState(false)
   const canvasHostRef = useRef(null)
 
   useEffect(() => {
@@ -27,7 +28,22 @@ export default function HeroOrb() {
   }, [])
 
   useEffect(() => {
-    if (mobile || failed) return undefined
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection
+    const isSlowConnection =
+      connection &&
+      (connection.effectiveType === "2g" || connection.effectiveType === "slow-2g" || connection.saveData === true)
+    const isMobile = window.innerWidth < 768
+
+    if (!isSlowConnection && !isMobile) {
+      const timer = window.setTimeout(() => setShouldRender3D(true), 3000)
+      return () => window.clearTimeout(timer)
+    }
+
+    return undefined
+  }, [])
+
+  useEffect(() => {
+    if (!shouldRender3D || mobile || failed) return undefined
 
     let cleanupScene = () => {}
     let disposed = false
@@ -46,9 +62,9 @@ export default function HeroOrb() {
       disposed = true
       cleanupScene()
     }
-  }, [failed, mobile])
+  }, [failed, mobile, shouldRender3D])
 
-  if (mobile || failed) return <OrbFallback />
+  if (!shouldRender3D || mobile || failed) return <OrbFallback />
 
   return (
     <ThreeErrorBoundary fallback={<OrbFallback />}>

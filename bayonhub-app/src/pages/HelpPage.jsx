@@ -41,7 +41,7 @@ export default function HelpPage() {
   }
 
   return (
-    <PageTransition className={pageClass}>
+    <PageTransition className={`${pageClass} bg-skyline bg-skyline-8`}>
       <Helmet>
         <title>{t("help.pageTitle")}</title>
         <meta name="description" content={t("help.pageDesc")} />

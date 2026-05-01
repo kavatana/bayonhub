@@ -11,7 +11,7 @@ export default function NotFoundPage({ message }) {
   const pageRef = useRef(null)
   useGSAP(() => pageEnter(pageRef), { scope: pageRef })
   return (
-    <div ref={pageRef} className="grid min-h-[60vh] place-items-center px-4 text-center">
+    <div ref={pageRef} className="grid min-h-[60vh] place-items-center px-4 text-center bg-skyline bg-skyline-12 bg-skyline-404">
       <Helmet>
         <title>{t("page.notFound")} | BayonHub</title>
         <meta name="robots" content="noindex" />

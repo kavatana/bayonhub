@@ -52,7 +52,7 @@ export default function Footer() {
   const headingClass = language === "km" ? "font-khmer leading-8" : ""
 
   return (
-    <footer className={`border-t border-neutral-800 dark:border-neutral-700 bg-neutral-900 text-neutral-300 ${textClass}`}>
+    <footer className={`border-t border-neutral-800 dark:border-neutral-700 bg-neutral-900 text-neutral-300 bg-skyline bg-skyline-15 bg-skyline-footer ${textClass}`}>
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[1.15fr_1fr_1fr_1fr]">
         <section aria-labelledby="footer-brand">
           <Link className="inline-flex items-center gap-3 text-white transition hover:text-white" to="/">

@@ -1,12 +1,21 @@
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3"
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import fs from "fs"
 import path from "path"
 import sharp from "sharp"
 
 const hasR2 = Boolean(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID)
+const isProd = process.env.NODE_ENV === "production"
+
 if (!hasR2) {
-  console.warn("[R2] Credentials not configured — using local storage. Set R2_* vars in .env for production.")
+  if (isProd) {
+    console.error("=".repeat(60))
+    console.error("[FATAL] R2 not configured in production. Images will be lost on redeploy.")
+    console.error("Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY immediately.")
+    console.error("=".repeat(60))
+  } else {
+    console.warn("[R2] Credentials not configured — using local storage. Set R2_* vars in .env for production.")
+  }
 }
 
 const s3 = hasR2
@@ -22,6 +31,8 @@ const s3 = hasR2
 
 const LOCAL_UPLOAD_DIR = path.join(process.cwd(), "public", "uploads")
 if (!hasR2) fs.mkdirSync(LOCAL_UPLOAD_DIR, { recursive: true })
+const LOCAL_PRIVATE_DIR = path.join(process.cwd(), "private", "uploads")
+if (!hasR2) fs.mkdirSync(LOCAL_PRIVATE_DIR, { recursive: true })
 
 export async function processAndUpload(
   buffer: Buffer,
@@ -56,6 +67,12 @@ export async function processAndUpload(
     )
     const base = process.env.R2_PUBLIC_URL!
     return { url: `${base}/${key}`, thumbUrl: `${base}/${thumbKey}` }
+  }
+
+  if (isProd) {
+    const error = new Error("Image upload unavailable. Configure R2 storage.") as any
+    error.status = 503
+    throw error
   }
 
   const filename = key.replace(/^\/+/, "")
@@ -101,4 +118,48 @@ export async function deleteFromStorage(key: string): Promise<void> {
 
   const filepath = path.join(LOCAL_UPLOAD_DIR, key.replace(/^\/+/, ""))
   if (fs.existsSync(filepath)) fs.unlinkSync(filepath)
+}
+
+export async function uploadPrivateDocument(buffer: Buffer, key: string): Promise<string> {
+  const webp = await sharp(buffer)
+    .resize({ width: 1600, withoutEnlargement: true })
+    .webp({ quality: 84 })
+    .toBuffer()
+
+  if (hasR2 && s3) {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME!,
+        Key: key,
+        Body: webp,
+        ContentType: "image/webp",
+      }),
+    )
+    return key
+  }
+
+  if (isProd) {
+    const error = new Error("Private document upload unavailable. Configure R2 storage.") as any
+    error.status = 503
+    throw error
+  }
+
+  const filename = key.replace(/^\/+/, "")
+  const filepath = path.join(LOCAL_PRIVATE_DIR, filename)
+  fs.mkdirSync(path.dirname(filepath), { recursive: true })
+  fs.writeFileSync(filepath, webp)
+  return filename
+}
+
+export function getLocalPrivateDocumentPath(key: string): string {
+  return path.join(LOCAL_PRIVATE_DIR, key.replace(/^\/+/, ""))
+}
+
+export async function getPrivateDocumentReadUrl(key: string): Promise<string | null> {
+  if (!hasR2 || !s3) return null
+  const command = new GetObjectCommand({
+    Bucket: process.env.R2_BUCKET_NAME!,
+    Key: key,
+  })
+  return getSignedUrl(s3, command, { expiresIn: 300 })
 }

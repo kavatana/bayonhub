@@ -99,6 +99,9 @@ async function main() {
   console.log("Seeding database...")
 
   await prisma.refreshToken.deleteMany()
+  await prisma.kYCApplication.deleteMany()
+  await prisma.listingPromotion.deleteMany()
+  await prisma.payment.deleteMany()
   await prisma.report.deleteMany()
   await prisma.lead.deleteMany()
   await prisma.savedListing.deleteMany()
@@ -145,58 +148,62 @@ async function main() {
 
   console.log("Created users")
 
-  const listings = await Promise.all(
-    LISTING_TITLES.map(async (titleObj, index) => {
-      const seller = sellers[index % sellers.length]
-      const province = PROVINCES[index % PROVINCES.length]
-      const category = CATEGORIES[index % CATEGORIES.length]
-      const isKHR = index % 6 === 0
-      const basePrice = [5000, 800, 150000, 3000, 1200, 200000][index % 6]
-      const daysAgo = Math.floor(Math.random() * 90)
-      const imgSeed = randomUUID().slice(0, 8)
-      const coords = COORDS[province] || null
+  const TOTAL_LISTINGS = 1200
+  const listings = []
 
-      return prisma.listing.create({
-        data: {
-          title: titleObj.en,
-          titleKm: titleObj.km,
-          description: `High quality ${titleObj.en}. Contact seller for more information. Available in ${province.replace(/-/g, " ")}.`,
-          price: isKHR ? basePrice * 4100 : basePrice,
-          currency: isKHR ? "KHR" : "USD",
-          categorySlug: category,
-          province,
-          district:
-            province === "phnom-penh"
-              ? ["bkk1", "toul-kork", "chamkarmon", "sen-sok", "daun-penh"][index % 5]
-              : null,
-          status: ListingStatus.ACTIVE,
-          promoted: index < 5,
-          urgent: index % 7 === 0,
-          previousPrice: index % 5 === 0 ? (isKHR ? basePrice * 4500 : basePrice * 1.15) : null,
-          discountPercent: index % 8 === 0 ? 15 : index % 9 === 0 ? 20 : null,
-          negotiable: index % 3 === 0,
-          condition: ["new", "used", "refurbished"][index % 3],
-          lat: coords ? coords.lat + (Math.random() - 0.5) * 0.05 : null,
-          lng: coords ? coords.lng + (Math.random() - 0.5) * 0.05 : null,
-          slug: `${titleObj.en
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .slice(0, 40)}-${randomUUID().slice(0, 5)}`,
-          viewCount: Math.floor(Math.random() * 500),
-          contactCount: Math.floor(Math.random() * 50),
-          sellerId: seller.id,
-          createdAt: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
-          images: {
-            create: Array.from({ length: Math.floor(Math.random() * 3) + 2 }, (_, imgIdx) => ({
-              url: `https://picsum.photos/seed/${imgSeed}-${imgIdx}/800/600`,
-              thumbUrl: `https://picsum.photos/seed/${imgSeed}-${imgIdx}/400/300`,
-              order: imgIdx,
-            })),
-          },
+  console.log(`Generating ${TOTAL_LISTINGS} listings...`)
+
+  for (let i = 0; i < TOTAL_LISTINGS; i++) {
+    const titleObj = LISTING_TITLES[i % LISTING_TITLES.length]
+    const seller = sellers[i % sellers.length]
+    const province = PROVINCES[i % PROVINCES.length]
+    const category = CATEGORIES[i % CATEGORIES.length]
+    const isKHR = i % 6 === 0
+    const basePrice = [5000, 800, 150000, 3000, 1200, 200000][i % 6]
+    const daysAgo = Math.floor(Math.random() * 90)
+    const imgSeed = `seed-${i}`
+    const coords = COORDS[province] || null
+
+    const listing = await prisma.listing.create({
+      data: {
+        title: `${titleObj.en} #${i + 1}`,
+        titleKm: titleObj.km ? `${titleObj.km} #${i + 1}` : null,
+        description: `High quality ${titleObj.en}. Contact seller for more information. Available in ${province.replace(/-/g, " ")}. This is a generated listing for testing scale.`,
+        price: isKHR ? basePrice * 4100 : basePrice,
+        currency: isKHR ? "KHR" : "USD",
+        categorySlug: category,
+        province,
+        district:
+          province === "phnom-penh"
+            ? ["bkk1", "toul-kork", "chamkarmon", "sen-sok", "daun-penh"][i % 5]
+            : null,
+        status: ListingStatus.ACTIVE,
+        promoted: i < 50,
+        urgent: i % 15 === 0,
+        previousPrice: i % 10 === 0 ? (isKHR ? basePrice * 4500 : basePrice * 1.15) : null,
+        discountPercent: i % 20 === 0 ? 15 : i % 25 === 0 ? 20 : null,
+        negotiable: i % 3 === 0,
+        condition: ["new", "used", "refurbished"][i % 3],
+        lat: coords ? coords.lat + (Math.random() - 0.5) * 0.05 : null,
+        lng: coords ? coords.lng + (Math.random() - 0.5) * 0.05 : null,
+        slug: `${titleObj.en.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}-${i}-${randomUUID().slice(0, 5)}`,
+        viewCount: Math.floor(Math.random() * 1000),
+        contactCount: Math.floor(Math.random() * 100),
+        sellerId: seller.id,
+        createdAt: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
+        images: {
+          create: Array.from({ length: Math.floor(Math.random() * 2) + 1 }, (_, imgIdx) => ({
+            url: `https://picsum.photos/seed/${imgSeed}-${imgIdx}/800/600`,
+            thumbUrl: `https://picsum.photos/seed/${imgSeed}-${imgIdx}/400/300`,
+            order: imgIdx,
+          })),
         },
-      })
-    }),
-  )
+      },
+    })
+    listings.push(listing)
+
+    if (i % 100 === 0) console.log(`  Progress: ${i}/${TOTAL_LISTINGS}`)
+  }
 
   console.log(`Created ${listings.length} listings`)
 

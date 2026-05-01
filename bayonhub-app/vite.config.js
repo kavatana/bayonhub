@@ -7,9 +7,14 @@ export default defineConfig({
     include: ["three", "@react-three/fiber", "@react-three/drei"],
   },
   build: {
+    reportCompressedSize: true,
+    modulePreload: false,
     rollupOptions: {
       output: {
         manualChunks(id) {
+          if (id.includes("/src/lib/translations.js")) {
+            return "app-translations"
+          }
           if (id.includes("@react-three")) {
             return "vendor-three-renderers"
           }

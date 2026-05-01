@@ -23,9 +23,16 @@ router.get("/suggestions", async (req, res, next) => {
     const matches = await prisma.$queryRaw<{ id: string }[]>`
       SELECT id
       FROM "Listing"
-      WHERE search_vector @@ plainto_tsquery('english', ${q})
+      WHERE (
+        search_vector @@ websearch_to_tsquery('english', ${q})
+        OR title % ${q}
+        OR title ILIKE ${`%${q}%`}
+      )
       AND status = 'ACTIVE'
-      ORDER BY ts_rank(search_vector, plainto_tsquery('english', ${q})) DESC, "createdAt" DESC
+      ORDER BY 
+        ts_rank(search_vector, websearch_to_tsquery('english', ${q})) DESC,
+        similarity(title, ${q}) DESC,
+        "createdAt" DESC
       LIMIT 5
     `
     const ids = matches.map((match) => match.id)

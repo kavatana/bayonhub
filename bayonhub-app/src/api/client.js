@@ -5,7 +5,14 @@ import { storage } from "../lib/storage"
 // In production, localStorage auth is completely disabled.
 // Tokens must come from HttpOnly cookies set by the backend.
 export const IS_PRODUCTION = import.meta.env.PROD
-export const API_BASE_URL = import.meta.env.VITE_API_URL || ""
+let rawApiUrl = import.meta.env.VITE_API_URL || ""
+
+// Normalization Guard: Fixes issues where the variable name is accidentally included in the value
+if (rawApiUrl.startsWith("VITE_API_URL=")) {
+  rawApiUrl = rawApiUrl.replace("VITE_API_URL=", "")
+}
+
+export const API_BASE_URL = rawApiUrl
 
 if (IS_PRODUCTION && !API_BASE_URL) {
   console.error("[BayonHub] FATAL: VITE_API_URL must be set in production. Refusing to start in insecure mode.")

@@ -37,7 +37,7 @@ export default function ListingGrid({ listings = [], loading = false, emptyMessa
 
   if (!listings.length) {
     return (
-      <div className="grid min-h-80 place-items-center rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center">
+      <div className="grid min-h-80 place-items-center rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center bg-bayon-line bg-bayon-line-8 bg-bayon-line-empty">
         <div>
           <Suspense fallback={<div className="h-32 w-32 rounded-full bg-neutral-100 animate-pulse dark:bg-neutral-800" />}>
             <EmptyStateOrb />

@@ -34,6 +34,8 @@ function optionalEnv(key: string): string | null {
   return value
 }
 
+const merchantApiKeysRaw = optionalEnv("MERCHANT_API_KEYS")
+
 export const env = {
   databaseUrl: process.env.DATABASE_URL!,
   redisUrl: process.env.REDIS_URL!,
@@ -52,4 +54,9 @@ export const env = {
   twilioAccountSid: optionalEnv("TWILIO_ACCOUNT_SID"),
   twilioAuthToken: optionalEnv("TWILIO_AUTH_TOKEN"),
   twilioPhoneNumber: optionalEnv("TWILIO_PHONE_NUMBER"),
+  abaMerchantId: optionalEnv("ABA_MERCHANT_ID"),
+  abaApiKey: optionalEnv("ABA_API_KEY"),
+  abaWebhookSecret: optionalEnv("ABA_WEBHOOK_SECRET"),
+  telegramBotToken: optionalEnv("TELEGRAM_BOT_TOKEN"),
+  merchantApiKeys: merchantApiKeysRaw ? merchantApiKeysRaw.split(",").map((key) => key.trim()).filter(Boolean) : [],
 }

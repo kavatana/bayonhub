@@ -10,11 +10,13 @@ import { prisma } from "./lib/prisma"
 import adminRouter from "./modules/admin/router"
 import authRouter from "./modules/auth/router"
 import listingsRouter from "./modules/listings/router"
+import kycRouter from "./modules/kyc/router"
 import messagesRouter from "./modules/messages/router"
 import searchRouter from "./modules/search/router"
 import sellersRouter from "./modules/sellers/router"
 import usersRouter from "./modules/users/router"
 import paymentsRouter from "./modules/payments/router"
+import merchantRouter from "./modules/merchant/router"
 import { apiLimiter } from "./middleware/rateLimiter"
 
 export const app = express()
@@ -40,12 +42,14 @@ if (env.nodeEnv !== "production") {
 app.use("/api/", apiLimiter)
 app.use("/api/auth", authRouter)
 app.use("/api/listings", listingsRouter)
+app.use("/api/kyc", kycRouter)
 app.use("/api/search", searchRouter)
 app.use("/api/users", usersRouter)
 app.use("/api/sellers", sellersRouter)
 app.use("/api/messages", messagesRouter)
 app.use("/api/admin", adminRouter)
 app.use("/api/payments", paymentsRouter)
+app.use("/api/v1/merchant", merchantRouter)
 
 app.get("/health", async (_req, res) => {
   const dbStatus = await prisma.$queryRaw`SELECT 1`

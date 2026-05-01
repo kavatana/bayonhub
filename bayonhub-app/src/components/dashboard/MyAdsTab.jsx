@@ -1,6 +1,6 @@
 import React, { Suspense, useMemo, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { Check, Pencil, PlusCircle, Rocket, Trash2 } from "lucide-react"
+import { BarChart2, Check, Pencil, PlusCircle, Rocket, Trash2, TrendingUp } from "lucide-react"
 import { useTranslation } from "../../hooks/useTranslation"
 import { getPromotionState, isPromotedListing, PROMOTION_LABELS } from "../../lib/promotionStates"
 import { formatPrice, getListingImage, getListingSlug, timeAgo } from "../../lib/utils"
@@ -14,6 +14,8 @@ const EmptyStateOrb = React.lazy(() => import("../three/EmptyStateOrb"))
 
 const statuses = ["active", "pending", "sold", "expired", "removed"]
 const perPage = 10
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+const weekAgoTimestamp = new Date(Date.now() - WEEK_MS).getTime()
 
 export default function MyAdsTab() {
   const { t, language } = useTranslation()
@@ -23,17 +25,37 @@ export default function MyAdsTab() {
   const updateListing = useListingStore((state) => state.updateListing)
   const deleteListing = useListingStore((state) => state.deleteListing)
   const togglePostModal = useUIStore((state) => state.togglePostModal)
+  const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const [activeStatus, setActiveStatus] = useState("active")
   const [page, setPage] = useState(1)
   const [deleteId, setDeleteId] = useState(null)
   const userId = user?.id
+
+  const myAllListings = useMemo(
+    () =>
+      listings.filter(
+        (listing) =>
+          !userId || listing.sellerId === userId || listing.sellerId === "local-demo-seller",
+      ),
+    [listings, userId],
+  )
+
+  const analytics = useMemo(() => {
+    const totalViews = myAllListings.reduce((sum, l) => sum + Number(l.viewCount || l.views || 0), 0)
+    const totalLeads = myAllListings.reduce((sum, l) => sum + Number(l.contactCount || l.leads || 0), 0)
+    const viewsThisWeek = myAllListings
+      .filter((l) => new Date(l.updatedAt || l.postedAt || 0).getTime() >= weekAgoTimestamp)
+      .reduce((sum, l) => sum + Number(l.viewCount || l.views || 0), 0)
+    const topListing = [...myAllListings].sort(
+      (a, b) => Number(b.viewCount || b.views || 0) - Number(a.viewCount || a.views || 0),
+    )[0] || null
+    return { totalViews, totalLeads, viewsThisWeek, topListing }
+  }, [myAllListings])
+
   const myListings = useMemo(
     () =>
-      listings.filter((listing) => {
-        const ownerMatch = !userId || listing.sellerId === userId || listing.sellerId === "local-demo-seller"
-        return ownerMatch && (listing.status || "active") === activeStatus
-      }),
-    [activeStatus, listings, userId],
+      myAllListings.filter((listing) => (listing.status || "active") === activeStatus),
+    [activeStatus, myAllListings],
   )
   const pageCount = Math.max(1, Math.ceil(myListings.length / perPage))
   const pageItems = myListings.slice((page - 1) * perPage, page * perPage)
@@ -44,6 +66,62 @@ export default function MyAdsTab() {
 
   return (
     <div className="space-y-4">
+      {/* Analytics Summary Card */}
+      {myAllListings.length > 0 && (
+        <section
+          aria-label={t("dashboard.analytics")}
+          className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm"
+        >
+          <div className="flex items-center gap-2 border-b border-neutral-100 px-5 py-3">
+            <BarChart2 className="h-4 w-4 text-primary" aria-hidden="true" />
+            <h2 className="text-sm font-black uppercase tracking-wider text-neutral-700">
+              {t("dashboard.analytics")}
+            </h2>
+          </div>
+          <div className="grid grid-cols-2 divide-x divide-y divide-neutral-100 sm:grid-cols-4 sm:divide-y-0">
+            {[
+              { label: t("dashboard.totalViews"), value: analytics.totalViews.toLocaleString() },
+              { label: t("dashboard.totalLeads"), value: analytics.totalLeads.toLocaleString() },
+              { label: `${t("dashboard.totalViews")} · ${t("dashboard.thisWeek")}`, value: analytics.viewsThisWeek.toLocaleString() },
+              { label: t("listing.activeListings"), value: myAllListings.filter((l) => (l.status || "active") === "active").length.toString() },
+            ].map(({ label, value }) => (
+              <div className="flex flex-col items-center justify-center px-4 py-4 text-center" key={label}>
+                <strong className="text-2xl font-black text-neutral-900">{value}</strong>
+                <span className="mt-0.5 text-xs font-bold uppercase tracking-wide text-neutral-500">{label}</span>
+              </div>
+            ))}
+          </div>
+          {analytics.topListing && (
+            <div className="flex items-center justify-between gap-3 border-t border-neutral-100 px-5 py-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <TrendingUp className="h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
+                <span className="text-xs font-bold text-neutral-500">{t("dashboard.topListing")}:</span>
+                <Link
+                  className="truncate text-xs font-black text-neutral-900 hover:text-primary hover:underline"
+                  to={`/listing/${analytics.topListing.id}/${getListingSlug(analytics.topListing)}`}
+                >
+                  {analytics.topListing.title}
+                </Link>
+              </div>
+              {!isPromotedListing(analytics.topListing) && (
+                <Button
+                  onClick={() => {
+                    if (!user) { toggleAuthModal(true); return }
+                    togglePostModal(false)
+                    navigate(`/listing/${analytics.topListing.id}/edit`)
+                  }}
+                  size="sm"
+                  variant="primary"
+                >
+                  <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t("dashboard.boostTopListing")}
+                </Button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
       <div className="flex gap-2 overflow-x-auto pb-1">
         {statuses.map((status) => (
           <button

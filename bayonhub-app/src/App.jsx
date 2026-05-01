@@ -1,10 +1,11 @@
-import { lazy, Suspense } from "react"
+import { lazy, Suspense, useEffect } from "react"
 import { Route, Routes } from "react-router-dom"
 import Layout from "./components/layout/Layout"
 import ErrorBoundary from "./components/ui/ErrorBoundary"
 import Spinner from "./components/ui/Spinner"
 
 const AboutPage = lazy(() => import("./pages/AboutPage"))
+const AdminPage = lazy(() => import("./pages/AdminPage"))
 const CategoryPage = lazy(() => import("./pages/CategoryPage"))
 const DashboardPage = lazy(() => import("./pages/DashboardPage"))
 const HelpPage = lazy(() => import("./pages/HelpPage"))
@@ -18,6 +19,7 @@ const PrivacyPage = lazy(() => import("./pages/PrivacyPage"))
 const SearchPage = lazy(() => import("./pages/SearchPage"))
 const SellerPage = lazy(() => import("./pages/SellerPage"))
 const TermsPage = lazy(() => import("./pages/TermsPage"))
+import { useListingStore } from "./store/useListingStore"
 
 function routePage(Page) {
   return (
@@ -36,6 +38,12 @@ function routePage(Page) {
 }
 
 function App() {
+  const initializeStore = useListingStore((state) => state.initialize)
+
+  useEffect(() => {
+    initializeStore()
+  }, [initializeStore])
+
   return (
     <Layout>
       <Suspense
@@ -48,6 +56,7 @@ function App() {
         <Routes>
           <Route element={<HomePage />} path="/" />
           <Route element={routePage(AboutPage)} path="/about" />
+          <Route element={routePage(AdminPage)} path="/admin" />
           <Route element={<CategoryPage />} path="/category/:slug" />
           <Route element={<CategoryPage />} path="/category/:slug/:subcategory" />
           <Route element={<DashboardPage />} path="/dashboard" />

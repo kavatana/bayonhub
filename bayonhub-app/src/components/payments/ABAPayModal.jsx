@@ -1,16 +1,18 @@
-import { useState, useEffect } from "react"
-import { QrCode, X, Send, Phone, Mail, Loader2, CheckCircle2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { CheckCircle2, Clipboard, Loader2, QrCode, X } from "lucide-react"
 import toast from "react-hot-toast"
+
+import client, { hasApiBackend } from "../../api/client"
 import { useTranslation } from "../../hooks/useTranslation"
 import { getPromotionState, PROMOTION_LABELS, PROMOTION_STATES } from "../../lib/promotionStates"
-import client, { hasApiBackend } from "../../api/client"
 import Button from "../ui/Button"
 import Overlay from "../ui/Overlay"
 
-// TODO: Replace with real ABA PayWay API integration
-// ABA PayWay docs: https://payway.ababank.com
-// Required: ABA merchant account + API credentials
-// Contact: ABA Bank Cambodia business team
+const PLANS = {
+  BOOST: { price: 2 },
+  TOP_AD: { price: 5 },
+  VIP_30: { price: 15 },
+}
 
 function resolvePromotionState({ listing, promotionState }) {
   if (promotionState) return getPromotionState({ promotion: promotionState })
@@ -18,220 +20,245 @@ function resolvePromotionState({ listing, promotionState }) {
   return PROMOTION_STATES.BOOST
 }
 
-const QRPlaceholder = () => (
-  <svg viewBox="0 0 100 100" className="h-full w-full p-2">
-    <rect width="100" height="100" fill="transparent" />
-    {Array.from({ length: 64 }).map((_, i) => {
-      const x = (i % 8) * 12.5
-      const y = Math.floor(i / 8) * 12.5
-      // Corner squares like real QR
-      const isCorner = (x < 25 && y < 25) || (x > 62.5 && y < 25) || (x < 25 && y > 62.5)
-      const fill = isCorner ? "#005e91" : (i * 13) % 10 > 4 ? "#1e293b" : "transparent"
-      return <rect key={i} x={x + 2} y={y + 2} width="8.5" height="8.5" rx="1.5" fill={fill} />
-    })}
-  </svg>
-)
+function normalizePlan(state) {
+  if (state === PROMOTION_STATES.TOP_AD) return "TOP_AD"
+  if (state === "VIP_30") return "VIP_30"
+  return "BOOST"
+}
+
+function createLocalPayment(plan) {
+  const reference = `BAYON-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`
+  return {
+    reference,
+    amount: PLANS[plan].price,
+    currency: "USD",
+    qrPayload: `MOCK_KHQR|merchant=BayonHub|reference=${reference}|amount=${PLANS[plan].price.toFixed(2)}|currency=USD`,
+    expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    status: "PENDING",
+  }
+}
+
+function getPlanLabel(t, plan, fallbackLabel) {
+  if (plan === "TOP_AD") return t("payment.planTopAd")
+  if (plan === "VIP_30") return t("payment.planVip")
+  return t("payment.planBoost") || fallbackLabel
+}
+
+function getPlanDuration(t, plan) {
+  if (plan === "VIP_30") return t("payment.duration30")
+  return t("payment.duration7")
+}
 
 export default function ABAPayModal({ open, onClose, onDone, listing, promotionState, amount, currency }) {
   const { t, language } = useTranslation()
   const [paymentData, setPaymentData] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [confirming, setConfirming] = useState(false)
-  const [confirmed, setConfirmed] = useState(false)
+  const [status, setStatus] = useState("idle")
+  const [error, setError] = useState("")
 
   const state = resolvePromotionState({ listing, promotionState })
-  const label = PROMOTION_LABELS[state]?.[language] || PROMOTION_LABELS[PROMOTION_STATES.BOOST][language]
-
-  // Default values if props not provided
-  const displayAmount = amount || (state === PROMOTION_STATES.TOP_AD ? 5 : 2)
+  const plan = normalizePlan(state)
+  const planConfig = PLANS[plan]
+  const fallbackLabel = PROMOTION_LABELS[state]?.[language] || PROMOTION_LABELS[PROMOTION_STATES.BOOST][language]
+  const planLabel = getPlanLabel(t, plan, fallbackLabel)
+  const displayAmount = amount || planConfig.price
   const displayCurrency = currency || "USD"
 
   useEffect(() => {
-    if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLoading(true)
-      setConfirmed(false)
-      setConfirming(false)
-
-      const body = {
-        listingId: listing?.id,
-        plan: state,
-        amount: displayAmount,
-        currency: displayCurrency,
-      }
-
-      if (hasApiBackend()) {
-        client
-          .post("/api/payments/khqr", body)
-          .then((res) => setPaymentData(res.data))
-          .catch(() => {
-            setPaymentData({
-              reference: `BAYONHUB-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`,
-              amount: displayAmount,
-              currency: displayCurrency,
-            })
-          })
-          .finally(() => setLoading(false))
-      } else {
-        setTimeout(() => {
-          setPaymentData({
-            reference: `BAYONHUB-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`,
-            amount: displayAmount,
-            currency: displayCurrency,
-          })
-          setLoading(false)
-        }, 600)
-      }
-    } else {
-      setPaymentData(null)
+    if (!open) {
+      const frame = window.requestAnimationFrame(() => {
+        setPaymentData(null)
+        setStatus("idle")
+        setError("")
+      })
+      return () => window.cancelAnimationFrame(frame)
     }
-  }, [open, listing?.id, state, displayAmount, displayCurrency])
 
-  function handleConfirm() {
-    setConfirming(true)
-    setTimeout(() => {
-      setConfirming(false)
-      setConfirmed(true)
-      toast.success(t("payment.confirmed"))
-      onDone?.(paymentData?.reference)
-      setTimeout(() => {
-        onClose?.()
-      }, 5000)
-    }, 2000)
+    let cancelled = false
+
+    async function generatePayment() {
+      setStatus("generating")
+      setError("")
+      try {
+        if (!hasApiBackend()) {
+          const localPayment = createLocalPayment(plan)
+          if (!cancelled) {
+            setPaymentData(localPayment)
+            setStatus("waiting")
+          }
+          return
+        }
+        const response = await client.post("/api/payments/khqr/generate", {
+          listingId: listing?.id,
+          plan,
+        })
+        if (!cancelled) {
+          setPaymentData(response.data)
+          setStatus("waiting")
+        }
+      } catch {
+        if (!cancelled) {
+          setError(t("payment.pollError"))
+          setStatus("error")
+        }
+      }
+    }
+
+    generatePayment()
+    return () => {
+      cancelled = true
+    }
+  }, [listing?.id, open, plan, t])
+
+  useEffect(() => {
+    if (!open || !paymentData?.reference || status !== "waiting" || !hasApiBackend()) return undefined
+
+    const poll = window.setInterval(async () => {
+      try {
+        const response = await client.get(`/api/payments/status/${paymentData.reference}`)
+        if (response.data.status === "PAID") {
+          window.clearInterval(poll)
+          setStatus("paid")
+          toast.success(t("payment.confirmed"))
+          onDone?.(paymentData.reference)
+          window.setTimeout(() => onClose?.(), 800)
+          return
+        }
+        if (response.data.status === "EXPIRED" || new Date(response.data.expiresAt).getTime() <= Date.now()) {
+          window.clearInterval(poll)
+          setStatus("expired")
+        }
+      } catch {
+        window.clearInterval(poll)
+        setError(t("payment.pollError"))
+        setStatus("error")
+      }
+    }, 5000)
+
+    return () => window.clearInterval(poll)
+  }, [onClose, onDone, open, paymentData?.reference, status, t])
+
+  useEffect(() => {
+    if (!open || !paymentData?.expiresAt || status !== "waiting") return undefined
+    const delay = Math.max(new Date(paymentData.expiresAt).getTime() - Date.now(), 0)
+    const timer = window.setTimeout(() => setStatus("expired"), delay)
+    return () => window.clearTimeout(timer)
+  }, [open, paymentData?.expiresAt, status])
+
+  function handleClose() {
+    setStatus("idle")
+    onClose?.()
+  }
+
+  async function copyPayload() {
+    if (!paymentData?.qrPayload) return
+    await navigator.clipboard?.writeText(paymentData.qrPayload)
+    toast.success(t("ui.copied"))
+  }
+
+  function confirmLocalPayment() {
+    setStatus("paid")
+    toast.success(t("payment.confirmed"))
+    onDone?.(paymentData?.reference)
+    window.setTimeout(() => onClose?.(), 800)
   }
 
   return (
     <Overlay
       ariaLabel={t("payment.khqrTitle")}
       backdropClassName="z-[95] grid place-items-center p-4 overflow-y-auto"
-      className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl my-8"
-      onClose={onClose}
+      className="my-8 w-full max-w-sm md:max-w-xl rounded-2xl bg-white p-0 shadow-2xl md:flex md:flex-row overflow-hidden"
+      onClose={handleClose}
       open={open}
     >
-      <header className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black text-neutral-900">{t("payment.khqrTitle")}</h2>
-          {paymentData && (
-            <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-              {t("payment.reference")}: {paymentData.reference}
-            </p>
-          )}
-        </div>
-        <button
-          aria-label={t("ui.close")}
-          className="grid h-9 w-9 place-items-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50 shrink-0"
-          onClick={onClose}
-          type="button"
-        >
-          <X className="h-5 w-5" aria-hidden="true" />
-        </button>
-      </header>
+      {/* Decorative Strip (Desktop Only) */}
+      <div className="hidden md:block w-1/4 bg-bayon-sketch bg-bayon-sketch-8 rounded-l-2xl overflow-hidden" aria-hidden="true" />
 
-      {confirmed ? (
-        <div className="flex flex-col items-center py-12 text-center">
-          <div className="mb-4 rounded-full bg-green-100 p-4 text-green-600">
-            <CheckCircle2 className="h-12 w-12" />
-          </div>
-          <h3 className="text-lg font-bold text-neutral-900">{t("ui.success")}</h3>
-          <p className="mt-2 text-sm font-medium text-neutral-600">{t("payment.confirmed")}</p>
-          <p className="mt-4 text-xs font-bold text-neutral-400">
-            {t("payment.reference")}: {paymentData?.reference}
-          </p>
-        </div>
-      ) : (
-        <>
-          <p className="mt-3 text-sm font-semibold leading-6 text-neutral-500">{t("khqr.subtitle")}</p>
-
-          <div className="mt-5 flex flex-col items-center gap-3">
-            <div className="relative grid h-56 w-56 place-items-center rounded-2xl border-2 border-neutral-100 bg-neutral-50 shadow-inner overflow-hidden">
-              {loading ? (
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              ) : (
-                <>
-                  <QRPlaceholder />
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
-                    <QrCode className="h-32 w-32" />
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="text-center">
-              <p className="text-2xl font-black text-neutral-900">
-                {displayCurrency === "USD" ? "$" : ""}
-                {displayAmount.toLocaleString()}
-                {displayCurrency === "KHR" ? "៛" : ""}
+      {/* Main Content */}
+      <div className="flex-1 p-6">
+        <header className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-black text-neutral-900">{t("payment.khqrTitle")}</h2>
+            {paymentData ? (
+              <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                {t("payment.reference")}: {paymentData.reference}
               </p>
-              <p className="text-xs font-bold uppercase tracking-widest text-primary">{label}</p>
-            </div>
+            ) : null}
           </div>
-
-          <div className="mt-6 space-y-4">
-            <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-2">
-                {t("payment.manualTransfer")}
-              </p>
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs">
-                  <span className="text-neutral-500">{t("payment.bankAccount")}</span>
-                  <span className="font-bold text-neutral-900">000 123 456</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-neutral-500">{t("payment.accountName")}</span>
-                  <span className="font-bold text-neutral-900">BayonHub Co., Ltd</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-neutral-500">Bank</span>
-                  <span className="font-bold text-neutral-900">ABA Bank</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">
-                {t("payment.contactSupport")}
-              </p>
-              <div className="flex gap-2">
-                <a
-                  href="https://t.me/bayonhubsupport"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-neutral-200 py-2 text-xs font-bold text-neutral-700 hover:bg-neutral-50 transition-colors"
-                >
-                  <Send className="h-3.5 w-3.5 text-[#0088cc]" />
-                  Telegram
-                </a>
-                <a
-                  href="https://wa.me/85512345678"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-neutral-200 py-2 text-xs font-bold text-neutral-700 hover:bg-neutral-50 transition-colors"
-                >
-                  <Phone className="h-3.5 w-3.5 text-[#25D366]" />
-                  WhatsApp
-                </a>
-              </div>
-              <a
-                href="mailto:support@bayonhub.com"
-                className="flex items-center justify-center gap-2 rounded-lg border border-neutral-200 py-2 text-xs font-bold text-neutral-700 hover:bg-neutral-50 transition-colors"
-              >
-                <Mail className="h-3.5 w-3.5 text-neutral-400" />
-                support@bayonhub.com
-              </a>
-            </div>
-          </div>
-
-          <Button
-            className="mt-6 w-full py-4 text-base"
-            disabled={loading || confirming}
-            loading={confirming}
-            onClick={handleConfirm}
+          <button
+            aria-label={t("ui.close")}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50"
+            onClick={handleClose}
+            type="button"
           >
-            {t("khqr.done")}
-          </Button>
-        </>
-      )}
+            <X aria-hidden="true" className="h-5 w-5" />
+          </button>
+        </header>
+
+        {status === "paid" ? (
+          <div className="flex flex-col items-center py-12 text-center">
+            <div className="mb-4 rounded-full bg-green-100 p-4 text-green-600">
+              <CheckCircle2 aria-hidden="true" className="h-12 w-12" />
+            </div>
+            <h3 className="text-lg font-bold text-neutral-900">{t("ui.success")}</h3>
+            <p className="mt-2 text-sm font-medium text-neutral-600">{t("payment.confirmed")}</p>
+          </div>
+        ) : (
+          <>
+            <p className="mt-3 text-sm font-semibold leading-6 text-neutral-500">{t("payment.scanQR")}</p>
+
+            <div className="mt-5 flex flex-col items-center gap-3">
+              <div className="grid h-56 w-56 place-items-center overflow-hidden rounded-2xl border-2 border-neutral-100 bg-neutral-50 p-4 shadow-inner">
+                {status === "generating" ? (
+                  <div className="grid gap-3 text-center text-sm font-bold text-neutral-500">
+                    <Loader2 aria-hidden="true" className="mx-auto h-8 w-8 animate-spin text-primary" />
+                    {t("payment.generating")}
+                  </div>
+                ) : (
+                  <div className="grid w-full gap-3 text-center">
+                    <QrCode aria-hidden="true" className="mx-auto h-12 w-12 text-primary" />
+                    <p className="break-all rounded-xl bg-white p-3 font-mono text-xs leading-5 text-neutral-700">
+                      {paymentData?.qrPayload || t("payment.generating")}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-center">
+                <p className="text-2xl font-black text-neutral-900">
+                  {displayCurrency === "USD" ? "$" : ""}
+                  {displayAmount.toLocaleString()}
+                  {displayCurrency === "KHR" ? "៛" : ""}
+                </p>
+                <p className="text-xs font-bold uppercase tracking-widest text-primary">
+                  {planLabel} · {getPlanDuration(t, plan)}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-xl border border-neutral-100 bg-neutral-50 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">
+                {status === "expired" ? t("payment.expired") : t("payment.waitingPayment")}
+              </p>
+              {error ? <p className="mt-2 text-sm font-bold text-red-600">{error}</p> : null}
+            </div>
+
+            <div className="mt-6 grid gap-3">
+              <Button disabled={!paymentData?.qrPayload} onClick={copyPayload} type="button" variant="secondary">
+                <Clipboard aria-hidden="true" className="h-4 w-4" />
+                {t("ui.copy")}
+              </Button>
+              {!hasApiBackend() ? (
+                <Button disabled={!paymentData || status === "expired"} onClick={confirmLocalPayment} type="button">
+                  {t("khqr.done")}
+                </Button>
+              ) : null}
+              <Button onClick={handleClose} type="button" variant="secondary">
+                {t("ui.cancel")}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
     </Overlay>
   )
 }
-

@@ -11,7 +11,9 @@ interface JWTPayload {
 
 export const requireAuth: RequestHandler = async (req, res, next) => {
   try {
-    const token = req.cookies?.accessToken
+    const authorization = typeof req.headers.authorization === "string" ? req.headers.authorization : undefined
+    const bearer = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined
+    const token = req.cookies?.accessToken || bearer
     if (!token) return res.status(401).json({ error: "Unauthorized" })
 
     const payload = jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload
@@ -33,7 +35,9 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
 
 export const optionalAuth: RequestHandler = async (req, _res, next) => {
   try {
-    const token = req.cookies?.accessToken
+    const authorization = typeof req.headers.authorization === "string" ? req.headers.authorization : undefined
+    const bearer = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined
+    const token = req.cookies?.accessToken || bearer
     if (token) {
       const payload = jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload
       const user = await prisma.user.findUnique({

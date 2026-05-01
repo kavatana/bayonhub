@@ -68,7 +68,7 @@ export default function PricingSection() {
     <>
       {khqrPlan ? <ABAPayModal onClose={() => setKhqrPlan(null)} open={Boolean(khqrPlan)} promotionState={khqrPlan} /> : null}
 
-      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
+      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 bg-bayon-line bg-bayon-line-5">
         <div className="max-w-3xl">
           <h2 className="text-3xl font-black text-neutral-900">{t("pricing.title")}</h2>
           <p className="mt-3 leading-7 text-neutral-600">{t("pricing.subtitle")}</p>

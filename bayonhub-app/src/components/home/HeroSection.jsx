@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import gsap from "gsap"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "../../hooks/useTranslation"
 import { PROVINCES } from "../../lib/locations"
 import { useAuthStore } from "../../store/useAuthStore"
@@ -12,19 +12,23 @@ const HeroOrb = React.lazy(() => import("../three/HeroOrb"))
 
 export default function HeroSection() {
   const { t, language } = useTranslation()
+  const navigate = useNavigate()
   const listings = useListingStore((state) => state.listings)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const togglePostModal = useUIStore((state) => state.togglePostModal)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
   const [activeSlide, setActiveSlide] = useState(0)
+  const [searchQuery, setSearchQuery] = useState("")
   const sectionRef = useRef(null)
   const slideRef = useRef(null)
   const statRefs = useRef([])
+
   const verifiedSellers = useMemo(
     () => new Set(listings.filter((listing) => listing.verified).map((listing) => listing.sellerId)).size,
     [listings],
   )
+
   const titleClass = language === "km" ? "font-khmer text-3xl sm:text-4xl lg:text-5xl" : "font-display text-4xl sm:text-5xl lg:text-6xl"
 
   useEffect(() => {
@@ -79,6 +83,13 @@ export default function HeroSection() {
     togglePostModal(true)
   }
 
+  function handleSearch(event) {
+    event.preventDefault()
+    if (searchQuery.trim()) {
+      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
+    }
+  }
+
   const slides = [
     {
       title: t("hero.slide1Title"),
@@ -108,10 +119,18 @@ export default function HeroSection() {
   ]
 
   return (
-    <section ref={sectionRef} className="noise-overlay relative isolate overflow-hidden bg-white px-4 py-10 sm:px-6 lg:py-16">
+    <section
+      ref={sectionRef}
+      className="noise-overlay relative isolate overflow-hidden bg-white px-4 py-10 sm:px-6 lg:py-16 bg-bayon-sketch bg-bayon-sketch-7 bg-bayon-sketch-hero"
+    >
       <div className="mx-auto max-w-7xl">
-        <div className="overflow-hidden rounded-3xl border border-neutral-200 bg-gradient-to-br from-neutral-50 via-white to-primary/10 p-5 shadow-2xl sm:p-10">
+        {/* Hero card — premium left-border accent + warmer shadow */}
+        <div className="relative overflow-hidden rounded-3xl border border-neutral-200/80 bg-gradient-to-br from-neutral-50 via-white to-primary/5 p-5 shadow-[0_8px_60px_-12px_rgba(229,57,53,0.15)] sm:p-10">
+          {/* Accent left bar */}
+          <span className="pointer-events-none absolute left-0 top-0 h-full w-[3px] rounded-l-3xl bg-gradient-to-b from-primary via-primary/50 to-transparent" />
+
           <div className="grid min-h-[460px] items-center gap-12 lg:grid-cols-[60fr_40fr]">
+            {/* Left — copy + search */}
             <div ref={slideRef} className="min-w-0" data-animate>
               <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-xs font-black uppercase tracking-widest text-primary">
                 <span className="relative flex h-2 w-2">
@@ -120,31 +139,35 @@ export default function HeroSection() {
                 </span>
                 {t("hero.eyebrow")}
               </div>
+
               <h1 className={`${titleClass} mt-6 max-w-full break-words leading-[1.1] text-neutral-950 [overflow-wrap:anywhere]`}>
                 {currentSlide.title}
               </h1>
               <p className="mt-6 max-w-xl font-sans text-lg leading-relaxed text-neutral-500">
                 {currentSlide.subtitle}
               </p>
-              
+
               <div className="mt-10 flex flex-col gap-4">
-                <div className="group relative max-w-2xl">
-                  <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-primary/20 to-primary/10 opacity-25 blur transition duration-1000 group-hover:opacity-100 group-hover:duration-200" />
-                  <div className="relative flex items-center rounded-2xl border border-neutral-200 bg-white/80 p-2 shadow-sm backdrop-blur-md">
+                {/* Search bar — glow on focus, no browser outline */}
+                <form onSubmit={handleSearch} className="group relative max-w-2xl">
+                  <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-primary/25 to-primary/10 opacity-0 blur transition duration-500 group-focus-within:opacity-100 group-hover:opacity-40" />
+                  <div className="relative flex items-center rounded-2xl border border-neutral-200 bg-white/90 p-2 shadow-sm backdrop-blur-md transition focus-within:border-primary/40 focus-within:shadow-md">
                     <input
-                      className="w-full border-none bg-transparent px-4 py-3 text-neutral-900 placeholder:text-neutral-400 focus:ring-0"
+                      className="w-full border-none bg-transparent px-4 py-3 text-neutral-900 outline-none placeholder:text-neutral-400"
                       placeholder={t("nav.searchPlaceholder")}
                       type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
                     />
-                    <Button className="hidden h-12 min-w-32 sm:flex" size="md">
+                    <Button className="hidden h-12 min-w-32 sm:flex" size="md" type="submit">
                       {t("hero.searchButton") || t("ui.search")}
                     </Button>
                   </div>
-                </div>
-                
+                </form>
+
                 <div className="flex flex-col gap-3 xs:flex-row">
                   {currentSlide.to ? (
-                    <Link to={currentSlide.to}>
+                    <Link to={currentSlide.to} className="contents">
                       <Button className="w-full min-w-40" size="lg">
                         {currentSlide.cta}
                       </Button>
@@ -154,19 +177,24 @@ export default function HeroSection() {
                       {currentSlide.cta}
                     </Button>
                   )}
-                  <Link to="/category/vehicles">
+                  <Link to="/category/vehicles" className="contents">
                     <Button className="w-full min-w-40" size="lg" variant="secondary">
                       {t("hero.browseListings")}
                     </Button>
                   </Link>
                 </div>
               </div>
-              
+
+              {/* Slide indicator dots */}
               <div className="mt-10 flex gap-2">
                 {slides.map((slide, index) => (
                   <button
                     aria-label={t("hero.goToSlide", { number: index + 1 })}
-                    className={`h-2 rounded-full transition-all duration-300 ${activeSlide === index ? "w-10 bg-primary" : "w-2 bg-neutral-200 hover:bg-neutral-300"}`}
+                    className={`h-2 rounded-full transition-all duration-500 ${
+                      activeSlide === index
+                        ? "w-10 bg-primary shadow-[0_0_10px_rgba(229,57,53,0.5)]"
+                        : "w-2 bg-neutral-200 hover:bg-neutral-300"
+                    }`}
                     key={slide.title}
                     onClick={() => setActiveSlide(index)}
                     type="button"
@@ -174,20 +202,27 @@ export default function HeroSection() {
                 ))}
               </div>
             </div>
+
+            {/* Right — 3D orb: invisible placeholder (no pulsing box) */}
             <div className="relative hidden min-h-[460px] md:block" data-animate>
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent opacity-30 blur-3xl" />
-              <Suspense fallback={<div className="mx-auto h-80 w-80 rounded-full bg-gradient-to-br from-primary/10 to-primary/5 animate-pulse" />}>
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/15 to-transparent opacity-40 blur-3xl" />
+              <Suspense fallback={<div aria-hidden="true" className="pointer-events-none opacity-0" />}>
                 <HeroOrb />
               </Suspense>
             </div>
           </div>
         </div>
+
+        {/* Stats bar — left accent + tabular nums */}
         <div className="mt-6 grid max-w-full grid-cols-3 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm sm:max-w-2xl">
           {stats.map((stat, index) => (
-            <div className="relative px-3 py-4 text-center sm:px-5" key={stat.label}>
+            <div className="relative px-3 py-5 text-center sm:px-5" key={stat.label}>
               {index > 0 ? <span className="absolute bottom-4 left-0 top-4 w-px bg-neutral-200" /> : null}
+              {index === 0 ? (
+                <span className="absolute bottom-0 left-0 top-0 w-[3px] rounded-r-full bg-gradient-to-b from-primary to-primary/20" />
+              ) : null}
               <strong
-                className="block text-2xl font-black text-neutral-950 sm:text-3xl"
+                className="block text-2xl font-black tabular-nums text-neutral-950 sm:text-3xl"
                 data-value={stat.value}
                 ref={(element) => {
                   statRefs.current[index] = element

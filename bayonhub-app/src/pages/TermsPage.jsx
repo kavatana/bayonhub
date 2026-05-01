@@ -14,7 +14,7 @@ export default function TermsPage() {
   ]
 
   return (
-    <PageTransition className={pageClass}>
+    <PageTransition className={`${pageClass} bg-skyline bg-skyline-8`}>
       <Helmet>
         <title>{t("terms.pageTitle")}</title>
         <meta name="robots" content="index,follow" />

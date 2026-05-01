@@ -30,6 +30,9 @@ model User {
   reports          Report[]
   leads            Lead[]
   refreshTokens    RefreshToken[]
+  payments         Payment[]
+  kycApplication   KYCApplication?
+  merchantProfile  MerchantProfile?
 }
 
 enum Role {
@@ -45,15 +48,15 @@ enum VerificationTier {
 }
 
 model Listing {
-  id              String        @id @default(uuid())
-  slug            String        @unique
+  id              String                   @id @default(uuid())
+  slug            String                   @unique
   title           String
   titleKm         String?
   description     String
   descriptionKm   String?
-  price           Decimal?      @db.Decimal(12, 2)
-  currency        String        @default("USD")
-  negotiable      Boolean       @default(false)
+  price           Decimal?                 @db.Decimal(12, 2)
+  currency        String                   @default("USD")
+  negotiable      Boolean                  @default(false)
   condition       String?
   categorySlug    String
   subcategorySlug String?
@@ -64,23 +67,25 @@ model Listing {
   lng             Float?
   images          ListingImage[]
   facets          Json?
-  status          ListingStatus @default(ACTIVE)
-  promoted        Boolean       @default(false)
+  status          ListingStatus            @default(ACTIVE)
+  promoted        Boolean                  @default(false)
   promotedUntil   DateTime?
-  urgent          Boolean       @default(false)
-  previousPrice   Decimal?      @db.Decimal(12, 2)
+  urgent          Boolean                  @default(false)
+  previousPrice   Decimal?                 @db.Decimal(12, 2)
   discountPercent Int?
-  topSeller       Boolean       @default(false)
+  topSeller       Boolean                  @default(false)
   facebookPage    String?
-  viewCount       Int           @default(0)
-  contactCount    Int           @default(0)
+  viewCount       Int                      @default(0)
+  contactCount    Int                      @default(0)
   sellerId        String
-  seller          User          @relation(fields: [sellerId], references: [id])
+  seller          User                     @relation(fields: [sellerId], references: [id])
   savedBy         SavedListing[]
   leads           Lead[]
   reports         Report[]
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  payments        Payment[]
+  promotions      ListingPromotion[]
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
   searchVector    Unsupported("tsvector")? @map("search_vector")
 
   @@index([categorySlug])
@@ -143,15 +148,15 @@ enum LeadType {
 }
 
 model Message {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   senderId   String
-  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
+  sender     User      @relation("SentMessages", fields: [senderId], references: [id])
   receiverId String
-  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  receiver   User      @relation("ReceivedMessages", fields: [receiverId], references: [id])
   listingId  String?
   body       String
   readAt     DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@index([senderId, receiverId])
 }
@@ -192,4 +197,113 @@ model RefreshToken {
   token     String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
+}
+
+model Payment {
+  id             String            @id @default(uuid())
+  reference      String            @unique
+  userId         String
+  user           User              @relation(fields: [userId], references: [id])
+  listingId      String?
+  listing        Listing?          @relation(fields: [listingId], references: [id])
+  promotion      ListingPromotion?
+  plan           PromotionPlan
+  amount         Decimal           @db.Decimal(10, 2)
+  currency       String            @default("USD")
+  status         PaymentStatus     @default(PENDING)
+  khqrPayload    String?
+  webhookPayload Json?
+  paidAt         DateTime?
+  expiresAt      DateTime
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([listingId])
+  @@index([status])
+}
+
+enum PromotionPlan {
+  BOOST
+  TOP_AD
+  VIP_30
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  EXPIRED
+  REFUNDED
+  FAILED
+}
+
+model ListingPromotion {
+  id        String        @id @default(uuid())
+  listingId String
+  listing   Listing       @relation(fields: [listingId], references: [id])
+  paymentId String        @unique
+  payment   Payment       @relation(fields: [paymentId], references: [id])
+  plan      PromotionPlan
+  startedAt DateTime      @default(now())
+  expiresAt DateTime
+  active    Boolean       @default(true)
+
+  @@index([listingId])
+  @@index([active])
+}
+
+model KYCApplication {
+  id          String    @id @default(uuid())
+  userId      String    @unique
+  user        User      @relation(fields: [userId], references: [id])
+  fullName    String
+  idType      IDType
+  idNumber    String
+  idFrontKey  String
+  idBackKey   String?
+  selfieKey   String?
+  status      KYCStatus @default(PENDING)
+  reviewNote  String?
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  submittedAt DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status])
+}
+
+enum IDType {
+  NATIONAL_ID
+  PASSPORT
+  DRIVING_LICENSE
+}
+
+enum KYCStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_RESUBMIT
+}
+
+model MerchantProfile {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  user            User      @relation(fields:[userId], references:[id])
+  storeName       String
+  storeNameKm     String?
+  tagline         String?
+  taglineKm       String?
+  bannerKey       String?
+  logoKey         String?
+  businessPhone   String?
+  telegramHandle  String?
+  facebookPage    String?
+  businessHours   Json?
+  aboutUs         String?
+  aboutUsKm       String?
+  taxId           String?
+  catalogConfig   Json?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
