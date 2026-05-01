@@ -977,3 +977,26 @@ Pre-deploy check results (13/13 passed):
 ✅ No hardcoded secrets in frontend
 ✅ SECURITY.md exists
 ✅ AGENTS.md exists
+
+## PRODUCTION DEPLOYMENT — May 1, 2026
+
+Backend:
+- Platform: Railway
+- URL: https://bayonhub-production-1d97.up.railway.app
+- Database: Railway PostgreSQL (auto-provisioned)
+- Redis: Railway Redis (auto-provisioned)
+- Images: Cloudflare R2 bucket: bayonhub
+- OTP: Twilio SMS (+855963131281)
+
+Frontend:
+- Platform: Cloudflare Pages
+- URL: https://bayonhub.pages.dev
+- Build: npm run build in bayonhub-app/
+- Routing: _redirects file handles React Router
+
+Smoke tests: ALL PASS ✅
+Pre-deploy checks: 13/13 ✅
+
+Status: LIVE
+Next: Connect custom domain bayonhub.com
+Then: Get first real user to register and post a listing
