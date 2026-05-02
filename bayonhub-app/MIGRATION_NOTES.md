@@ -997,6 +997,28 @@ Frontend:
 Smoke tests: ALL PASS ✅
 Pre-deploy checks: 13/13 ✅
 
-Status: LIVE
-Next: Connect custom domain bayonhub.com
-Then: Get first real user to register and post a listing
+Status: DNS PROPAGATING
+Next: Wait for SSL issuance and DNS propagation (15-60 min)
+Then: Verify registration flow on production domain
+
+## R2 Storage Configuration — May 1, 2026
+
+- `bayonhub-api/.env` — Updated R2 credentials (ACCOUNT_ID, ACCESS_KEY_ID, SECRET_ACCESS_KEY, PUBLIC_URL) to ensure production persistence.
+- **Cloudflare R2** — Created a dedicated "Admin Read & Write" API token for the `bayonhub` bucket.
+- **Railway** — Synced new R2 credentials to the `bayonhub-api` service environment variables and triggered a redeploy.
+- **Storage Persistence** — Images are now stored in Cloudflare R2 instead of the ephemeral Railway filesystem, preventing data loss on redeploy.
+
+## Twilio SMS OTP Configuration — May 1, 2026
+
+- `bayonhub-api/.env` — Updated Twilio credentials (ACCOUNT_SID, AUTH_TOKEN, PHONE_NUMBER) to enable real SMS OTP delivery.
+- **Railway** — Synced Twilio credentials to the `bayonhub-api` service and triggered a redeploy.
+- **Production Readiness** — User registration is now functional for real users with valid phone numbers.
+## Custom Domain Configuration — May 2, 2026
+
+- **Cloudflare DNS** — Added CNAME records for root (`bayonhub.com`), `www`, and `api`.
+  - Root (@) -> `bayonhub.pages.dev` (Proxied)
+  - `www` -> `bayonhub.com` (Proxied)
+  - `api` -> `bayonhub-production-1d97.up.railway.app` (DNS only)
+- **Cloudflare Pages** — Added `bayonhub.com` as a custom domain and configured `VITE_API_URL` to `https://api.bayonhub.com`.
+- **Railway** — Added `api.bayonhub.com` as a custom domain for the backend and set `FRONTEND_URL` to `https://bayonhub.com`.
+- **Propagation Notice** — DNS is currently propagating. Final activation requires updating Nameservers at Namecheap to Cloudflare.
