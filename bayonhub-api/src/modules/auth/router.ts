@@ -17,8 +17,11 @@ import {
   validateSendOtp,
   validateVerifyOtp,
 } from "./validators"
+import { telegramWebhookHandler } from "./telegram"
 
 const router = Router()
+
+router.post("/telegram-webhook", telegramWebhookHandler)
 
 router.post("/register", authLimiter, validateRegister, register)
 router.post("/send-otp", otpLimiter, validateSendOtp, sendOtp)

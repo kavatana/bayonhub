@@ -1,7 +1,6 @@
 import type { Response } from "express"
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
-import twilio from "twilio"
 import { Prisma, Role, VerificationTier } from "@prisma/client"
 
 import { generateAndStoreOTP, verifyAndConsumeOTP } from "../../lib/otp"
@@ -109,34 +108,18 @@ export async function sendOTP(phone: string): Promise<{ success: true }> {
   if (!user) throw createHttpError(404, "User not found")
 
   const code = await generateAndStoreOTP(phone)
-  if (process.env.TWILIO_ACCOUNT_SID) {
-    if (process.env.TWILIO_PHONE_NUMBER === phone) {
-      console.error("[Twilio] FATAL: Cannot send SMS to the same number as TWILIO_PHONE_NUMBER")
-      console.error("[Twilio] Fix: Set TWILIO_PHONE_NUMBER to a different number in Railway Variables")
-      console.log("=".repeat(40))
-      console.log(`  [DEV OTP FALLBACK] ${phone}: ${code}  `)
-      console.log("=".repeat(40))
-      return { success: true }
-    }
-    try {
-      const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-      await client.messages.create({
-        to: phone,
-        from: process.env.TWILIO_PHONE_NUMBER,
-        body: `BayonHub OTP: ${code}`,
-      })
-    } catch (error) {
-      console.warn("[Twilio] OTP send failed:", error instanceof Error ? error.message : error)
-      console.log("=".repeat(40))
-      console.log(`  [DEV OTP FALLBACK] ${phone}: ${code}  `)
-      console.log("=".repeat(40))
-    }
-  } else {
-    console.warn("[Twilio] Not configured — OTP logged to console only. Set TWILIO_* vars for production.")
+  
+  // Twilio has been replaced with Telegram Bot OTP
+  // The OTP is now stored in Redis and will be sent when the user
+  // interacts with the Telegram bot.
+  
+  // Dev fallback log
+  if (process.env.NODE_ENV !== "production") {
     console.log("=".repeat(40))
     console.log(`  [DEV OTP] ${phone}: ${code}  `)
     console.log("=".repeat(40))
   }
+  
   return { success: true }
 }
 

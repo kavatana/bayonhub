@@ -360,9 +360,22 @@ export default function AuthModal() {
 
   // ── Forgot Password — OTP step ────────────────────────────────────────────
   if (forgotStep === "otp") {
+    const telegramBotUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "BayonHub_Bot"
     return renderPanel(t("auth.forgotTitle"), (
       <form className="mt-6 grid gap-5" onSubmit={submitResetOtp}>
-        <p className="text-sm font-semibold leading-6 text-neutral-500">{t("auth.resetOtpHelp")}</p>
+        <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/30 dark:bg-blue-900/10">
+          <p className="mb-3 text-sm font-semibold leading-6 text-blue-800 dark:text-blue-300">{t("auth.telegramOtpHelp")}</p>
+          <a
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2AABEE] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#2298D6]"
+            href={`https://t.me/${telegramBotUsername}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <TelegramIcon />
+            {t("auth.openTelegramBtn")}
+          </a>
+        </div>
+        <p className="text-sm font-semibold leading-6 text-neutral-500 mt-2">{t("auth.resetOtpHelp")}</p>
         <div className="grid grid-cols-6 gap-2">
           {resetOtp.map((digit, index) => (
             <input
@@ -472,7 +485,19 @@ export default function AuthModal() {
           </>
         ) : (
           <form className="mt-6 grid gap-5" onSubmit={submitOtp}>
-            <p className="text-sm font-semibold leading-6 text-neutral-500">{t("auth.otpHelp")}</p>
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/30 dark:bg-blue-900/10">
+              <p className="mb-3 text-sm font-semibold leading-6 text-blue-800 dark:text-blue-300">{t("auth.telegramOtpHelp")}</p>
+              <a
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2AABEE] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#2298D6]"
+                href={`https://t.me/${import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "BayonHub_Bot"}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <TelegramIcon />
+                {t("auth.openTelegramBtn")}
+              </a>
+            </div>
+            <p className="text-sm font-semibold leading-6 text-neutral-500 mt-2">{t("auth.otpHelp")}</p>
             <div className="grid grid-cols-6 gap-2">
               {otp.map((digit, index) => (
                 <input
