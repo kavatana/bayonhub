@@ -259,7 +259,9 @@ export default function AuthModal() {
 
   async function handleResend() {
     try {
-      await sendOtp(form.phone)
+      const normalizedPhone = validateAuthPhone()
+      if (!normalizedPhone) return
+      await sendOtp(normalizedPhone)
       setTimer(60)
       toast.success(t("auth.otpResent"))
     } catch {
@@ -269,7 +271,9 @@ export default function AuthModal() {
 
   async function handleResetResend() {
     try {
-      await sendOtp(resetPhone)
+      const normalizedPhone = validateAuthPhone("resetPhone")
+      if (!normalizedPhone) return
+      await sendOtp(normalizedPhone)
       setTimer(60)
       toast.success(t("auth.otpResent"))
     } catch {

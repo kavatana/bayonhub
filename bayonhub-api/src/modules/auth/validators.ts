@@ -19,12 +19,12 @@ export const validateLogin = [
 ]
 
 export const validateSendOtp = [
-  body("phone").notEmpty().withMessage("Phone is required"),
+  body("phone").matches(cambodiaPhoneRegex).withMessage("Invalid Cambodia phone number"),
   validate,
 ]
 
 export const validateVerifyOtp = [
-  body("phone").notEmpty().withMessage("Phone is required"),
+  body("phone").matches(cambodiaPhoneRegex).withMessage("Invalid Cambodia phone number"),
   body("code").isLength({ min: 6, max: 6 }).isNumeric().withMessage("OTP must be 6 digits"),
   validate,
 ]
