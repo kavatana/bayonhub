@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import toast from "react-hot-toast"
-import { checkOtpStatus as checkOtpStatusApi, getProfile, login as loginApi, logout as logoutApi, register as registerApi, sendOtp as sendOtpApi, verifyOTP as verifyOTPApi } from "../api/auth"
+import { getProfile, login as loginApi, logout as logoutApi, register as registerApi, sendOtp as sendOtpApi, verifyOTP as verifyOTPApi } from "../api/auth"
 import { API_BASE_URL, IS_PRODUCTION, STORAGE_KEYS } from "../api/client"
 import { storage } from "../lib/storage"
 import { translate } from "../lib/translations"
@@ -125,25 +125,6 @@ export const useAuthStore = create((set, get) => ({
       throw error
     } finally {
       set({ loading: false })
-    }
-  },
-
-  checkOtpStatus: async (phone) => {
-    try {
-      const result = await checkOtpStatusApi(phone)
-      if (result.verified && result.user) {
-        const verifiedUser = {
-          ...result.user,
-          verificationTier: result.user.verificationTier || "PHONE",
-          verified: true,
-        }
-        persistUser(verifiedUser)
-        set({ isAuthenticated: true, user: verifiedUser })
-        return true
-      }
-      return false
-    } catch {
-      return false
     }
   },
 

@@ -1,6 +1,5 @@
 import type { Request, Response } from "express"
 import { redis } from "../../config/redis"
-import { markOTPAsVerified } from "../../lib/otp"
 
 export async function telegramWebhookHandler(req: Request, res: Response): Promise<void> {
   try {
@@ -47,13 +46,12 @@ export async function telegramWebhookHandler(req: Request, res: Response): Promi
       const storedOtp = await redis.get(`otp:code:${phone}`)
 
       if (storedOtp) {
-        await markOTPAsVerified(phone)
-        await sendTelegramMessage(chatId, `✅ **Verification Successful!**\n\nYou are now logged into BayonHub. You can return to the website.`, {
+        await sendTelegramMessage(chatId, `✅ **Verification Request Found!**\n\nYour BayonHub verification code is: \`${storedOtp}\`\n\nPlease enter this code on the website.`, {
           parse_mode: "Markdown",
           reply_markup: { remove_keyboard: true }
         })
       } else {
-        await sendTelegramMessage(chatId, "We couldn't find a pending login for your phone number.\n\nPlease go to bayonhub.com and try again.", {
+        await sendTelegramMessage(chatId, "We couldn't find a pending login for your phone number.\n\nPlease go to bayonhub.com, request a new code, and try again.", {
           reply_markup: { remove_keyboard: true }
         })
       }
