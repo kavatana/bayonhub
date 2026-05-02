@@ -45,10 +45,31 @@ export function getListingSlug(listing) {
   return slugify(listing?.title || `listing-${listing?.id}`)
 }
 
+const R2_BASE = import.meta.env.VITE_R2_PUBLIC_URL || ""
+
 export function getSrcSet(src) {
-  if (!src || src.startsWith("data:")) return undefined
-  if (!src.includes("unsplash.com")) return undefined
-  return `${src}&w=400 400w, ${src}&w=800 800w`
+  if (!src) return undefined
+  if (src.startsWith("data:")) return undefined
+  if (src.includes("unsplash.com")) {
+    return `${src}&w=400 400w, ${src}&w=800 800w`
+  }
+  if (src.includes("picsum.photos")) {
+    const base = src.split("?")[0]
+    const parts = base.split("/")
+    const seedIndex = parts.indexOf("seed")
+    const seed = seedIndex !== -1 ? parts[seedIndex + 1] : null
+    if (seed) {
+      return [
+        `https://picsum.photos/seed/${seed}/400/300 400w`,
+        `https://picsum.photos/seed/${seed}/800/600 800w`,
+      ].join(", ")
+    }
+    return undefined
+  }
+  if (R2_BASE && src.startsWith(R2_BASE)) {
+    return undefined
+  }
+  return undefined
 }
 
 export function telegramShare(url, text) {

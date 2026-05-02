@@ -1022,3 +1022,41 @@ Then: Verify registration flow on production domain
 - **Cloudflare Pages** — Added `bayonhub.com` as a custom domain and configured `VITE_API_URL` to `https://api.bayonhub.com`.
 - **Railway** — Added `api.bayonhub.com` as a custom domain for the backend and set `FRONTEND_URL` to `https://bayonhub.com`.
 - **Propagation Notice** — DNS is currently propagating. Final activation requires updating Nameservers at Namecheap to Cloudflare.
+
+## Production Hardening Sprint — May 2, 2026
+
+Phase 1 — Critical Blockers:
+- Twilio self-send guard added — falls back to console OTP when TWILIO_PHONE_NUMBER === recipient phone
+- Twilio send failure now also logs OTP to console instead of silently failing
+- Startup warning in server.ts alerts when Twilio phone number may be misconfigured
+- CORS updated to dynamically allow both bayonhub.com and www.bayonhub.com
+- CSP moved from `_headers` to `index.html` meta tag for reliable Cloudflare Pages enforcement
+- `_headers` simplified to security headers only (X-Frame-Options, HSTS, etc.) without CSP
+- www → apex 301 redirect added to `_redirects`
+
+Phase 2 — Infrastructure Hardening:
+- Health endpoint upgraded with detailed per-service status (db, redis, r2, twilio)
+- Health endpoint reports response time and detects Twilio misconfiguration
+- `trust proxy` confirmed set before rate limiter middleware
+- All rate limiters use `CF-Connecting-IP` header for accurate per-user limiting behind Cloudflare
+- Production HTTP logging: only 4xx/5xx errors logged (not every request)
+- Request IDs added via `x-request-id` header for tracing
+- R2 startup connectivity test via HeadBucketCommand — warns immediately if bucket is unreachable
+
+Phase 3 — Frontend Fixes:
+- API network error dispatches `bayonhub:api-unavailable` event for localStorage fallback activation
+- `withCredentials: true` confirmed on Axios instance (already present)
+- ErrorBoundary upgraded with structured JSON logging (Sentry-ready) and branded error UI
+- ErrorBoundary adds "Copy Error Details" button for user bug reports
+- `getSrcSet` updated to handle R2, Unsplash, and Picsum sources correctly
+
+Phase 4 — Verification:
+- Backend lint: PASS, build: PASS
+- Frontend lint: PASS, build: PASS (all chunks under 500KB)
+- 8/8 live smoke tests against api.bayonhub.com PASS
+- Registration confirmed working: "Test User" created with phone +85599999999
+- OTP send confirmed working: { success: true }
+
+Status: PRODUCTION HARDENED ✅
+Remaining manual action: Fix Twilio phone number in Railway (buy separate number)
+Railway billing: Add payment method (29 days remaining on trial)

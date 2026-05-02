@@ -5,6 +5,7 @@ import { app } from "./app"
 import { redis } from "./config/redis"
 import { registerSocketHandlers } from "./modules/messages/socket"
 import { startScheduler } from "./lib/scheduler"
+import { testR2Connection } from "./lib/s3"
 
 const PORT = parseInt(process.env.PORT || "4000")
 const server = http.createServer(app)
@@ -22,15 +23,24 @@ async function start(): Promise<void> {
       console.warn("[Redis] Could not connect - OTP features will be unavailable"),
     )
 
-  server.listen(PORT, () => {
+  server.listen(PORT, async () => {
     console.info(`[Server] BayonHub API running on http://localhost:${PORT}`)
     startScheduler()
-    
-    if (process.env.NODE_ENV === "production" && !process.env.R2_ACCOUNT_ID) {
-      console.error("=".repeat(60))
-      console.error("FATAL: R2 not configured. Images will be lost on every deploy.")
-      console.error("Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY")
-      console.error("=".repeat(60))
+
+    const r2Ok = await testR2Connection()
+    if (!r2Ok && process.env.NODE_ENV === "production") {
+      console.error("[R2] WARNING: Image uploads will fail in production")
+    }
+
+    if (
+      process.env.NODE_ENV === "production" &&
+      process.env.TWILIO_PHONE_NUMBER &&
+      process.env.TWILIO_ACCOUNT_SID
+    ) {
+      console.warn("=".repeat(50))
+      console.warn("[Twilio] PHONE_NUMBER configured:", process.env.TWILIO_PHONE_NUMBER)
+      console.warn("[Twilio] Ensure this is a Twilio number, NOT your personal number")
+      console.warn("=".repeat(50))
     }
   })
 }

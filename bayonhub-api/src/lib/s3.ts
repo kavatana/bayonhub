@@ -1,4 +1,4 @@
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3"
+import { DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import fs from "fs"
 import path from "path"
@@ -162,4 +162,21 @@ export async function getPrivateDocumentReadUrl(key: string): Promise<string | n
     Key: key,
   })
   return getSignedUrl(s3, command, { expiresIn: 300 })
+}
+
+export async function testR2Connection(): Promise<boolean> {
+  if (!hasR2 || !s3) {
+    console.warn("[R2] Not configured — using local storage fallback")
+    return false
+  }
+  try {
+    await s3.send(new HeadBucketCommand({
+      Bucket: process.env.R2_BUCKET_NAME!,
+    }))
+    console.info("[R2] Connected to bucket:", process.env.R2_BUCKET_NAME)
+    return true
+  } catch (err) {
+    console.error("[R2] Connection failed:", err instanceof Error ? err.message : err)
+    return false
+  }
 }

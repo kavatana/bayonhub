@@ -1,3 +1,4 @@
+import crypto from "crypto"
 import cookieParser from "cookie-parser"
 import cors from "cors"
 import express, { ErrorRequestHandler } from "express"
@@ -25,7 +26,23 @@ app.set("trust proxy", 1)
 app.use(helmet())
 app.use(
   cors({
-    origin: env.nodeEnv === "production" ? env.frontendUrl : ["http://localhost:5173", env.frontendUrl],
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        env.frontendUrl,
+        env.frontendUrl.replace("https://", "https://www."),
+        "http://localhost:5173",
+        "http://localhost:4173",
+      ].filter(Boolean)
+
+      if (!origin) return callback(null, true)
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true)
+      } else {
+        console.warn("[CORS] Blocked origin:", origin)
+        callback(new Error(`CORS: Origin ${origin} not allowed`))
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "X-XSRF-TOKEN"],
@@ -34,7 +51,22 @@ app.use(
 app.use(cookieParser())
 app.use(express.json({ limit: "10kb" }))
 
-if (env.nodeEnv === "development") app.use(morgan("dev"))
+app.use((req, _res, next) => {
+  req.headers["x-request-id"] =
+    (req.headers["x-request-id"] as string) || crypto.randomUUID()
+  next()
+})
+
+if (env.nodeEnv === "development") {
+  app.use(morgan("dev"))
+} else {
+  app.use(morgan("combined", {
+    skip: (_req, res) => res.statusCode < 400,
+    stream: {
+      write: (message: string) => console.log("[HTTP]", message.trim()),
+    },
+  }))
+}
 
 if (env.nodeEnv !== "production") {
   app.use("/uploads", express.static("public/uploads"))
@@ -53,17 +85,33 @@ app.use("/api/payments", paymentsRouter)
 app.use("/api/v1/merchant", merchantRouter)
 
 app.get("/health", async (_req, res) => {
+  const startTime = Date.now()
+
   const dbStatus = await prisma.$queryRaw`SELECT 1`
     .then(() => "ok" as const)
-    .catch(() => "error" as const)
-  const redisStatus = redis.status === "ready" ? "ok" : "error"
-  const status = dbStatus === "ok" && redisStatus === "ok" ? "ok" : "degraded"
+    .catch((err: Error) => { console.error("[Health] DB error:", err.message); return "error" as const })
 
-  res.status(status === "ok" ? 200 : 503).json({
-    status,
-    ts: Date.now(),
-    db: dbStatus,
-    redis: redisStatus,
+  const redisStatus = redis.status === "ready" ? "ok" as const :
+    redis.status === "connecting" ? "connecting" as const : "error" as const
+
+  const r2Status = process.env.R2_ACCOUNT_ID ? "configured" as const : "not_configured" as const
+  const twilioStatus = process.env.TWILIO_ACCOUNT_SID
+    ? (process.env.TWILIO_PHONE_NUMBER === "+855963131281" ? "misconfigured" as const : "configured" as const)
+    : "not_configured" as const
+
+  const overall = dbStatus === "ok" && redisStatus === "ok" ? "ok" as const : "degraded" as const
+
+  res.status(overall === "ok" ? 200 : 503).json({
+    status: overall,
+    timestamp: new Date().toISOString(),
+    responseMs: Date.now() - startTime,
+    services: {
+      database: dbStatus,
+      redis: redisStatus,
+      r2: r2Status,
+      twilio: twilioStatus,
+    },
+    version: process.env.npm_package_version || "1.0.0",
   })
 })
 

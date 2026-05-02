@@ -2,17 +2,20 @@
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: geolocation=(self), camera=(self), microphone=(self)
-  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://images.unsplash.com https://pub-c7434ae70cee4383a7e7bab051d1096b.r2.dev; connect-src 'self' https://api.bayonhub.com wss://api.bayonhub.com;
+  Permissions-Policy: camera=(), microphone=(), geolocation=(self)
+  X-XSS-Protection: 1; mode=block
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
 /*.js
   Cache-Control: public, max-age=31536000, immutable
+
 /*.css
   Cache-Control: public, max-age=31536000, immutable
-/index.html
-  Cache-Control: no-cache, no-store, must-revalidate
+
 /manifest.webmanifest
   Cache-Control: no-cache

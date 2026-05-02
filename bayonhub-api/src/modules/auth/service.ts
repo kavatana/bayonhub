@@ -110,6 +110,14 @@ export async function sendOTP(phone: string): Promise<{ success: true }> {
 
   const code = await generateAndStoreOTP(phone)
   if (process.env.TWILIO_ACCOUNT_SID) {
+    if (process.env.TWILIO_PHONE_NUMBER === phone) {
+      console.error("[Twilio] FATAL: Cannot send SMS to the same number as TWILIO_PHONE_NUMBER")
+      console.error("[Twilio] Fix: Set TWILIO_PHONE_NUMBER to a different number in Railway Variables")
+      console.log("=".repeat(40))
+      console.log(`  [DEV OTP FALLBACK] ${phone}: ${code}  `)
+      console.log("=".repeat(40))
+      return { success: true }
+    }
     try {
       const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
       await client.messages.create({
@@ -119,6 +127,9 @@ export async function sendOTP(phone: string): Promise<{ success: true }> {
       })
     } catch (error) {
       console.warn("[Twilio] OTP send failed:", error instanceof Error ? error.message : error)
+      console.log("=".repeat(40))
+      console.log(`  [DEV OTP FALLBACK] ${phone}: ${code}  `)
+      console.log("=".repeat(40))
     }
   } else {
     console.warn("[Twilio] Not configured — OTP logged to console only. Set TWILIO_* vars for production.")

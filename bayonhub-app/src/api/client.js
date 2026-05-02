@@ -88,6 +88,15 @@ client.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config || {}
+
+    if (!error.response) {
+      console.warn("[API] Network error — activating localStorage fallback")
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("bayonhub:api-unavailable"))
+      }
+      return Promise.reject(error)
+    }
+
     if (error.response?.status !== 401 || originalRequest._retry || originalRequest.skipAuthRefresh) {
       return Promise.reject(error)
     }
