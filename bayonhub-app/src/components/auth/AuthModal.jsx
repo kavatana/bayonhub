@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { Eye, EyeOff, X } from "lucide-react"
 import toast from "react-hot-toast"
 import { useNavigate } from "react-router-dom"
@@ -51,7 +51,7 @@ export default function AuthModal() {
   const login = useAuthStore((state) => state.login)
   const register = useAuthStore((state) => state.register)
   const sendOtp = useAuthStore((state) => state.sendOtp)
-  const verifyOTP = useAuthStore((state) => state.verifyOTP)
+  const checkOtpStatus = useAuthStore((state) => state.checkOtpStatus)
   const loading = useAuthStore((state) => state.loading)
   const toggleSaved = useListingStore((state) => state.toggleSaved)
   const saveSearch = useListingStore((state) => state.saveSearch)
@@ -61,7 +61,6 @@ export default function AuthModal() {
   // forgotStep: null | "phone" | "otp"
   const [forgotStep, setForgotStep] = useState(null)
   const [timer, setTimer] = useState(60)
-  const [otp, setOtp] = useState(["", "", "", "", "", ""])
   const [form, setForm] = useState({
     name: "",
     phone: "",
@@ -72,15 +71,27 @@ export default function AuthModal() {
   })
   const [resetPhone, setResetPhone] = useState("")
   const [phoneErrors, setPhoneErrors] = useState({})
-  const otpRefs = useRef([])
-  const resetOtpRefs = useRef([])
-  const [resetOtp, setResetOtp] = useState(["", "", "", "", "", ""])
 
   useEffect(() => {
     if (!otpStep || timer <= 0) return undefined
     const interval = window.setInterval(() => setTimer((value) => Math.max(0, value - 1)), 1000)
     return () => window.clearInterval(interval)
   }, [otpStep, timer])
+
+  useEffect(() => {
+    if (!otpStep && forgotStep !== "otp") return undefined
+    const phoneToPoll = forgotStep === "otp" ? resetPhone : form.phone
+    const interval = window.setInterval(async () => {
+      const verified = await checkOtpStatus(phoneToPoll)
+      if (verified) {
+        toast.success(t("auth.welcome"))
+        close()
+        completePendingAction()
+      }
+    }, 2000)
+    return () => window.clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otpStep, forgotStep, checkOtpStatus, form.phone, resetPhone, t])
 
   if (!open) return null
 
@@ -110,7 +121,6 @@ export default function AuthModal() {
     setOtpStep(false)
     setForgotStep(null)
     setResetPhone("")
-    setResetOtp(["", "", "", "", "", ""])
   }
 
   function renderPanel(title, children) {
@@ -188,19 +198,6 @@ export default function AuthModal() {
       setLanguage(form.language)
       setOtpStep(true)
       setTimer(60)
-      window.setTimeout(() => otpRefs.current[0]?.focus(), 50)
-    } catch {
-      return
-    }
-  }
-
-  async function submitOtp(event) {
-    event.preventDefault()
-    try {
-      await verifyOTP(form.phone, otp.join(""))
-      toast.success(t("auth.welcome"))
-      close()
-      completePendingAction()
     } catch {
       return
     }
@@ -214,68 +211,6 @@ export default function AuthModal() {
       await sendOtp(normalizedPhone)
       setForgotStep("otp")
       setTimer(60)
-      window.setTimeout(() => resetOtpRefs.current[0]?.focus(), 50)
-    } catch {
-      return
-    }
-  }
-
-  async function submitResetOtp(event) {
-    event.preventDefault()
-    try {
-      // Verify OTP — real backend will also send a temporary password via SMS
-      await verifyOTP(resetPhone, resetOtp.join(""))
-      toast.success(t("auth.passwordReset"))
-      close()
-    } catch {
-      return
-    }
-  }
-
-  function updateOtp(index, value) {
-    const digit = value.replace(/\D/g, "").slice(0, 1)
-    const next = [...otp]
-    next[index] = digit
-    setOtp(next)
-    if (digit && index < otp.length - 1) otpRefs.current[index + 1]?.focus()
-  }
-
-  function updateResetOtp(index, value) {
-    const digit = value.replace(/\D/g, "").slice(0, 1)
-    const next = [...resetOtp]
-    next[index] = digit
-    setResetOtp(next)
-    if (digit && index < resetOtp.length - 1) resetOtpRefs.current[index + 1]?.focus()
-  }
-
-  function handleOtpPaste(event, setterFn, refsList) {
-    const pasted = event.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6)
-    if (!pasted) return
-    event.preventDefault()
-    const digits = pasted.split("")
-    setterFn(digits.concat(Array(6 - digits.length).fill("")))
-    refsList.current[Math.min(digits.length, 5)]?.focus()
-  }
-
-  async function handleResend() {
-    try {
-      const normalizedPhone = validateAuthPhone()
-      if (!normalizedPhone) return
-      await sendOtp(normalizedPhone)
-      setTimer(60)
-      toast.success(t("auth.otpResent"))
-    } catch {
-      return
-    }
-  }
-
-  async function handleResetResend() {
-    try {
-      const normalizedPhone = validateAuthPhone("resetPhone")
-      if (!normalizedPhone) return
-      await sendOtp(normalizedPhone)
-      setTimer(60)
-      toast.success(t("auth.otpResent"))
     } catch {
       return
     }
@@ -362,7 +297,7 @@ export default function AuthModal() {
   if (forgotStep === "otp") {
     const telegramBotUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "BayonHub_Bot"
     return renderPanel(t("auth.forgotTitle"), (
-      <form className="mt-6 grid gap-5" onSubmit={submitResetOtp}>
+      <form className="mt-6 grid gap-5">
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/30 dark:bg-blue-900/10">
           <p className="mb-3 text-sm font-semibold leading-6 text-blue-800 dark:text-blue-300">{t("auth.telegramOtpHelp")}</p>
           <a
@@ -375,32 +310,13 @@ export default function AuthModal() {
             {t("auth.openTelegramBtn")}
           </a>
         </div>
-        <p className="text-sm font-semibold leading-6 text-neutral-500 mt-2">{t("auth.resetOtpHelp")}</p>
-        <div className="grid grid-cols-6 gap-2">
-          {resetOtp.map((digit, index) => (
-            <input
-              aria-label={`${t("auth.otpTitle")} ${index + 1}`}
-              className="h-12 rounded-xl border border-neutral-200 text-center text-lg font-black outline-none focus:border-primary dark:border-neutral-700 dark:bg-neutral-800 dark:text-white dark:placeholder-neutral-500"
-              inputMode="numeric"
-              key={index}
-              onChange={(event) => updateResetOtp(index, event.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Backspace' && !digit && index > 0) {
-                  e.preventDefault()
-                  resetOtpRefs.current[index - 1]?.focus()
-                }
-              }}
-              onPaste={(event) => handleOtpPaste(event, setResetOtp, resetOtpRefs)}
-              pattern="[0-9]*"
-              ref={(element) => { resetOtpRefs.current[index] = element }}
-              value={digit}
-            />
-          ))}
+        
+        <div className="flex flex-col items-center justify-center py-6">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <p className="mt-4 text-sm font-bold text-neutral-600 dark:text-neutral-400">Waiting for Telegram verification...</p>
         </div>
-        <button className="justify-self-start text-sm font-black text-primary disabled:text-neutral-400" disabled={timer > 0} onClick={handleResetResend} type="button">
-          {timer > 0 ? t("auth.resendIn", { seconds: timer }) : t("auth.resend")}
-        </button>
-        <Button loading={loading} type="submit">{t("auth.verifyPhone")}</Button>
+
+        <button className="justify-self-start text-sm font-black text-primary" onClick={() => setForgotStep(null)} type="button">{t("ui.cancel")}</button>
       </form>
     ))
   }
@@ -484,7 +400,7 @@ export default function AuthModal() {
             </form>
           </>
         ) : (
-          <form className="mt-6 grid gap-5" onSubmit={submitOtp}>
+          <form className="mt-6 grid gap-5" onSubmit={(e) => e.preventDefault()}>
             <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/30 dark:bg-blue-900/10">
               <p className="mb-3 text-sm font-semibold leading-6 text-blue-800 dark:text-blue-300">{t("auth.telegramOtpHelp")}</p>
               <a
@@ -497,32 +413,15 @@ export default function AuthModal() {
                 {t("auth.openTelegramBtn")}
               </a>
             </div>
-            <p className="text-sm font-semibold leading-6 text-neutral-500 mt-2">{t("auth.otpHelp")}</p>
-            <div className="grid grid-cols-6 gap-2">
-              {otp.map((digit, index) => (
-                <input
-                  aria-label={`${t("auth.otpTitle")} ${index + 1}`}
-                  className="h-12 rounded-xl border border-neutral-200 text-center text-lg font-black outline-none focus:border-primary dark:bg-neutral-800 dark:border-neutral-700 dark:text-white dark:placeholder-neutral-500"
-                  inputMode="numeric"
-                  key={index}
-                  onChange={(event) => updateOtp(index, event.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Backspace' && !digit && index > 0) {
-                      e.preventDefault()
-                      otpRefs.current[index - 1]?.focus()
-                    }
-                  }}
-                  onPaste={(event) => handleOtpPaste(event, setOtp, otpRefs)}
-                  pattern="[0-9]*"
-                  ref={(element) => { otpRefs.current[index] = element }}
-                  value={digit}
-                />
-              ))}
+
+            <div className="flex flex-col items-center justify-center py-6">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+              <p className="mt-4 text-sm font-bold text-neutral-600 dark:text-neutral-400">Waiting for Telegram verification...</p>
             </div>
-            <button className="justify-self-start text-sm font-black text-primary disabled:text-neutral-400" disabled={timer > 0} onClick={handleResend} type="button">
-              {timer > 0 ? t("auth.resendIn", { seconds: timer }) : t("auth.resend")}
+            
+            <button className="justify-self-start text-sm font-black text-primary" onClick={() => setOtpStep(false)} type="button">
+              {t("ui.cancel")}
             </button>
-            <Button loading={loading} type="submit">{t("auth.verifyPhone")}</Button>
           </form>
         )}
     </>

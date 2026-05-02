@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
 import { Prisma, Role, VerificationTier } from "@prisma/client"
 
-import { generateAndStoreOTP, verifyAndConsumeOTP } from "../../lib/otp"
+import { checkAndConsumeVerifiedOTP, generateAndStoreOTP, verifyAndConsumeOTP } from "../../lib/otp"
 import { prisma } from "../../lib/prisma"
 
 const cookieOptions = {
@@ -138,6 +138,29 @@ export async function verifyOTP(phone: string, code: string): Promise<SafeUser> 
     },
     select: SAFE_USER_SELECT,
   })
+}
+
+export async function checkOtpStatus(res: Response, phone: string): Promise<{ verified: boolean, user?: SafeUser }> {
+  const isVerified = await checkAndConsumeVerifiedOTP(phone)
+  if (!isVerified) return { verified: false }
+
+  const user = await prisma.user.findUnique({ where: { phone }, select: { id: true, role: true, verificationTier: true } })
+  if (!user) throw createHttpError(404, "User not found")
+
+  const updatedUser = await prisma.user.update({
+    where: { phone },
+    data: {
+      phoneVerifiedAt: new Date(),
+      verificationTier: VerificationTier.PHONE,
+    },
+    select: SAFE_USER_SELECT,
+  })
+
+  // Since it's auto-login, we set cookies here just like login/register
+  const tokens = await generateTokens(user.id, user.role, user.verificationTier)
+  setAuthCookies(res, tokens.accessToken, tokens.refreshToken)
+
+  return { verified: true, user: updatedUser }
 }
 
 export async function loginUser(

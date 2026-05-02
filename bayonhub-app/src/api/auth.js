@@ -110,6 +110,21 @@ export async function verifyOTP(phone, code) {
   }
 }
 
+export async function checkOtpStatus(phone) {
+  if (!hasApiBackend()) {
+    return { verified: false }
+  }
+  try {
+    const response = await client.get("/api/auth/otp-status", { params: { phone }, skipAuthRefresh: true, skipAuthExpired: true })
+    if (response.data.verified && response.data.user) {
+      writeStorage(STORAGE_KEYS.authUser, response.data.user)
+    }
+    return response.data
+  } catch {
+    return { verified: false }
+  }
+}
+
 export async function getProfile() {
   if (!hasApiBackend()) {
     return readStorage(STORAGE_KEYS.authUser, null)

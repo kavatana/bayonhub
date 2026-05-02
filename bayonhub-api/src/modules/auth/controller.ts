@@ -9,6 +9,7 @@ import {
   registerUser,
   sendOTP,
   verifyOTP,
+  checkOtpStatus as checkOtpStatusService,
 } from "./service"
 
 export const register: RequestHandler = async (req, res, next) => {
@@ -39,6 +40,20 @@ export const verifyOtp: RequestHandler = async (req, res, next) => {
   try {
     const user = await verifyOTP(req.body.phone, req.body.code)
     res.status(200).json({ user })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const checkOtpStatus: RequestHandler = async (req, res, next) => {
+  try {
+    const phone = req.query.phone as string
+    if (!phone) {
+      res.status(400).json({ error: "Phone is required" })
+      return
+    }
+    const result = await checkOtpStatusService(res, phone)
+    res.status(200).json(result)
   } catch (error) {
     next(error)
   }
