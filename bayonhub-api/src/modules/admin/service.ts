@@ -39,7 +39,7 @@ export async function getReports(cursor?: string, limit = 20) {
     orderBy: { createdAt: "desc" },
     include: {
       listing: {
-        select: { id: true, title: true, slug: true, status: true },
+        select: { id: true, title: true, slug: true, status: true, price: true, currency: true },
       },
       reporter: {
         select: { id: true, name: true, phone: true, avatarUrl: true },

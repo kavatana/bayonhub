@@ -10,6 +10,7 @@ import {
 import { prisma } from "../../lib/prisma"
 import { processAndUpload } from "../../lib/s3"
 import { generateUniqueSlug } from "../../lib/slug"
+import { listingSchema } from "./validators"
 
 export const SAFE_LISTING_INCLUDE = {
   images: { take: 1, orderBy: { order: "asc" as const } },
@@ -142,7 +143,13 @@ function buildListingMutationData(data: ListingInput): Prisma.ListingUpdateInput
 }
 
 function buildWhere(filters: ListingFilters, includeCursor: boolean): Prisma.ListingWhereInput {
-  const where: Prisma.ListingWhereInput = { status: ListingStatus.ACTIVE }
+  const where: Prisma.ListingWhereInput = {
+    status: ListingStatus.ACTIVE,
+    OR: [
+      { expiresAt: null },
+      { expiresAt: { gt: new Date() } },
+    ],
+  }
   if (filters.category) where.categorySlug = filters.category
   if (filters.subcategory) where.subcategorySlug = filters.subcategory
   if (filters.province) where.province = filters.province
@@ -174,6 +181,7 @@ export async function getListings(filters: ListingFilters) {
         OR title ILIKE ${`%${q}%`}
       )
       AND status = 'ACTIVE'
+      AND ("expiresAt" IS NULL OR "expiresAt" > NOW())
       ORDER BY 
         ts_rank(search_vector, websearch_to_tsquery('english', ${q})) DESC,
         similarity(title, ${q}) DESC,
@@ -200,6 +208,7 @@ export async function getListings(filters: ListingFilters) {
         OR title ILIKE ${`%${q}%`}
       )
       AND status = 'ACTIVE'
+      AND ("expiresAt" IS NULL OR "expiresAt" > NOW())
     `
     const total = Number(countResult[0]?.count || 0)
     const nextCursor =
@@ -240,46 +249,36 @@ export async function getListing(idOrSlug: string) {
 
 export async function createListing(
   userId: string,
-  data: ListingInput,
+  input: unknown,
   files: Express.Multer.File[] = [],
 ) {
-  const title = requireString(data.title, "title")
-  const description = requireString(data.description, "description")
-  const categorySlug = requireString(data.categorySlug, "categorySlug")
-  const province = requireString(data.province, "province")
-  const slug = await generateUniqueSlug(title)
+  const data = listingSchema.parse(input)
+  const slug = await generateUniqueSlug(data.title)
   const uploadedImages = await Promise.all(
     files.map((file) => processAndUpload(file.buffer, `listings/${randomUUID()}.webp`)),
   )
 
   const createData: Prisma.ListingCreateInput = {
-    title,
+    title: data.title,
     titleKm: data.titleKm || null,
-    description,
+    description: data.description,
     descriptionKm: data.descriptionKm || null,
-    price: parseNumber(data.price),
-    currency: data.currency || "USD",
-    negotiable: parseBoolean(data.negotiable) || false,
+    price: data.price,
+    currency: data.currency,
+    negotiable: data.negotiable,
     condition: data.condition || null,
-    categorySlug,
+    categorySlug: data.categorySlug,
     subcategorySlug: data.subcategorySlug || null,
-    province,
+    province: data.province,
     district: data.district || null,
     addressDetail: data.addressDetail || null,
-    lat: parseNumber(data.lat),
-    lng: parseNumber(data.lng),
-    facets:
-      data.facets === undefined
-        ? Prisma.JsonNull
-        : typeof data.facets === "string"
-          ? JSON.parse(data.facets)
-          : (data.facets as Prisma.InputJsonValue),
-    promoted: parseBoolean(data.promoted) || false,
-    urgent: parseBoolean(data.urgent) || false,
-    previousPrice: parseNumber(data.previousPrice),
-    discountPercent: parseNumber(data.discountPercent),
-    topSeller: parseBoolean(data.topSeller) || false,
-    facebookPage: data.facebookPage || null,
+    lat: data.lat,
+    lng: data.lng,
+    facets: (input as any).facets ? 
+      (typeof (input as any).facets === "string" ? JSON.parse((input as any).facets) : (input as any).facets) : 
+      Prisma.JsonNull,
+    promoted: (input as any).promoted === "true" || (input as any).promoted === true,
+    urgent: (input as any).urgent === "true" || (input as any).urgent === true,
     slug,
     seller: { connect: { id: userId } },
     images: {
@@ -310,11 +309,11 @@ export async function updateListing(
   userId: string,
   role: string,
   listingId: string,
-  data: ListingInput,
+  input: unknown,
   files: Express.Multer.File[] = [],
 ) {
   await assertListingOwner(userId, role, listingId)
-  const updateData = buildListingMutationData(data)
+  const data = listingSchema.partial().parse(input)
   const uploadedImages = await Promise.all(
     files.map((file) => processAndUpload(file.buffer, `listings/${randomUUID()}.webp`)),
   )
@@ -322,7 +321,7 @@ export async function updateListing(
   return prisma.listing.update({
     where: { id: listingId },
     data: {
-      ...updateData,
+      ...data,
       images:
         uploadedImages.length > 0
           ? {
@@ -351,10 +350,27 @@ export async function reportListing(
   reporterId: string,
   listingId: string,
   reason: ReportReason,
-  detail?: string,
+  data: {
+    detail?: string
+    evidenceUrl?: string
+    contactEmail?: string
+    userAgent?: string
+    reporterSessionId?: string
+    listingTitle?: string
+  },
 ) {
   const report = await prisma.report.create({
-    data: { reporterId, listingId, reason, detail },
+    data: {
+      reporterId,
+      listingId,
+      reason,
+      detail: data.detail || null,
+      evidenceUrl: data.evidenceUrl || null,
+      contactEmail: data.contactEmail || null,
+      userAgent: data.userAgent || null,
+      reporterSessionId: data.reporterSessionId || null,
+      listingTitle: data.listingTitle || null,
+    },
   })
   const pendingReports = await prisma.report.count({
     where: { listingId, status: "PENDING" },

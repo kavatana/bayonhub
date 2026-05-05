@@ -21,6 +21,7 @@ const NotificationsTab = React.lazy(() => import("../components/dashboard/Notifi
 const SavedSearchesTab = React.lazy(() => import("../components/dashboard/SavedSearchesTab"))
 const SettingsTab = React.lazy(() => import("../components/dashboard/SettingsTab"))
 const StoreTab = React.lazy(() => import("../components/dashboard/StoreTab"))
+const VerificationTab = React.lazy(() => import("../components/dashboard/VerificationTab"))
 
 const tabs = [
   ["ads", "dashboard.myAds"],
@@ -29,6 +30,7 @@ const tabs = [
   ["messages", "dashboard.messages"],
   ["notifications", "dashboard.notifications"],
   ["store", "dashboard.store"],
+  ["verification", "dashboard.verification"],
   ["settings", "dashboard.settings"],
 ]
 
@@ -182,6 +184,7 @@ export default function DashboardPage() {
             {activeTab === "savedSearches" ? <SavedSearchesTab /> : null}
             {activeTab === "notifications" ? <NotificationsTab /> : null}
             {activeTab === "store" ? <StoreTab /> : null}
+            {activeTab === "verification" ? <VerificationTab /> : null}
             {activeTab === "settings" ? <SettingsTab /> : null}
           </Suspense>
         </section>

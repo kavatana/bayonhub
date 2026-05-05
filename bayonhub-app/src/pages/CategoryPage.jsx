@@ -1,9 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { Link, useParams } from "react-router-dom"
+import { Link, useParams, useSearchParams } from "react-router-dom"
 import { Helmet } from "react-helmet-async"
 import InfiniteScroll from "react-infinite-scroll-component"
-import { Building2, ChevronDown, Home, Map as MapIcon, SlidersHorizontal, Store, X } from "lucide-react"
+import { Building2, ChevronDown, Home, Map as MapIcon, PlusCircle, SlidersHorizontal, Store, X } from "lucide-react"
 import BodyTypeFilter from "../components/filters/BodyTypeFilter"
 import BrandLogoFilter from "../components/filters/BrandLogoFilter"
 import FacetedFilter from "../components/filters/FacetedFilter"
@@ -22,7 +22,7 @@ import { useTranslation } from "../hooks/useTranslation"
 import { CAR_BODY_TYPES, CAR_BRANDS, findCategory, findSubcategory } from "../lib/categories"
 import { getDistrictsForProvince, PROVINCES } from "../lib/locations"
 import { canonicalUrl } from "../lib/seo"
-import { cn, formatPrice, getListingImage, getListingSlug } from "../lib/utils"
+import { cn, formatPrice, getListingImage, listingUrl } from "../lib/utils"
 import { useListingStore } from "../store/useListingStore"
 import { useUIStore } from "../store/useUIStore"
 
@@ -222,29 +222,50 @@ export default function CategoryPage() {
   const category = findCategory(slug)
   const activeSubcategory = subcategory ? findSubcategory(slug, subcategory) : null
   const listings = useListingStore((state) => state.listings)
+  const togglePostModal = useUIStore((state) => state.togglePostModal)
   const fetchListings = useListingStore((state) => state.fetchListings)
   const fetchMoreListings = useListingStore((state) => state.fetchMoreListings)
   const hasMore = useListingStore((state) => state.hasMore)
   const selectedProvince = useUIStore((state) => state.selectedProvince)
   const setSelectedProvince = useUIStore((state) => state.setSelectedProvince)
-  const [view, setView] = useState("grid")
-  const [sort, setSort] = useState("newest")
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [view, setView] = useState(() => searchParams.get("view") || "grid")
+  const [sort, setSort] = useState(() => searchParams.get("sort") || "newest")
   const [filterOpen, setFilterOpen] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
   const filterTriggerRef = useRef(null)
-  const [price, setPrice] = useState([0, null])
-  const [conditions, setConditions] = useState([])
-  const [districts, setDistricts] = useState([])
-  const [facetFilters, setFacetFilters] = useState({})
-  const [verifiedOnly, setVerifiedOnly] = useState(false)
-  const [withPhotos, setWithPhotos] = useState(false)
-  const [negotiableOnly, setNegotiableOnly] = useState(false)
-  const [yearRange, setYearRange] = useState("")
-  const [quickCondition, setQuickCondition] = useState("")
-  const [bedrooms, setBedrooms] = useState("")
-  const [bathrooms, setBathrooms] = useState("")
-  const [sizeRange, setSizeRange] = useState([0, 2000])
-  const [floorNumber, setFloorNumber] = useState("")
+  const [price, setPrice] = useState(() => [
+    Number(searchParams.get("minPrice") || 0),
+    searchParams.get("maxPrice") ? Number(searchParams.get("maxPrice")) : null,
+  ])
+  const [conditions, setConditions] = useState(() => {
+    const val = searchParams.get("condition")
+    return val ? val.split(",") : []
+  })
+  const [districts, setDistricts] = useState(() => {
+    const val = searchParams.get("district")
+    return val ? val.split(",") : []
+  })
+  const [facetFilters, setFacetFilters] = useState(() => {
+    const val = searchParams.get("facets")
+    try {
+      return val ? JSON.parse(val) : {}
+    } catch {
+      return {}
+    }
+  })
+  const [verifiedOnly, setVerifiedOnly] = useState(() => searchParams.get("verified") === "true")
+  const [withPhotos, setWithPhotos] = useState(() => searchParams.get("photos") === "true")
+  const [negotiableOnly, setNegotiableOnly] = useState(() => searchParams.get("negotiable") === "true")
+  const [yearRange, setYearRange] = useState(() => searchParams.get("year") || "")
+  const [quickCondition, setQuickCondition] = useState(() => searchParams.get("qcondition") || "")
+  const [bedrooms, setBedrooms] = useState(() => searchParams.get("bedrooms") || "")
+  const [bathrooms, setBathrooms] = useState(() => searchParams.get("bathrooms") || "")
+  const [sizeRange, setSizeRange] = useState(() => [
+    Number(searchParams.get("minSize") || 0),
+    Number(searchParams.get("maxSize") || 2000),
+  ])
+  const [floorNumber, setFloorNumber] = useState(() => searchParams.get("floor") || "")
   const title = activeSubcategory ? t(`category.${activeSubcategory.id}`) : category ? t(`category.${category.id}`) : t("page.notFound")
   const provinceLabel = selectedProvince === "all" ? t("nav.allCambodia") : selectedProvince
   const activeCategory = category?.slug || slug
@@ -325,6 +346,34 @@ export default function CategoryPage() {
     ],
     [isHouseLandCategory, isVehicleCategory],
   )
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams)
+    
+    // Sync to URL
+    if (view !== "grid") next.set("view", view); else next.delete("view")
+    if (sort !== "newest") next.set("sort", sort); else next.delete("sort")
+    if (price[0] > 0) next.set("minPrice", String(price[0])); else next.delete("minPrice")
+    if (price[1] !== null) next.set("maxPrice", String(price[1])); else next.delete("maxPrice")
+    if (conditions.length) next.set("condition", conditions.join(",")); else next.delete("condition")
+    if (districts.length) next.set("district", districts.join(",")); else next.delete("district")
+    if (Object.keys(facetFilters).length) next.set("facets", JSON.stringify(facetFilters)); else next.delete("facets")
+    if (verifiedOnly) next.set("verified", "true"); else next.delete("verified")
+    if (withPhotos) next.set("photos", "true"); else next.delete("photos")
+    if (negotiableOnly) next.set("negotiable", "true"); else next.delete("negotiable")
+    if (yearRange) next.set("year", yearRange); else next.delete("year")
+    if (quickCondition) next.set("qcondition", quickCondition); else next.delete("qcondition")
+    if (bedrooms) next.set("bedrooms", bedrooms); else next.delete("bedrooms")
+    if (bathrooms) next.set("bathrooms", bathrooms); else next.delete("bathrooms")
+    if (sizeRange[0] > 0) next.set("minSize", String(sizeRange[0])); else next.delete("minSize")
+    if (sizeRange[1] < 2000) next.set("maxSize", String(sizeRange[1])); else next.delete("maxSize")
+    if (floorNumber) next.set("floor", floorNumber); else next.delete("floor")
+
+    // Avoid redundant updates
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true })
+    }
+  }, [view, sort, price, conditions, districts, facetFilters, verifiedOnly, withPhotos, negotiableOnly, yearRange, quickCondition, bedrooms, bathrooms, sizeRange, floorNumber, setSearchParams, searchParams])
 
   useEffect(() => {
     fetchListings({
@@ -466,7 +515,7 @@ export default function CategoryPage() {
           popup: (
             <div className="w-44">
               <img alt={listing.title} className="mb-2 h-20 w-full rounded-lg object-cover" src={getListingImage(listing)} />
-              <Link className="block text-sm font-black text-neutral-900 hover:text-primary" to={`/listing/${listing.id}/${getListingSlug(listing)}`}>
+              <Link className="block text-sm font-black text-neutral-900 hover:text-primary" to={listingUrl(listing)}>
                 {listing.title}
               </Link>
               <p className="mt-1 text-sm font-black text-primary">{formatPrice(listing.price, listing.currency)}</p>
@@ -712,7 +761,13 @@ export default function CategoryPage() {
                 <EmptyIllustration />
                 <h3 className="mt-4 text-xl font-black text-neutral-900">{t("filter.noAdsFound")}</h3>
                 <p className="mt-2 text-sm font-bold text-neutral-500">{t("filter.tryRemoving")}</p>
-                <Button className="mt-5" onClick={resetFilters}>{t("filter.resetAll")}</Button>
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                  <Button onClick={resetFilters} variant="secondary">{t("filter.resetAll")}</Button>
+                  <Button onClick={() => togglePostModal(true)}>
+                    <PlusCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+                    {t("nav.postFreeAd")}
+                  </Button>
+                </div>
               </div>
             </div>
           )}

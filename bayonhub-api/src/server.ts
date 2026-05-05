@@ -6,6 +6,7 @@ import { redis } from "./config/redis"
 import { registerSocketHandlers } from "./modules/messages/socket"
 import { startScheduler } from "./lib/scheduler"
 import { testR2Connection } from "./lib/s3"
+import { startListingExpiryJob } from "./jobs/listingExpiry"
 
 const PORT = parseInt(process.env.PORT || "4000")
 const server = http.createServer(app)
@@ -26,6 +27,7 @@ async function start(): Promise<void> {
   server.listen(PORT, async () => {
     console.info(`[Server] BayonHub API running on http://localhost:${PORT}`)
     startScheduler()
+    startListingExpiryJob()
 
     const r2Ok = await testR2Connection()
     if (!r2Ok && process.env.NODE_ENV === "production") {

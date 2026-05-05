@@ -1,16 +1,39 @@
-import crypto from "crypto"
-
 import { prisma } from "./prisma"
+
+export async function generateUserSlug(name: string, userId: string): Promise<string> {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .slice(0, 40)
+  
+  const suffix = userId.slice(0, 6)
+  const candidate = `${base || "seller"}-${suffix}`
+  
+  const existing = await prisma.user.findFirst({
+    where: { slug: candidate, NOT: { id: userId } },
+  })
+  
+  if (existing) return `${base}-${userId.slice(0, 8)}`
+  return candidate
+}
 
 export async function generateUniqueSlug(title: string): Promise<string> {
   const base = title
     .toLowerCase()
-    .replace(/[^a-z0-9\u1780-\u17FF]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60)
-  const suffix = crypto.randomUUID().slice(0, 5)
-  const candidate = `${base || "listing"}-${suffix}`
-  const existing = await prisma.listing.findUnique({ where: { slug: candidate } })
-  if (existing) return generateUniqueSlug(title)
-  return candidate
+    .replace(/[^a-z0-9\s]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .slice(0, 50) || "listing"
+
+  let attempt = base
+  let counter = 1
+
+  while (await prisma.listing.findUnique({ where: { slug: attempt } })) {
+    attempt = `${base}-${counter}`
+    counter += 1
+  }
+
+  return attempt
 }

@@ -17,7 +17,7 @@ const PostPage = lazy(() => import("./pages/PostPage"))
 const PricingPage = lazy(() => import("./pages/PricingPage"))
 const PrivacyPage = lazy(() => import("./pages/PrivacyPage"))
 const SearchPage = lazy(() => import("./pages/SearchPage"))
-const SellerPage = lazy(() => import("./pages/SellerPage"))
+const StorefrontPage = lazy(() => import("./pages/StorefrontPage"))
 const TermsPage = lazy(() => import("./pages/TermsPage"))
 import { useListingStore } from "./store/useListingStore"
 
@@ -42,6 +42,22 @@ function App() {
 
   useEffect(() => {
     initializeStore()
+
+    const handleApiUnavailable = () => {
+      import("react-hot-toast").then(({ toast }) => {
+        const { translate } = import.meta.glob("./lib/translations.js", { eager: true })["./lib/translations.js"]
+        const lang = localStorage.getItem("bayonhub:language") || "km"
+        toast.error(translate(lang, "app.apiUnavailable"), {
+          id: "api-unavailable",
+          duration: 5000,
+        })
+      })
+    }
+
+    window.addEventListener("bayonhub:api-unavailable", handleApiUnavailable)
+    return () => {
+      window.removeEventListener("bayonhub:api-unavailable", handleApiUnavailable)
+    }
   }, [initializeStore])
 
   return (
@@ -64,10 +80,13 @@ function App() {
           <Route element={<ListingPage />} path="/listing/:id" />
           <Route element={<EditListingPage />} path="/listing/:id/edit" />
           <Route element={<ListingPage />} path="/listing/:id/:slug" />
+          <Route element={<ListingPage />} path="/buy/:province/:categorySlug/:titleSlug-:id" />
+          <Route element={<ListingPage />} path="/l/:categorySlug/:province/:titleSlug-:id" />
           <Route element={<PostPage />} path="/post" />
           <Route element={<PricingPage />} path="/pricing" />
           <Route element={routePage(PrivacyPage)} path="/privacy" />
-          <Route element={<SellerPage />} path="/seller/:id" />
+          <Route element={<StorefrontPage />} path="/seller/:id" />
+          <Route element={<StorefrontPage />} path="/u/:slug" />
           <Route element={<SearchPage />} path="/search" />
           <Route element={routePage(TermsPage)} path="/terms" />
           <Route element={<NotFoundPage />} path="*" />

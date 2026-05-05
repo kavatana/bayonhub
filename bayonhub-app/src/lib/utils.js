@@ -14,8 +14,25 @@ export function slugify(value) {
     .replace(/^-+|-+$/g, "")
 }
 
-export function formatPrice(value, currency = "USD") {
-  const amount = Number(value || 0).toLocaleString()
+export function toKhmerNumerals(value) {
+  const map = {
+    "0": "០",
+    "1": "១",
+    "2": "២",
+    "3": "៣",
+    "4": "៤",
+    "5": "៥",
+    "6": "៦",
+    "7": "៧",
+    "8": "៨",
+    "9": "៩",
+  }
+  return String(value || "").replace(/[0-9]/g, (w) => map[w])
+}
+
+export function formatPrice(value, currency = "USD", language = "en") {
+  let amount = Number(value || 0).toLocaleString()
+  if (language === "km") amount = toKhmerNumerals(amount)
   return currency === "KHR" ? `${amount}៛` : `$${amount}`
 }
 
@@ -43,6 +60,31 @@ export function getListingImage(listing) {
 
 export function getListingSlug(listing) {
   return slugify(listing?.title || `listing-${listing?.id}`)
+}
+
+export function listingUrl(listing) {
+  if (!listing || !listing.id) return "/404"
+  const category = listing.categorySlug || "general"
+  const province = listing.province || "cambodia"
+  const titleSlug = slugify(listing.title || "listing").slice(0, 40)
+  const idStr = String(listing.id)
+  return `/buy/${province}/${category}/${titleSlug}-${idStr}`
+}
+
+export function sellerUrl(seller) {
+  if (!seller) return "/404"
+  if (seller.slug) return `/u/${seller.slug}`
+  return `/seller/${seller.id || seller.sellerId}`
+}
+
+export function maskPhone(phone) {
+  if (!phone) return null
+  const digits = phone.replace(/\D/g, "")
+  if (digits.length < 8) return phone
+  // Khmer style: 012 345 678 -> 012 34X XXX
+  const part1 = digits.slice(0, 3)
+  const part2 = digits.slice(3, 5)
+  return `${part1} ${part2}X XXX`
 }
 
 const R2_BASE = import.meta.env.VITE_R2_PUBLIC_URL || ""

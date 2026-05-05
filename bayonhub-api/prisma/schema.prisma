@@ -14,6 +14,8 @@ model User {
   passwordHash     String
   name             String
   avatarUrl        String?
+  bannerUrl        String?
+  slug             String?          @unique
   bio              String?
   language         String           @default("en")
   role             Role             @default(USER)
@@ -33,6 +35,8 @@ model User {
   payments         Payment[]
   kycApplication   KYCApplication?
   merchantProfile  MerchantProfile?
+  reviewsGiven     Review[]         @relation("ReviewsGiven")
+  reviewsReceived  Review[]         @relation("ReviewsReceived")
 }
 
 enum Role {
@@ -77,6 +81,10 @@ model Listing {
   facebookPage    String?
   viewCount       Int                      @default(0)
   contactCount    Int                      @default(0)
+  expiresAt       DateTime?
+  archivedAt      DateTime?
+  deletedAt       DateTime?
+  isActive        Boolean                  @default(true)
   sellerId        String
   seller          User                     @relation(fields: [sellerId], references: [id])
   savedBy         SavedListing[]
@@ -98,6 +106,8 @@ model Listing {
 
 enum ListingStatus {
   ACTIVE
+  PENDING
+  REJECTED
   SOLD
   EXPIRED
   REMOVED
@@ -162,16 +172,21 @@ model Message {
 }
 
 model Report {
-  id         String       @id @default(uuid())
-  listingId  String
-  listing    Listing      @relation(fields: [listingId], references: [id])
-  reporterId String
-  reporter   User         @relation(fields: [reporterId], references: [id])
-  reason     ReportReason
-  detail     String?
-  status     ReportStatus @default(PENDING)
-  resolvedAt DateTime?
-  createdAt  DateTime     @default(now())
+  id                String       @id @default(uuid())
+  listingId         String
+  listing           Listing      @relation(fields: [listingId], references: [id])
+  reporterId        String
+  reporter          User         @relation(fields: [reporterId], references: [id])
+  reason            ReportReason
+  detail            String?
+  evidenceUrl       String?
+  contactEmail      String?
+  userAgent         String?
+  reporterSessionId String?
+  listingTitle      String?
+  status            ReportStatus @default(PENDING)
+  resolvedAt        DateTime?
+  createdAt         DateTime     @default(now())
 }
 
 enum ReportReason {
@@ -306,4 +321,20 @@ model MerchantProfile {
   isActive        Boolean   @default(true)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  rating     Int      @default(5)
+  comment    String?
+  reviewerId String
+  reviewer   User     @relation("ReviewsGiven", fields: [reviewerId], references: [id])
+  sellerId   String
+  seller     User     @relation("ReviewsReceived", fields: [sellerId], references: [id])
+  listingId  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([sellerId])
+  @@index([reviewerId])
 }

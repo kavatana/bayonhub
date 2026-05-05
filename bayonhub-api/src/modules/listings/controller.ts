@@ -3,6 +3,7 @@ import type { RequestHandler } from "express"
 import { LeadType, ReportReason } from "@prisma/client"
 
 import { getPresignedUploadUrl, processAndUpload } from "../../lib/s3"
+import { validateMagicBytes } from "../../middleware/upload"
 import {
   createLead as createLeadService,
   createListing as createListingService,
@@ -75,7 +76,13 @@ export const getListing: RequestHandler = async (req, res, next) => {
 export const createListing: RequestHandler = async (req, res, next) => {
   try {
     if (!req.user) throw createHttpError(401, "Unauthorized")
-    const listing = await createListingService(req.user.id, req.body, getFiles(req))
+    const files = getFiles(req)
+    for (const file of files) {
+      if (!(await validateMagicBytes(file.buffer, file.mimetype))) {
+        throw createHttpError(400, `Invalid image format for file: ${file.originalname}`)
+      }
+    }
+    const listing = await createListingService(req.user.id, req.body, files)
     res.status(201).json(listing)
   } catch (error) {
     next(error)
@@ -85,12 +92,18 @@ export const createListing: RequestHandler = async (req, res, next) => {
 export const updateListing: RequestHandler = async (req, res, next) => {
   try {
     if (!req.user) throw createHttpError(401, "Unauthorized")
+    const files = getFiles(req)
+    for (const file of files) {
+      if (!(await validateMagicBytes(file.buffer, file.mimetype))) {
+        throw createHttpError(400, `Invalid image format for file: ${file.originalname}`)
+      }
+    }
     const listing = await updateListingService(
       req.user.id,
       req.user.role,
       getParamId(req.params.id),
       req.body,
-      getFiles(req),
+      files,
     )
     res.status(200).json(listing)
   } catch (error) {
@@ -119,7 +132,7 @@ export const reportListing: RequestHandler = async (req, res, next) => {
       req.user.id,
       getParamId(req.params.id),
       reason,
-      req.body.detail,
+      req.body,
     )
     res.status(201).json(report)
   } catch (error) {
@@ -198,6 +211,9 @@ export const uploadLocal: RequestHandler = async (req, res, next) => {
       return
     }
     if (!req.file) throw createHttpError(400, "File is required")
+    if (!(await validateMagicBytes(req.file.buffer, req.file.mimetype))) {
+      throw createHttpError(400, "Invalid image format")
+    }
     const result = await processAndUpload(req.file.buffer, `listings/${randomUUID()}.webp`)
     res.status(201).json(result)
   } catch (error) {

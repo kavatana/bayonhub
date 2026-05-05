@@ -21,6 +21,8 @@ const defaultFilters = {
   location: "",
   minPrice: "",
   maxPrice: "",
+  condition: "",
+  sort: "newest",
 }
 
 const RECENTLY_VIEWED_KEY = "bayonhub:recentlyViewed"

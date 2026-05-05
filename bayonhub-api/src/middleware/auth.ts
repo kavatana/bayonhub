@@ -19,7 +19,16 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
     const payload = jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, role: true, verificationTier: true, isActive: true },
+      select: { 
+        id: true, 
+        role: true, 
+        verificationTier: true, 
+        isActive: true,
+        email: true,
+        name: true,
+        phone: true,
+        avatarUrl: true
+      },
     })
 
     if (!user || !user.isActive) {
@@ -42,7 +51,16 @@ export const optionalAuth: RequestHandler = async (req, _res, next) => {
       const payload = jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload
       const user = await prisma.user.findUnique({
         where: { id: payload.userId },
-        select: { id: true, role: true, verificationTier: true, isActive: true },
+        select: { 
+          id: true, 
+          role: true, 
+          verificationTier: true, 
+          isActive: true,
+          email: true,
+          name: true,
+          phone: true,
+          avatarUrl: true
+        },
       })
       if (user?.isActive) req.user = user
     }

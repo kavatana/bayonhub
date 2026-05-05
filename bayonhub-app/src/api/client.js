@@ -75,10 +75,13 @@ client.interceptors.request.use((config) => {
   if (IS_PRODUCTION && !API_BASE_URL) {
     return Promise.reject(new Error("[BayonHub] API disabled: VITE_API_URL is required in production."))
   }
-  if (!IS_PRODUCTION && !API_BASE_URL) {
-    const token = localStorage.getItem(STORAGE_KEYS.authToken)
-    if (token) config.headers["Authorization"] = `Bearer ${token}`
-  }
+  
+  // Use dynamically imported store to avoid circular dependency if possible, 
+  // or just use a getter if we can't import it here.
+  // Actually, we can just import it at the top.
+  const { token } = window.authStore?.getState() || {}
+  if (token) config.headers["Authorization"] = `Bearer ${token}`
+  
   const csrfToken = getCookieValue("XSRF-TOKEN")
   if (csrfToken) config.headers["X-XSRF-TOKEN"] = csrfToken
   return config

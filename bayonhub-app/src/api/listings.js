@@ -565,7 +565,7 @@ function listingFormData(data) {
   ;(data.images || []).forEach((image, index) => {
     const file = image?.file || image
     if (file instanceof Blob) {
-      formData.append("images", file, `image-${index}.webp`)
+      formData.append("images", file, `image-${index}.jpg`)
     }
   })
   return formData
@@ -601,8 +601,14 @@ function applyFilters(listings, params = {}) {
     const matchesLocation = !locationParam || location === locationParam || district === locationParam
     const matchesMin = !params.minPrice || Number(listing.price) >= Number(params.minPrice)
     const matchesMax = !params.maxPrice || Number(listing.price) <= Number(params.maxPrice)
+    const matchesCondition = !params.condition || String(listing.condition).toLowerCase() === params.condition.toLowerCase()
     
-    return matchesQ && matchesCategory && matchesLocation && matchesMin && matchesMax
+    return matchesQ && matchesCategory && matchesLocation && matchesMin && matchesMax && matchesCondition
+  }).sort((a, b) => {
+    if (params.sort === "priceLow") return Number(a.price || 0) - Number(b.price || 0)
+    if (params.sort === "priceHigh") return Number(b.price || 0) - Number(a.price || 0)
+    if (params.sort === "views") return Number(b.views || 0) - Number(a.views || 0)
+    return new Date(b.updatedAt || b.postedAt || 0) - new Date(a.updatedAt || a.postedAt || 0)
   })
 }
 
@@ -831,4 +837,16 @@ export async function getRelated(id, limit = 4) {
   return getMockListings()
     .filter((item) => String(item.id) !== String(id) && item.subcategory === listing.subcategory)
     .slice(0, limit)
+}
+
+export async function fetchStats() {
+  if (hasApiBackend()) {
+    try {
+      const response = await client.get("/api/stats")
+      return response.data
+    } catch {
+      return null
+    }
+  }
+  return null
 }

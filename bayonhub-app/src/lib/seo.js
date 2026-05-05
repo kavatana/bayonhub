@@ -1,3 +1,6 @@
+import { listingUrl } from "./utils"
+import { sanitizeText } from "./sanitize"
+
 const SITE_URL = import.meta.env.VITE_SITE_URL
 
 if (import.meta.env.PROD && !SITE_URL) {
@@ -16,16 +19,27 @@ export function buildProductSchema(listing) {
     "@context": "https://schema.org",
     "@type": "Product",
     name: listing.title,
-    description: listing.description?.slice(0, 300),
+    description: sanitizeText(listing.description).slice(0, 300),
     image: listing.images?.[0]?.url || `${base}/icons/icon-512.png`,
-    url: canonicalUrl(`/listing/${listing.id}/${listing.slug || ""}`),
+    url: canonicalUrl(listingUrl(listing)),
+    sku: listing.id,
+    brand: {
+      "@type": "Brand",
+      name: "BayonHub",
+    },
+    category: listing.categorySlug,
+    location: {
+      "@type": "Place",
+      name: listing.province,
+    },
     offers: {
       "@type": "Offer",
       price: listing.price || "0",
       priceCurrency: listing.currency || "USD",
       availability: listing.status === "ACTIVE" ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      url: canonicalUrl(listingUrl(listing)),
       seller: {
-        "@type": "Person",
+        "@type": "Organization",
         name: listing.seller?.name || "BayonHub Seller",
       },
     },

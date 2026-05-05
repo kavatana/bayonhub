@@ -29,11 +29,12 @@ import {
   Sun,
   Moon,
 } from "lucide-react"
+import toast from "react-hot-toast"
 import { useClickAway } from "../../hooks/useClickAway"
 import { useTranslation } from "../../hooks/useTranslation"
 import { CATEGORIES } from "../../lib/categories"
 import { PROVINCES } from "../../lib/locations"
-import { cn, getListingSlug } from "../../lib/utils"
+import { cn, listingUrl } from "../../lib/utils"
 import { useAuthStore } from "../../store/useAuthStore"
 import { useListingStore } from "../../store/useListingStore"
 import { useUIStore } from "../../store/useUIStore"
@@ -96,6 +97,7 @@ export default function Navbar() {
   const togglePostModal = useUIStore((state) => state.togglePostModal)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
+  const hideBottomNav = useUIStore((state) => state.hideBottomNav)
   const setSearchQuery = useUIStore((state) => state.setSearchQuery)
   const theme = useUIStore((state) => state.theme)
   const toggleTheme = useUIStore((state) => state.toggleTheme)
@@ -115,6 +117,7 @@ export default function Navbar() {
   const navRef = useRef(null)
   const searchRef = useClickAway(() => setSearchOpen(false))
   const locationRef = useClickAway(() => setLocationOpen(false))
+  const mobileLocationRef = useClickAway(() => setLocationOpen(false))
   const megaRef = useRef(null)
   const closeTimerRef = useRef(null)
   const isHome = location.pathname === "/"
@@ -159,7 +162,7 @@ export default function Navbar() {
         titleKm: listing.titleKm,
         image: getSuggestionImage(listing),
         category: listing.categorySlug || listing.category,
-        slug: listing.slug || getListingSlug(listing),
+        listing: listing,
       }))
   }, [debouncedQuery, listings])
 
@@ -249,13 +252,14 @@ export default function Navbar() {
     saveRecentSearch(item.title)
     setSearchOpen(false)
     setMobileSearchOpen(false)
-    navigate(`/listing/${item.id}/${item.slug}`)
+    navigate(listingUrl(item.listing))
   }
 
   function saveCurrentSearch() {
     const trimmed = query.trim()
     const activeFilters = { ...filters }
     if (!isAuthenticated) {
+      toast.info(t("auth.signInToSaveSearch"), { duration: 3000 })
       setPendingAction({ type: "saveSearch", query: trimmed, filters: activeFilters })
       toggleAuthModal(true)
       return
@@ -298,11 +302,6 @@ export default function Navbar() {
 
   function openPostFlow() {
     const pendingAction = { type: "post" }
-    if (!isAuthenticated) {
-      setPendingAction(pendingAction)
-      toggleAuthModal(true)
-      return
-    }
     setPendingAction(pendingAction)
     togglePostModal(true)
   }
@@ -469,7 +468,7 @@ export default function Navbar() {
               <button
                 aria-expanded={locationOpen}
                 aria-label={t("nav.location")}
-                className="inline-flex h-10 max-w-52 items-center gap-2 rounded-full border border-neutral-200 bg-white/90 px-3 text-sm font-bold text-neutral-700 outline-none transition hover:border-primary focus:border-primary"
+                className="inline-flex h-10 max-w-52 items-center gap-2 rounded-full border border-neutral-200 bg-white/95 px-3 text-sm font-bold text-neutral-700 outline-none transition hover:border-primary focus:border-primary dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300"
                 onClick={() => setLocationOpen((current) => !current)}
                 type="button"
               >
@@ -478,10 +477,10 @@ export default function Navbar() {
                 <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               </button>
               {locationOpen ? (
-                <div className="absolute right-0 z-50 mt-2 grid max-h-80 min-w-56 gap-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-2 text-neutral-900 shadow-2xl">
+                <div className="absolute right-0 z-50 mt-2 grid max-h-80 min-w-56 gap-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-2 text-neutral-900 shadow-2xl dark:bg-neutral-900 dark:border-neutral-700 dark:text-white">
                   <button
                     className={cn(
-                      "rounded-xl px-3 py-2 text-left text-sm font-bold hover:bg-neutral-50",
+                      "rounded-xl px-3 py-2 text-left text-sm font-bold hover:bg-neutral-50 dark:hover:bg-neutral-800",
                       selectedProvince === "all" && "bg-primary/10 text-primary",
                     )}
                     onClick={() => {
@@ -495,7 +494,7 @@ export default function Navbar() {
                 {PROVINCES.map((province) => (
                   <button
                     className={cn(
-                      "rounded-xl px-3 py-2 text-left text-sm font-bold hover:bg-neutral-50",
+                      "rounded-xl px-3 py-2 text-left text-sm font-bold hover:bg-neutral-50 dark:hover:bg-neutral-800",
                       selectedProvince === province.label.en && "bg-primary/10 text-primary",
                     )}
                     key={province.id}
@@ -715,12 +714,13 @@ export default function Navbar() {
         </div>
       ) : null}
 
-      <nav
-        className={cn(
-          "fixed inset-x-0 bottom-0 z-50 border-t border-neutral-200 bg-white px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] transition-transform lg:hidden",
-          bottomHidden && "translate-y-full",
-        )}
-      >
+      {!hideBottomNav ? (
+        <nav
+          className={cn(
+            "fixed inset-x-0 bottom-0 z-50 border-t border-neutral-200 bg-white px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] transition-transform lg:hidden",
+            bottomHidden && "translate-y-full",
+          )}
+        >
         <div className="grid grid-cols-5 items-end gap-1">
           {[
             { label: t("nav.home"), icon: Home, path: "/", col: "col-start-1" },
@@ -756,12 +756,52 @@ export default function Navbar() {
           </button>
         </div>
       </nav>
+      ) : null}
       <div className="h-20 lg:hidden" aria-hidden="true" />
       <div className="fixed left-4 top-20 z-40 md:hidden">
-        <span className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-2 text-xs font-bold text-neutral-600 shadow-sm">
-          <MapPin className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-          {selectedProvinceLabel}
-        </span>
+        <div ref={mobileLocationRef} className="relative">
+          <button
+            onClick={() => setLocationOpen((current) => !current)}
+            className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/95 px-3 py-2 text-xs font-bold text-neutral-600 shadow-sm backdrop-blur-md active:scale-95 transition-transform"
+          >
+            <MapPin className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+            {selectedProvinceLabel}
+            <ChevronDown className="h-3 w-3 opacity-50" />
+          </button>
+          {locationOpen ? (
+            <div className="absolute left-0 mt-2 grid max-h-80 min-w-56 gap-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-2 text-neutral-900 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+              <button
+                className={cn(
+                  "rounded-xl px-3 py-2 text-left text-sm font-bold hover:bg-neutral-50",
+                  selectedProvince === "all" && "bg-primary/10 text-primary",
+                )}
+                onClick={() => {
+                  setSelectedProvince("all")
+                  setLocationOpen(false)
+                }}
+                type="button"
+              >
+                {t("nav.allCambodia")}
+              </button>
+              {PROVINCES.map((province) => (
+                <button
+                  className={cn(
+                    "rounded-xl px-3 py-2 text-left text-sm font-bold hover:bg-neutral-50",
+                    selectedProvince === province.label.en && "bg-primary/10 text-primary",
+                  )}
+                  key={province.id}
+                  onClick={() => {
+                    setSelectedProvince(province.label.en)
+                    setLocationOpen(false)
+                  }}
+                  type="button"
+                >
+                  {province.label[language]}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
     </>
   )

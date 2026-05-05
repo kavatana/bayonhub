@@ -3,12 +3,12 @@ import { useGSAP } from "@gsap/react"
 import gsap from "gsap"
 import toast from "react-hot-toast"
 import { useNavigate } from "react-router-dom"
-import { Check, ChevronLeft, X } from "lucide-react"
+import { Check, ChevronLeft, X, Send, Share2 } from "lucide-react"
 import { useTranslation } from "../../hooks/useTranslation"
 import { CATEGORIES } from "../../lib/categories"
 import { getCategoryForm } from "../../lib/categoryForms"
 import { getDistrictsForProvince, PROVINCES } from "../../lib/locations"
-import { cn, formatPrice } from "../../lib/utils"
+import { cn, formatPrice, listingUrl, telegramShare } from "../../lib/utils"
 import { validatePhone } from "../../lib/validation"
 import { useAuthStore } from "../../store/useAuthStore"
 import { useListingStore } from "../../store/useListingStore"
@@ -70,7 +70,6 @@ function getInitialData(listing = null, prefill = null) {
       name: typeof image === "string" ? `image-${index + 1}` : image.name || `image-${index + 1}`,
       order: index,
       isPrimary: index === 0,
-      primary: index === 0,
     })),
     phone: listing.phone || "",
     province: listing.location || "Phnom Penh",
@@ -98,7 +97,16 @@ export default function PostAdWizard({
   const setPendingAction = useUIStore((state) => state.setPendingAction)
   const createListing = useListingStore((state) => state.createListing)
   const user = useAuthStore((state) => state.user)
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
+  const [isSuccess, setIsSuccess] = useState(false)
+  const [createdListing, setCreatedListing] = useState(null)
+  const [showDraftBanner, setShowDraftBanner] = useState(false)
+  const [showDraftSaved, setShowDraftSaved] = useState(false)
   const open = openOverride ?? storeOpen
+
+  const DRAFT_KEY = "bayonhub:postDraft"
+
   const [step, setStep] = useState(0)
   const [direction, setDirection] = useState(1)
   const [data, setData] = useState(() => getInitialData(initialListing))
@@ -106,8 +114,54 @@ export default function PostAdWizard({
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const [khqrOpen, setKhqrOpen] = useState(false)
+
   const panelRef = useRef(null)
   const bodyRef = useRef(null)
+
+  const draftCheckedRef = useRef(false)
+  useEffect(() => {
+    if (!open) {
+      draftCheckedRef.current = false
+      return
+    }
+
+    if (open && !initialListing && !isSuccess && !draftCheckedRef.current) {
+      const saved = localStorage.getItem(DRAFT_KEY)
+      draftCheckedRef.current = true
+      if (!saved) return
+
+      try {
+        const parsed = JSON.parse(saved)
+        const age = Date.now() - Number(parsed.savedAt || 0)
+        if (age > 72 * 60 * 60 * 1000) {
+          localStorage.removeItem(DRAFT_KEY)
+          return
+        }
+        window.requestAnimationFrame(() => {
+          setShowDraftBanner(true)
+        })
+      } catch {
+        localStorage.removeItem(DRAFT_KEY)
+      }
+    }
+  }, [open, initialListing, isSuccess])
+
+  useEffect(() => {
+    if (!open || initialListing || isSuccess) return
+    const savedDraft = {
+      formData: data,
+      currentStep: step,
+      savedAt: Date.now(),
+    }
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(savedDraft))
+    
+    window.requestAnimationFrame(() => {
+      setShowDraftSaved(true)
+    })
+
+    const hideTimer = window.setTimeout(() => setShowDraftSaved(false), 2000)
+    return () => window.clearTimeout(hideTimer)
+  }, [data, step, open, initialListing, isSuccess])
 
   const steps = [t("post.stepCategory"), t("post.stepDetails"), t("post.stepMedia"), t("post.stepLocation"), t("post.stepReview")]
   const category = CATEGORIES.find((item) => item.id === data.categoryId)
@@ -119,7 +173,7 @@ export default function PostAdWizard({
     const province = PROVINCES.find((item) => item.label.en === data.province)
     return getDistrictsForProvince(province?.slug)
   }, [data.province])
-  const coverImage = data.images.find((image) => image.primary) || data.images[0]
+  const coverImage = data.images.find((image) => image.isPrimary) || data.images[0]
 
   useGSAP(
     () => {
@@ -166,6 +220,35 @@ export default function PostAdWizard({
     setTouched({})
     setErrors({})
     setLoading(false)
+    setIsSuccess(false)
+    setCreatedListing(null)
+  }
+
+  function loadDraft() {
+    const saved = localStorage.getItem(DRAFT_KEY)
+    if (!saved) {
+      setShowDraftBanner(false)
+      return
+    }
+
+    try {
+      const draftData = JSON.parse(saved)
+      if (draftData?.formData) {
+        setData(draftData.formData)
+        setStep(Math.min(Math.max(Number(draftData.currentStep || 0), 0), steps.length - 1))
+        toast.success(t("post.draftLoaded"))
+      }
+    } catch (e) {
+      console.error("Failed to load draft", e)
+      localStorage.removeItem(DRAFT_KEY)
+    }
+    setShowDraftBanner(false)
+  }
+
+  function discardDraft() {
+    localStorage.removeItem(DRAFT_KEY)
+    resetWizard()
+    setShowDraftBanner(false)
   }
 
   function closeWizard() {
@@ -208,7 +291,10 @@ export default function PostAdWizard({
   }
 
   function goTo(nextStep) {
-    if (nextStep > step && !validateStep(step)) return
+    if (nextStep > step && !validateStep(step)) {
+      toast.error(t("post.validationErrorToast"))
+      return
+    }
     setDirection(nextStep > step ? 1 : -1)
     setStep(nextStep)
   }
@@ -216,6 +302,11 @@ export default function PostAdWizard({
   async function submit() {
     const allValid = [0, 1, 2, 3].every((target) => validateStep(target))
     if (!allValid) return
+    if (!isAuthenticated) {
+      setPendingAction({ type: "post", prefill: data })
+      toggleAuthModal(true)
+      return
+    }
     setLoading(true)
     const submitAction = onSubmitListing || createListing
     const phoneResult = validatePhone(data.phone)
@@ -250,17 +341,13 @@ export default function PostAdWizard({
     })
     setLoading(false)
     if (listing) {
-      toast.success(t("post.success"))
-      resetWizard()
-      if (!onSubmitListing) {
-        togglePostModal(false)
-      }
-      // Show KHQR modal for paid promotions before redirecting
+      localStorage.removeItem(DRAFT_KEY)
+      setCreatedListing(listing)
+      setIsSuccess(true)
+      
       if (data.promotion !== "standard") {
         setKhqrOpen(true)
-        return
       }
-      navigate(`/listing/${listing.id}`)
     } else {
       toast.error(t("post.error"))
     }
@@ -295,13 +382,33 @@ export default function PostAdWizard({
             >
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
-            <h2 className="text-lg font-black text-neutral-900">{t("post.title")}</h2>
+            <div className="text-center">
+              <h2 className="text-lg font-black text-neutral-900">{t("post.title")}</h2>
+              {showDraftSaved && !isSuccess ? (
+                <p className="text-[10px] font-bold text-emerald-600 flex items-center justify-center gap-1 opacity-100 transition-opacity duration-300">
+                  <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t("post.draftSaved")}
+                </p>
+              ) : null}
+            </div>
             <span className="h-10 w-10" aria-hidden="true" />
           </div>
-          <StepIndicator currentStep={step} steps={steps} />
+          {!isSuccess && <StepIndicator currentStep={step} steps={steps} />}
         </header>
 
         <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto p-4">
+          {showDraftBanner && (
+            <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl bg-primary/5 p-4 border border-primary/20">
+              <div className="flex-1">
+                <p className="text-sm font-bold text-neutral-900">{t("post.draftFound")}</p>
+                <p className="text-xs text-neutral-500">{t("post.draftFoundSub")}</p>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="ghost" onClick={discardDraft}>{t("ui.discard")}</Button>
+                <Button size="sm" onClick={loadDraft}>{t("ui.continue")}</Button>
+              </div>
+            </div>
+          )}
           {step === 0 ? (
             <div className="space-y-4">
               <div className="grid gap-3 md:grid-cols-3">
@@ -572,70 +679,129 @@ export default function PostAdWizard({
           ) : null}
 
           {step === 4 ? (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                <p className="text-xs font-black uppercase tracking-widest text-neutral-400">{t("post.reviewSummary")}</p>
-                <div className="mt-4 flex gap-4">
-                  <div className="h-24 w-28 shrink-0 overflow-hidden rounded-xl bg-neutral-100">
-                    {coverImage ? <img alt={data.title} className="h-full w-full object-cover" src={coverImage.preview || coverImage.url} /> : null}
+            !isAuthenticated ? (
+              <div className="flex h-full flex-col items-center justify-center rounded-3xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
+                <div className="mb-4 grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary">
+                  <Check className="h-8 w-8" aria-hidden="true" />
+                </div>
+                <h3 className="text-2xl font-black text-neutral-900">{t("post.almostThere")}</h3>
+                <p className="mt-2 max-w-md text-sm text-neutral-500">{t("post.createAccountToPost")}</p>
+                <div className="mt-6 grid w-full gap-3 sm:max-w-sm">
+                  <Button onClick={() => {
+                    setPendingAction({ type: "post", prefill: data })
+                    toggleAuthModal(true)
+                  }}>
+                    {t("auth.register")}
+                  </Button>
+                  <Button variant="secondary" onClick={() => {
+                    setPendingAction({ type: "post", prefill: data })
+                    toggleAuthModal(true)
+                  }}>
+                    {t("auth.login")}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                  <p className="text-xs font-black uppercase tracking-widest text-neutral-400">{t("post.reviewSummary")}</p>
+                  <div className="mt-4 flex gap-4">
+                    <div className="h-24 w-28 shrink-0 overflow-hidden rounded-xl bg-neutral-100">
+                      {coverImage ? <img alt={data.title} className="h-full w-full object-cover" src={coverImage.preview || coverImage.url} /> : null}
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="line-clamp-2 text-lg font-black text-neutral-900">{data.title}</h3>
+                      <p className="mt-1 text-xl font-black text-primary">{formatPrice(data.price, data.currency)}</p>
+                      <p className="mt-2 text-sm font-semibold text-neutral-500">{selectionPath}</p>
+                      <p className="mt-1 text-sm text-neutral-500">
+                        {data.province}
+                        {data.district ? `, ${data.district}` : ""}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <h3 className="line-clamp-2 text-lg font-black text-neutral-900">{data.title}</h3>
-                    <p className="mt-1 text-xl font-black text-primary">{formatPrice(data.price, data.currency)}</p>
-                    <p className="mt-2 text-sm font-semibold text-neutral-500">{selectionPath}</p>
-                    <p className="mt-1 text-sm text-neutral-500">
-                      {data.province}
-                      {data.district ? `, ${data.district}` : ""}
-                    </p>
+                </div>
+                <div>
+                  <p className="mb-3 text-sm font-black text-neutral-900">{t("post.promotion")}</p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {[
+                      ["standard", t("post.standardFree")],
+                      ["boost", t("post.boost")],
+                      ["top", t("post.topAd")],
+                    ].map(([value, label]) => (
+                      <button
+                        className={cn(
+                          "rounded-2xl border p-4 text-left text-sm font-black transition",
+                          data.promotion === value ? "border-primary bg-primary text-white" : "border-neutral-200 bg-white text-neutral-800",
+                        )}
+                        key={value}
+                        onClick={() => updateField("promotion", value)}
+                        type="button"
+                      >
+                        <span className="flex items-center justify-between gap-3">
+                          {label}
+                          {data.promotion === value ? <Check className="h-4 w-4" aria-hidden="true" /> : null}
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
-              <div>
-                <p className="mb-3 text-sm font-black text-neutral-900">{t("post.promotion")}</p>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {[
-                    ["standard", t("post.standardFree")],
-                    ["boost", t("post.boost")],
-                    ["top", t("post.topAd")],
-                  ].map(([value, label]) => (
-                    <button
-                      className={cn(
-                        "rounded-2xl border p-4 text-left text-sm font-black transition",
-                        data.promotion === value ? "border-primary bg-primary text-white" : "border-neutral-200 bg-white text-neutral-800",
-                      )}
-                      key={value}
-                      onClick={() => updateField("promotion", value)}
-                      type="button"
-                    >
-                      <span className="flex items-center justify-between gap-3">
-                        {label}
-                        {data.promotion === value ? <Check className="h-4 w-4" aria-hidden="true" /> : null}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+            )
           ) : null}
+
+          {isSuccess && (
+            <div className="flex h-full flex-col items-center justify-center py-10 text-center">
+              <div className="mb-6 grid h-20 w-20 place-items-center rounded-full bg-emerald-100 text-emerald-600">
+                <Check className="h-10 w-10" />
+              </div>
+              <h3 className="text-2xl font-black text-neutral-900">{t("post.successTitle")}</h3>
+              <p className="mt-2 max-w-sm text-neutral-500">{t("post.successSubtitle")}</p>
+              
+              <div className="mt-8 grid w-full gap-3 sm:max-w-sm">
+                <Button onClick={() => { closeWizard(); navigate(listingUrl(createdListing)) }}>
+                  {t("post.viewListing")}
+                </Button>
+                <Button variant="secondary" onClick={resetWizard}>
+                  {t("post.postAnother")}
+                </Button>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <Button variant="ghost" size="sm" onClick={() => telegramShare(window.location.origin + listingUrl(createdListing), createdListing?.title)}>
+                    <Send className="h-4 w-4 mr-2" />
+                    Telegram
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.origin + listingUrl(createdListing))}`, "_blank")}>
+                    <Share2 className="h-4 w-4 mr-2" />
+                    Facebook
+                  </Button>
+                </div>
+              </div>
+              
+              <p className="mt-10 text-xs font-bold text-neutral-400 uppercase tracking-widest">
+                {t("post.expiresIn")}
+              </p>
+            </div>
+          )}
         </div>
 
-        <footer className="flex shrink-0 items-center gap-3 border-t border-neutral-100 p-4">
-          {step > 0 ? (
-            <Button onClick={() => goTo(step - 1)} variant="secondary">
-              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-              {t("ui.back")}
-            </Button>
-          ) : null}
-          {step < steps.length - 1 ? (
-            <Button className="ml-auto" disabled={step === 0 && !data.subcategoryId} onClick={() => goTo(step + 1)}>
-              {t("ui.continue")}
-            </Button>
-          ) : (
-            <Button className="ml-auto w-full sm:w-auto" loading={loading} onClick={submit}>
-              {submitLabelKey ? t(submitLabelKey) : t("post.postAd")}
-            </Button>
-          )}
-        </footer>
+        {!isSuccess && (
+          <footer className="flex shrink-0 items-center gap-3 border-t border-neutral-100 p-4">
+            {step > 0 ? (
+              <Button onClick={() => goTo(step - 1)} variant="secondary">
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                {t("ui.back")}
+              </Button>
+            ) : null}
+            {step < steps.length - 1 ? (
+              <Button className="ml-auto" disabled={step === 0 && !data.subcategoryId} onClick={() => goTo(step + 1)}>
+                {t("ui.continue")}
+              </Button>
+            ) : (
+              <Button className="ml-auto w-full sm:w-auto" loading={loading} onClick={submit}>
+                {submitLabelKey ? t(submitLabelKey) : t("post.postAd")}
+              </Button>
+            )}
+          </footer>
+        )}
       </Overlay>
     </>
   )

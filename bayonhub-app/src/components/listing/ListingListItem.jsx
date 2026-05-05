@@ -2,7 +2,7 @@ import { memo } from "react"
 import { Link } from "react-router-dom"
 import { BadgeCheck, MapPin } from "lucide-react"
 import { useTranslation } from "../../hooks/useTranslation"
-import { formatPrice, getListingImage, getListingSlug, timeAgo } from "../../lib/utils"
+import { formatPrice, getListingImage, listingUrl, timeAgo } from "../../lib/utils"
 import { useListingStore } from "../../store/useListingStore"
 import { useAuthStore } from "../../store/useAuthStore"
 import { useUIStore } from "../../store/useUIStore"
@@ -23,23 +23,22 @@ function Highlight({ text, query }) {
 
 const ListingListItem = memo(function ListingListItem({ listing, highlightQuery = "" }) {
   const { t, language } = useTranslation()
-  const savedIds = useListingStore((state) => state.savedIds)
+  const saved = useListingStore((state) => state.savedIds.includes(listing.id))
   const toggleSaved = useListingStore((state) => state.toggleSaved)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
-  const saved = savedIds.includes(listing.id)
   const image = getListingImage(listing)
 
   return (
     <article className="rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm transition hover:border-primary">
       <div className="flex gap-3">
-        <Link className="shrink-0" to={`/listing/${listing.id}/${getListingSlug(listing)}`}>
+        <Link className="shrink-0" to={listingUrl(listing)}>
           <img alt={listing.title} className="h-[90px] w-[120px] rounded-xl object-cover" loading="lazy" src={image} />
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex gap-3">
-            <Link className="min-w-0 flex-1" to={`/listing/${listing.id}/${getListingSlug(listing)}`}>
+            <Link className="min-w-0 flex-1" to={listingUrl(listing)}>
               <h3 className="line-clamp-2 text-sm font-black leading-5 text-neutral-900 sm:text-base">
                 <Highlight query={highlightQuery} text={listing.title} />
               </h3>
@@ -58,7 +57,7 @@ const ListingListItem = memo(function ListingListItem({ listing, highlightQuery 
               }}
             />
           </div>
-          <p className="mt-1 text-lg font-black text-primary">{formatPrice(listing.price, listing.currency)}</p>
+          <p className="mt-1 text-lg font-black text-primary">{formatPrice(listing.price, listing.currency, language)}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-neutral-500">
             <span className="inline-flex items-center gap-1">
               <MapPin className="h-3.5 w-3.5" aria-hidden="true" />

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { useNavigate, useParams } from "react-router-dom"
 import { Helmet } from "react-helmet-async"
 import { Calendar, MessageCircle, Phone, Search, Send, Shield, Star } from "lucide-react"
 import ListingGrid from "../components/listing/ListingGrid"
@@ -8,23 +9,19 @@ import PriceRangeSlider from "../components/ui/PriceRangeSlider"
 import StarRating from "../components/ui/StarRating"
 import { useTranslation } from "../hooks/useTranslation"
 import { CATEGORIES } from "../lib/categories"
-import { formatPrice, getListingImage, telegramShare } from "../lib/utils"
+import { formatPrice, getListingImage, maskPhone, sellerUrl, telegramShare } from "../lib/utils"
+import { sanitizeText } from "../lib/sanitize"
 import { buildLeadPayload } from "../lib/validation"
 import { useListingStore } from "../store/useListingStore"
 import { useAuthStore } from "../store/useAuthStore"
 import { useUIStore } from "../store/useUIStore"
-import { useParams } from "react-router-dom"
 import PageTransition from "../components/ui/PageTransition"
 import NotFoundPage from "./NotFoundPage"
 
-function maskedPhone(phone) {
-  if (!phone) return null
-  const digits = phone.replace(/\D/g, "")
-  return phone.replace(digits.slice(-4), "xxxx")
-}
-
 export default function SellerPage() {
-  const { id } = useParams()
+  const { id, slug } = useParams()
+  const navigate = useNavigate()
+  const sellerIdentifier = id || slug
   const { t, language } = useTranslation()
   const listings = useListingStore((state) => state.listings)
   const loading = useListingStore((state) => state.loading)
@@ -46,7 +43,13 @@ export default function SellerPage() {
     fetchListings()
   }, [fetchListings])
 
-  const sellerListings = useMemo(() => listings.filter((listing) => listing.sellerId === id), [id, listings])
+  const sellerListings = useMemo(
+    () =>
+      listings.filter(
+        (listing) => listing.sellerId === sellerIdentifier || listing.seller?.slug === sellerIdentifier,
+      ),
+    [sellerIdentifier, listings],
+  )
   const filteredListings = useMemo(() => sellerListings.filter((listing) => {
     const matchesCategory = category === "all" || listing.category === category
     const matchesPrice = Number(listing.price || 0) >= price[0] && Number(listing.price || 0) <= price[1]
@@ -58,6 +61,15 @@ export default function SellerPage() {
     return matchesCategory && matchesPrice && matchesSearch
   }), [category, price, sellerListings, sellerSearch])
   const seller = sellerListings[0]
+
+  useEffect(() => {
+    if (seller && id && !slug && seller.seller?.slug) {
+      const canonical = sellerUrl(seller.seller)
+      if (window.location.pathname !== canonical) {
+        navigate(canonical, { replace: true })
+      }
+    }
+  }, [id, seller, navigate, slug])
   if (!seller && (loading || !listings.length)) return <SellerPageSkeleton />
   if (!seller && !loading) return <NotFoundPage message={t("seller.notFound")} />
 
@@ -71,6 +83,9 @@ export default function SellerPage() {
     aboutLanguage === "km"
       ? store.aboutKm || seller?.descriptionKm || t("ui.empty")
       : store.aboutEn || seller?.description || t("ui.empty")
+  const safeSellerName = sanitizeText(seller?.sellerName || t("listing.seller"))
+  const safeStoreName = sanitizeText(store.name || safeSellerName)
+  const safeAboutText = sanitizeText(aboutText)
   const banner = store.banner || getListingImage(seller)
   const memberYear = new Date(seller?.memberSince || seller?.postedAt || "2026-01-01T00:00:00Z").getFullYear()
 
@@ -95,15 +110,15 @@ export default function SellerPage() {
             <div className="-mt-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex items-end gap-4">
                 <div className="grid h-20 w-20 place-items-center overflow-hidden rounded-full border-4 border-white bg-primary text-2xl font-black text-white shadow">
-                  {store.logo ? <img alt={seller?.sellerName} className="h-full w-full object-cover" src={store.logo} /> : String(seller?.sellerName || t("listing.seller")).slice(0, 2).toUpperCase()}
+                  {store.logo ? <img alt={safeSellerName} className="h-full w-full object-cover" src={store.logo} /> : String(safeSellerName).slice(0, 2).toUpperCase()}
                 </div>
                 <div className="pb-1">
                   <p className="text-xs font-black uppercase tracking-widest text-primary">{t("seller.store")}</p>
-                  <h1 className="text-3xl font-black text-neutral-900">{store.name || seller?.sellerName || t("page.notFound")}</h1>
+                  <h1 className="text-3xl font-black text-neutral-900">{safeStoreName}</h1>
                   {seller?.username ? (
-                    <span className="mt-1 block text-sm text-neutral-400">@{seller.username.replace("@", "")}</span>
+                    <span className="mt-1 block text-sm text-neutral-400">@{sanitizeText(seller.username.replace("@", ""))}</span>
                   ) : null}
-                  <p className="mt-1 text-sm font-bold text-neutral-500">{store.tagline || t("app.tagline")}</p>
+                  <p className="mt-1 text-sm font-bold text-neutral-500">{sanitizeText(store.tagline || t("app.tagline"))}</p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -232,7 +247,7 @@ export default function SellerPage() {
                   </button>
                 ))}
               </div>
-              <p className="whitespace-pre-line leading-8 text-neutral-600">{aboutText}</p>
+              <p className="whitespace-pre-line leading-8 text-neutral-600">{safeAboutText}</p>
               <div className="mt-6">
                 <h2 className="font-black text-neutral-900">{t("dashboard.businessHours")}</h2>
                 <div className="mt-3 grid gap-2">
@@ -266,7 +281,7 @@ export default function SellerPage() {
                         }}
                       >
                         <Phone className="h-4 w-4" aria-hidden="true" />
-                        {maskedPhone(phone)} - {t("listing.showPhone")}
+                        {maskPhone(phone)} · {t("listing.tapToReveal")}
                       </Button>
                     )}
                     <Button onClick={() => window.open(`https://wa.me/${phone.replace(/\D/g, "")}`, "_blank")} variant="secondary">

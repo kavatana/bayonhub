@@ -4,20 +4,27 @@ import jwt from "jsonwebtoken"
 import { Prisma, Role, VerificationTier } from "@prisma/client"
 
 import { generateAndStoreOTP, verifyAndConsumeOTP } from "../../lib/otp"
+import { generateUserSlug } from "../../lib/slug"
 import { sendLocalSms } from "../../lib/sms"
 import { prisma } from "../../lib/prisma"
+import { redis } from "../../config/redis"
+
+const isProduction = process.env.NODE_ENV === "production"
 
 const cookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "strict" as const,
-}
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
+  domain: isProduction ? ".bayonhub.com" : undefined,
+  path: "/",
+} as const
 
 export const SAFE_USER_SELECT = {
   id: true,
   phone: true,
   email: true,
   name: true,
+  slug: true,
   avatarUrl: true,
   bio: true,
   language: true,
@@ -40,16 +47,15 @@ function createHttpError(status: number, message: string): Error & { status: num
 
 export function setAuthCookies(
   res: Response,
-  accessToken: string,
-  refreshToken: string,
+  tokens: { accessToken: string; refreshToken: string },
 ): void {
-  res.cookie("accessToken", accessToken, {
+  res.cookie("accessToken", tokens.accessToken, {
     ...cookieOptions,
-    maxAge: 15 * 60 * 1000,
+    maxAge: 15 * 60 * 1000, // 15 minutes
   })
-  res.cookie("refreshToken", refreshToken, {
+  res.cookie("refreshToken", tokens.refreshToken, {
     ...cookieOptions,
-    maxAge: 30 * 24 * 60 * 60 * 1000,
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   })
 }
 
@@ -86,7 +92,7 @@ export async function registerUser(
   password: string,
   name: string,
   language = "en",
-): Promise<SafeUser> {
+): Promise<{ user: SafeUser; accessToken: string }> {
   const existing = await prisma.user.findUnique({ where: { phone }, select: { id: true } })
   if (existing) throw createHttpError(409, "Phone already in use")
 
@@ -99,9 +105,13 @@ export async function registerUser(
     },
     select: SAFE_USER_SELECT,
   })
+
+  const slug = await generateUserSlug(name, user.id)
+  await prisma.user.update({ where: { id: user.id }, data: { slug } })
+
   const tokens = await generateTokens(user.id, user.role, user.verificationTier)
-  setAuthCookies(res, tokens.accessToken, tokens.refreshToken)
-  return user
+  setAuthCookies(res, tokens)
+  return { user: { ...user, slug }, accessToken: tokens.accessToken }
 }
 
 export async function sendOTP(phone: string): Promise<{ success: true }> {
@@ -131,11 +141,39 @@ export async function verifyOTP(phone: string, code: string): Promise<SafeUser> 
   })
 }
 
+export async function resetPassword(
+  phone: string,
+  code: string,
+  newPassword: string
+): Promise<{ success: true }> {
+  const user = await prisma.user.findUnique({ where: { phone }, select: { id: true } })
+  if (!user) throw createHttpError(404, "User not found")
+
+  const valid = await verifyAndConsumeOTP(phone, code)
+  if (!valid) throw createHttpError(400, "Invalid or expired OTP")
+
+  const hashedPassword = await bcrypt.hash(newPassword, 12)
+
+  await prisma.user.update({
+    where: { phone },
+    data: {
+      passwordHash: hashedPassword,
+      phoneVerifiedAt: new Date(),
+      verificationTier: VerificationTier.PHONE,
+    },
+  })
+
+  // Clear existing sessions to force re-login on other devices
+  await redis.del(`refresh_token:${user.id}`)
+
+  return { success: true }
+}
+
 export async function loginUser(
   res: Response,
   phone: string,
   password: string,
-): Promise<SafeUser> {
+): Promise<{ user: SafeUser; accessToken: string }> {
   const user = await prisma.user.findUnique({ where: { phone } })
   if (!user) throw createHttpError(401, "Invalid credentials")
 
@@ -143,10 +181,9 @@ export async function loginUser(
   if (!match) throw createHttpError(401, "Invalid credentials")
 
   const tokens = await generateTokens(user.id, user.role, user.verificationTier)
-  setAuthCookies(res, tokens.accessToken, tokens.refreshToken)
-
+  setAuthCookies(res, tokens)
   const { passwordHash: _passwordHash, ...safeUser } = user
-  return safeUser
+  return { user: safeUser, accessToken: tokens.accessToken }
 }
 
 async function findStoredRefreshToken(
@@ -168,7 +205,7 @@ async function findStoredRefreshToken(
 export async function refreshAuthTokens(
   res: Response,
   refreshTokenFromCookie?: string,
-): Promise<SafeUser> {
+): Promise<{ user: SafeUser; accessToken: string }> {
   if (!refreshTokenFromCookie) throw createHttpError(401, "Unauthorized")
 
   const payload = jwt.verify(refreshTokenFromCookie, process.env.JWT_REFRESH_SECRET!) as {
@@ -187,8 +224,8 @@ export async function refreshAuthTokens(
 
   await prisma.refreshToken.delete({ where: { id: stored.id } })
   const tokens = await generateTokens(user.id, user.role, user.verificationTier)
-  setAuthCookies(res, tokens.accessToken, tokens.refreshToken)
-  return user
+  setAuthCookies(res, tokens)
+  return { user, accessToken: tokens.accessToken }
 }
 
 export async function logoutUser(refreshTokenFromCookie?: string): Promise<{ success: true }> {

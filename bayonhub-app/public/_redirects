@@ -1,2 +1,3 @@
 https://www.bayonhub.com/* https://bayonhub.com/:splat 301
+/sitemap.xml https://api.bayonhub.com/api/sitemap 200
 /* /index.html 200

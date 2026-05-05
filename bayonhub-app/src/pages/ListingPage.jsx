@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Helmet } from "react-helmet-async"
 import { Link, useNavigate, useParams } from "react-router-dom"
-import { MessageCircle, Phone } from "lucide-react"
+import { MessageCircle, SearchX } from "lucide-react"
 import ListingCard from "../components/listing/ListingCard"
 import ListingDetail from "../components/listing/ListingDetail"
-import Spinner from "../components/ui/Spinner"
 import PageTransition from "../components/ui/PageTransition"
 import Button from "../components/ui/Button"
+import PhoneReveal from "../components/ui/PhoneReveal"
+import ListingPageSkeleton from "../components/listing/ListingPageSkeleton"
 import { useTranslation } from "../hooks/useTranslation"
 import { CATEGORIES } from "../lib/categories"
 import { buildProductSchema, canonicalUrl } from "../lib/seo"
-import { formatPrice, getListingImage, getListingSlug } from "../lib/utils"
+import { formatPrice, getListingImage, listingUrl as getListingUrl } from "../lib/utils"
 import { buildLeadPayload } from "../lib/validation"
 import { useListingStore } from "../store/useListingStore"
 import { useAuthStore } from "../store/useAuthStore"
@@ -25,7 +26,8 @@ function categoryForListing(listing) {
 }
 
 export default function ListingPage() {
-  const { id } = useParams()
+  const { id, titleSlug } = useParams()
+  const listingId = id || titleSlug?.split("-").pop()
   const { t, language } = useTranslation()
   const navigate = useNavigate()
   const listing = useListingStore((state) => state.currentListing)
@@ -39,23 +41,33 @@ export default function ListingPage() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
+  const setHideBottomNav = useUIStore((state) => state.setHideBottomNav)
+  const hideBottomNav = useUIStore((state) => state.hideBottomNav)
   const stickyVisible = useRef(false)
   const [showSticky, setShowSticky] = useState(false)
-  const [stickyPhoneVisible, setStickyPhoneVisible] = useState(false)
   const trackedListingRef = useRef(null)
 
   useEffect(() => {
-    fetchListingById(id)
+    fetchListingById(listingId)
     fetchListings()
-  }, [fetchListingById, fetchListings, id])
+  }, [fetchListingById, fetchListings, listingId])
 
   useEffect(() => {
-    if (!id) return
-    if (trackedListingRef.current === id) return
-    trackedListingRef.current = id
-    incrementView(id)
-    addRecentlyViewed(id)
-  }, [addRecentlyViewed, id, incrementView])
+    if (!listingId) return
+    if (trackedListingRef.current === listingId) return
+    trackedListingRef.current = listingId
+    incrementView(listingId)
+    addRecentlyViewed(listingId)
+  }, [addRecentlyViewed, listingId, incrementView])
+
+  useEffect(() => {
+    if (listing && id && !titleSlug) {
+      const canonical = getListingUrl(listing)
+      if (window.location.pathname !== canonical) {
+        navigate(canonical, { replace: true })
+      }
+    }
+  }, [id, listing, navigate, titleSlug])
 
   const related = useMemo(
     () =>
@@ -65,7 +77,7 @@ export default function ListingPage() {
     [listing, listings],
   )
   const category = categoryForListing(listing)
-  const listingPath = listing ? `/listing/${listing.id}/${getListingSlug(listing)}` : ""
+  const listingPath = listing ? getListingUrl(listing) : ""
   const listingUrl = listing ? canonicalUrl(listingPath) : ""
   const description = listing?.description || listing?.title || ""
   const productJson = listing
@@ -99,6 +111,11 @@ export default function ListingPage() {
     return () => observer.disconnect()
   }, [listing])
 
+  useEffect(() => {
+    setHideBottomNav(true)
+    return () => setHideBottomNav(false)
+  }, [setHideBottomNav])
+
   function chatFromSticky() {
     if (!isAuthenticated) {
       setPendingAction({ type: "message", listingId: listing.id })
@@ -110,15 +127,25 @@ export default function ListingPage() {
   }
 
   if (loading && !listing) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <Spinner className="h-8 w-8 text-primary" />
-      </div>
-    )
+    return <ListingPageSkeleton />
   }
 
   if (!listing) {
-    return <div className="mx-auto max-w-7xl px-4 py-12 text-center">{t("listing.empty")}</div>
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-12 text-center">
+        <div className="mx-auto inline-flex flex-col items-center gap-4 rounded-3xl border border-dashed border-neutral-300 bg-white p-10 text-neutral-600 shadow-sm sm:px-16">
+          <div className="grid h-16 w-16 place-items-center rounded-2xl bg-neutral-100 text-primary">
+            <SearchX className="h-8 w-8" aria-hidden="true" />
+          </div>
+          <h2 className="text-2xl font-black text-neutral-900">{t("listing.unavailableTitle")}</h2>
+          <p className="max-w-xl text-sm font-bold text-neutral-500">{t("listing.unavailableSubtitle")}</p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <Button onClick={() => navigate("/")}>{t("listing.browseAll")}</Button>
+            <Button variant="secondary" onClick={() => navigate("/search")}>{t("listing.searchAgain")}</Button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -154,30 +181,30 @@ export default function ListingPage() {
             ))}
           </div>
         ) : (
-          <div className="mt-5 rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center font-bold text-neutral-500">
-            {t("listing.noRelated")}
+          <div className="mt-5 rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center text-neutral-700">
+            <p className="text-lg font-black text-neutral-900">{t("listing.noSimilarTitle")}</p>
+            <p className="mt-2 text-sm font-bold text-neutral-500">{t("listing.noSimilarSubtitle")}</p>
+            <div className="mt-6 flex justify-center">
+              <Button variant="secondary" onClick={() => navigate(`/search?category=${category?.slug || ""}`)}>
+                {t("listing.searchCategory", { category: category ? t(`category.${category.id}`) : t("listing.allCategories") })}
+              </Button>
+            </div>
           </div>
         )}
       </section>
       <div
-        className={`fixed inset-x-0 bottom-20 z-40 border-t border-neutral-200 bg-white p-3 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] transition-transform lg:hidden ${
+        className={`fixed inset-x-0 ${hideBottomNav ? "bottom-0" : "bottom-20"} z-40 border-t border-neutral-200 bg-white p-3 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(0,0,0,0.08)] transition-transform lg:hidden ${
           showSticky ? "translate-y-0" : "translate-y-full"
         }`}
       >
         <div className="mx-auto grid max-w-md grid-cols-3 gap-2">
-          <Button
-            disabled={!listing.phone}
-            onClick={() => {
-              if (!listing.phone) return
+          <PhoneReveal
+            phone={listing.phone}
+            onReveal={() => {
               createLead(listing.id, buildLeadPayload("CALL", { phone: listing.phone }))
-              setStickyPhoneVisible(true)
             }}
-            size="sm"
-            title={listing.phone ? undefined : t("auth.noPhone")}
-          >
-            <Phone className="h-4 w-4" aria-hidden="true" />
-            {stickyPhoneVisible && listing.phone ? listing.phone : t("listing.showPhone")}
-          </Button>
+            className="!h-10 !text-xs"
+          />
           <Button
             disabled={!listing.phone}
             onClick={() => {

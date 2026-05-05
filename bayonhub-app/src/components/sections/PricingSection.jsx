@@ -42,12 +42,8 @@ export default function PricingSection() {
 
   function handleCta(plan) {
     if (plan.action === "post") {
-      if (!isAuthenticated) {
-        setPendingAction({ type: "post" })
-        toggleAuthModal(true)
-      } else {
-        togglePostModal(true)
-      }
+      setPendingAction({ type: "post" })
+      togglePostModal(true)
       return
     }
     if (plan.action === "boost") {

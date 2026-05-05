@@ -15,9 +15,9 @@ import {
   Hash,
   MapPin,
   MessageCircle,
-  Phone,
   Send,
   Share2,
+  ShieldCheck,
   Star,
   Store,
   Tag,
@@ -27,7 +27,8 @@ import toast from "react-hot-toast"
 import { useTranslation } from "../../hooks/useTranslation"
 import { CATEGORIES } from "../../lib/categories"
 import { rateLimiter } from "../../lib/rateLimiter"
-import { cn, formatPrice, getListingImage, telegramShare, timeAgo } from "../../lib/utils"
+import { cn, formatPrice, getListingImage, telegramShare, sellerUrl, timeAgo } from "../../lib/utils"
+import { sanitizeText } from "../../lib/sanitize"
 import { buildLeadPayload } from "../../lib/validation"
 import { useAuthStore } from "../../store/useAuthStore"
 import { useListingStore } from "../../store/useListingStore"
@@ -39,6 +40,7 @@ import LoanCalculator from "../ui/LoanCalculator"
 import Modal from "../ui/Modal"
 import SafetyWarning from "../ui/SafetyWarning"
 import StarRating from "../ui/StarRating"
+import PhoneReveal from "../ui/PhoneReveal"
 
 const MapView = lazy(() => import("../ui/MapView"))
 
@@ -71,19 +73,12 @@ function findCategoryForListing(listing) {
   )
 }
 
-function maskedPhone(phone) {
-  if (!phone) return null
-  const digits = phone.replace(/\D/g, "")
-  return phone.replace(digits.slice(-4), "xxxx")
-}
-
 export default function ListingDetail({ listing }) {
   const { t, language } = useTranslation()
   const navigate = useNavigate()
   const images = useMemo(() => normalizeImages(listing), [listing])
   const [activeImage, setActiveImage] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
-  const [phoneRevealed, setPhoneRevealed] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
   const [selectedReason, setSelectedReason] = useState("SCAM")
   const [reportDetail, setReportDetail] = useState("")
@@ -109,10 +104,20 @@ export default function ListingDetail({ listing }) {
     category?.slug === "vehicles" ||
     subcategory?.slug === "cars"
   const description = descriptionLanguage === "km" && listing.descriptionKm ? listing.descriptionKm : listing.description
+  const safeDescription = sanitizeText(description)
+  const TRUNCATION_BY_CATEGORY = {
+    vehicles: 600,
+    "real-estate": 700,
+    electronics: 350,
+    default: 400,
+  }
+
+  const truncationLimit = TRUNCATION_BY_CATEGORY[listing.categorySlug?.toLowerCase()] ?? TRUNCATION_BY_CATEGORY.default
+
   const shortDescription =
-    !descriptionExpanded && description?.length > 300
-      ? `${description.slice(0, 300)}${t("ui.ellipsis")}`
-      : description
+    !descriptionExpanded && safeDescription.length > truncationLimit
+      ? `${safeDescription.slice(0, truncationLimit)}${t("ui.ellipsis")}`
+      : safeDescription
   const postedText =
     language === "en"
       ? formatDistanceToNow(new Date(listing.postedAt || "2026-01-01T00:00:00Z"), { addSuffix: true })
@@ -179,6 +184,7 @@ export default function ListingDetail({ listing }) {
   function sendMessage() {
     if (!canPerformContact("CHAT")) return
     if (!isAuthenticated) {
+      toast.info(t("auth.signInToMessage"), { duration: 3000 })
       setPendingAction({ type: "message", listingId: listing.id })
       toggleAuthModal(true)
       return
@@ -188,22 +194,21 @@ export default function ListingDetail({ listing }) {
     navigate("/dashboard")
   }
 
-  function handleRevealPhone() {
-    if (!hasPhone) return
-    if (!canPerformContact("CALL")) return
-    setPhoneRevealed(true)
-    createLead(listing.id, buildLeadPayload("CALL", { phone }))
-    recordContact("CALL")
-    toast.success(t("listing.phoneRevealed"))
-  }
-
   function handleOpenReport() {
     if (!isAuthenticated) {
+      toast.info(t("auth.signInToReport"), { duration: 3000 })
       setPendingAction({ type: "report", listingId: listing.id })
       toggleAuthModal(true)
       return
     }
     setReportOpen(true)
+  }
+
+  function handleRevealPhone() {
+    if (!hasPhone) return
+    if (!canPerformContact("CALL")) return
+    createLead(listing.id, buildLeadPayload("CALL", { phone }))
+    recordContact("CALL")
   }
 
   async function submitReport(event) {
@@ -222,9 +227,9 @@ export default function ListingDetail({ listing }) {
     }
     const reportPayload = {
       reason: selectedReason,
-      detail: reportDetail,
-      evidenceUrl: evidenceUrl || null,
-      contactEmail: contactEmail || null,
+      detail: reportDetail.trim() || null,
+      evidenceUrl: evidenceUrl.trim() || null,
+      contactEmail: contactEmail.trim() || null,
       userAgent: navigator.userAgent,
       reportedAt: new Date().toISOString(),
       listingId: listing.id,
@@ -297,7 +302,7 @@ export default function ListingDetail({ listing }) {
             {listing.negotiable ? <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-black text-primary">{t("listing.negotiable")}</span> : null}
             {listing.condition ? <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-black text-neutral-700">{listing.condition}</span> : null}
           </div>
-          <h1 className="font-sans text-2xl font-semibold leading-tight text-neutral-950">{listing.title}</h1>
+          <h1 className="font-sans text-2xl font-semibold leading-tight text-neutral-950">{sanitizeText(listing.title)}</h1>
           {listing.previousPrice && Number(listing.previousPrice) > Number(listing.price) ? (
             <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1 text-sm font-bold text-green-600">
               <TrendingDown className="h-3.5 w-3.5" aria-hidden="true" />
@@ -351,16 +356,13 @@ export default function ListingDetail({ listing }) {
             ) : null}
           </div>
           <p className="whitespace-pre-line leading-8 text-neutral-600">{shortDescription}</p>
-          {description?.length > 300 ? (
+          {description?.length > truncationLimit ? (
             <button className="mt-3 text-sm font-black text-primary" onClick={() => setDescriptionExpanded((value) => !value)} type="button">
               {descriptionExpanded ? t("listing.showLess") : t("listing.showMore")}
             </button>
           ) : null}
           <div className="mt-5 border-t border-neutral-100 pt-4">
-            <Button onClick={handleOpenReport} size="sm" variant="ghost">
-              <Flag className="h-4 w-4" aria-hidden="true" />
-              {t("listing.reportListing")}
-            </Button>
+            {/* Report button moved to contact section above */}
           </div>
         </section>
 
@@ -417,7 +419,7 @@ export default function ListingDetail({ listing }) {
             </div>
             <div className="min-w-0">
               <p className="text-xs font-black uppercase tracking-widest text-primary">{t("listing.seller")}</p>
-              <h2 className="truncate text-xl font-black text-neutral-900">{listing.sellerName}</h2>
+              <h2 className="truncate text-xl font-black text-neutral-900">{sanitizeText(listing.sellerName || t("listing.seller"))}</h2>
               {(listing.seller?.createdAt || listing.memberSince || listing.postedAt) ? (
                 <p className="mt-1 flex items-center gap-1 text-xs text-neutral-400">
                   <Calendar className="h-2.5 w-2.5" aria-hidden="true" />
@@ -432,7 +434,7 @@ export default function ListingDetail({ listing }) {
             {listing.premium ? <Badge type="promoted" /> : null}
           </div>
           <div className="mt-4 grid gap-3 rounded-xl bg-neutral-50 p-3 text-sm font-semibold text-neutral-600">
-            <Link className="inline-flex items-center gap-2 text-primary" to={`/seller/${listing.sellerId}`}>
+            <Link className="inline-flex items-center gap-2 text-primary" to={sellerUrl(listing.seller || { id: listing.sellerId })}>
               <Store className="h-4 w-4" aria-hidden="true" />
               {listing.totalListings || 1} {t("listing.activeListings")}
             </Link>
@@ -448,16 +450,10 @@ export default function ListingDetail({ listing }) {
           <SafetyWarning className="mt-4" />
           <div id="listing-actions" className="mt-4 grid gap-2">
             {hasPhone ? (
-              phoneRevealed ? (
-                <a className="font-mono font-bold text-primary" href={`tel:${phone}`}>
-                  {phone}
-                </a>
-              ) : (
-                <Button onClick={handleRevealPhone}>
-                  <Phone className="h-4 w-4" aria-hidden="true" />
-                  {maskedPhone(phone)} - {t("listing.showPhone")}
-                </Button>
-              )
+                <PhoneReveal 
+                  phone={phone} 
+                  onReveal={handleRevealPhone} 
+                />
             ) : (
               <span className="text-sm text-neutral-400">{t("listing.phoneNotProvided")}</span>
             )}
@@ -498,6 +494,22 @@ export default function ListingDetail({ listing }) {
               <MessageCircle className="h-4 w-4" aria-hidden="true" />
               {t("listing.sendMessage")}
             </Button>
+
+            {/* Safety Messaging */}
+            <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50/50 p-4">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="mt-0.5 h-5 w-5 text-amber-600" />
+                <div>
+                  <h4 className="text-sm font-black text-amber-900">{t("listing.safetyTitle")}</h4>
+                  <ul className="mt-2 space-y-1.5 text-xs font-bold text-amber-800">
+                    <li>• {t("listing.safetyTip1")}</li>
+                    <li>• {t("listing.safetyTip2")}</li>
+                    <li>• {t("listing.safetyTip3")}</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
             <Button onClick={sendQuickAsk} variant="ghost">
               <MessageCircle className="h-4 w-4" aria-hidden="true" />
               {t("listing.quickAsk")}
@@ -505,10 +517,17 @@ export default function ListingDetail({ listing }) {
             <Button onClick={() => setOfferOpen(true)} variant="secondary">
               {t("listing.makeOffer")}
             </Button>
-            <Button onClick={handleOpenReport} variant="ghost">
-              <Flag className="h-4 w-4" aria-hidden="true" />
-              {t("listing.reportListing")}
-            </Button>
+            <div className="mt-2 border-t border-neutral-100 pt-3">
+              <Button
+                onClick={handleOpenReport}
+                size="sm"
+                variant="ghost"
+                className="w-full justify-start text-neutral-500 hover:text-neutral-700"
+              >
+                <Flag className="h-4 w-4" aria-hidden="true" />
+                {t("listing.reportListing")}
+              </Button>
+            </div>
           </div>
         </section>
       </aside>

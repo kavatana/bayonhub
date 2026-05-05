@@ -5,6 +5,7 @@ import { API_BASE_URL, readStorage, STORAGE_KEYS, writeStorage } from "../../api
 import { useTranslation } from "../../hooks/useTranslation"
 import { connectSocket, disconnectSocket, sendMessage as sendSocketMessage } from "../../lib/socket"
 import { cn } from "../../lib/utils"
+import { sanitizeText } from "../../lib/sanitize"
 import { useAuthStore } from "../../store/useAuthStore"
 import { useUIStore } from "../../store/useUIStore"
 import Button from "../ui/Button"
@@ -35,7 +36,7 @@ function normalizeMessage(message, userId) {
   return {
     id: message.id,
     sender: message.senderId === userId ? "me" : "them",
-    text: message.body || message.text,
+    text: sanitizeText(message.body || message.text),
     createdAt: message.createdAt,
     read: Boolean(message.readAt),
     raw: message,

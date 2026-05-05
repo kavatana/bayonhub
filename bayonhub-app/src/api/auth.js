@@ -110,18 +110,16 @@ export async function verifyOTP(phone, code) {
   }
 }
 
-export async function checkOtpStatus(phone) {
+export async function resetPassword(phone, code, newPassword) {
   if (!hasApiBackend()) {
-    return { verified: false }
+    return mockVerifyOTP(phone, code) // Mocking the same response as verifyOTP
   }
   try {
-    const response = await client.get("/api/auth/otp-status", { params: { phone }, skipAuthRefresh: true, skipAuthExpired: true })
-    if (response.data.verified && response.data.user) {
-      writeStorage(STORAGE_KEYS.authUser, response.data.user)
-    }
+    const response = await client.put("/api/auth/reset-password", { phone, code, newPassword })
     return response.data
-  } catch {
-    return { verified: false }
+  } catch (error) {
+    if (error.response?.status === 400) throw new Error("auth.invalidOtp", { cause: error })
+    throw new Error(error.response?.data?.error || "ui.error", { cause: error })
   }
 }
 

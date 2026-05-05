@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Navigate } from "react-router-dom"
+import { Link, Navigate } from "react-router-dom"
 import { Helmet } from "react-helmet-async"
 import { Check, ShieldCheck, UploadCloud, X } from "lucide-react"
 import toast from "react-hot-toast"
@@ -112,8 +112,8 @@ export default function AdminPage() {
     setListings((current) => current.map((listing) => (listing.id === id ? { ...listing, status } : listing)))
   }
 
-  async function updateReport(id, status) {
-    await client.put(`/api/admin/reports/${id}`, { status })
+  async function updateReport(id, status, listingStatus) {
+    await client.put(`/api/admin/reports/${id}`, { status, listingStatus })
     setReports((current) => current.filter((report) => report.id !== id))
   }
 
@@ -202,12 +202,102 @@ export default function AdminPage() {
         <div className="grid gap-3">
           {reports.map((report) => (
             <article className="rounded-xl border border-neutral-200 bg-white p-4" key={report.id}>
-              <h2 className="font-black text-neutral-900">{report.listing?.title}</h2>
-              <p className="text-sm font-semibold text-neutral-500">{report.reason}</p>
-              <div className="mt-3 flex gap-2">
-                <Button onClick={() => updateReport(report.id, "RESOLVED")} size="sm">{t("admin.resolve")}</Button>
-                <Button onClick={() => updateReport(report.id, "DISMISSED")} size="sm" variant="secondary">{t("admin.dismiss")}</Button>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  {report.reporter?.avatarUrl ? (
+                    <img alt="" className="h-10 w-10 rounded-full object-cover" src={report.reporter.avatarUrl} />
+                  ) : (
+                    <div className="grid h-10 w-10 place-items-center rounded-full bg-neutral-100 font-bold text-neutral-500">
+                      {report.reporter?.name?.charAt(0) || "U"}
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm font-black text-neutral-900">{report.reporter?.name || "Anonymous"}</p>
+                    <p className="text-xs font-bold text-neutral-500">{report.reporter?.phone}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => updateReport(report.id, "DISMISSED")}
+                    size="sm"
+                    variant="outline"
+                  >
+                    {t("admin.dismiss")}
+                  </Button>
+                  <Button
+                    onClick={() => updateReport(report.id, "RESOLVED", "REMOVED")}
+                    size="sm"
+                    variant="danger"
+                  >
+                    {t("admin.resolve")} & {t("admin.remove")}
+                  </Button>
+                </div>
               </div>
+
+              <div className="mt-4 grid gap-4 rounded-xl bg-neutral-50 p-4 lg:grid-cols-2">
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-neutral-400">{t("admin.reportReason")}</label>
+                    <p className="text-sm font-bold text-red-600">{t(`report.reason.${report.reason}`)}</p>
+                  </div>
+                  {report.detail && (
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-neutral-400">{t("admin.reportDetail")}</label>
+                      <p className="text-sm font-medium text-neutral-700">{report.detail}</p>
+                    </div>
+                  )}
+                  {report.contactEmail && (
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-neutral-400">{t("admin.reporterEmail")}</label>
+                      <p className="text-sm font-medium text-neutral-700">{report.contactEmail}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-neutral-400">{t("admin.listings")}</label>
+                    <Link
+                      className="group flex items-center gap-2 text-sm font-bold text-primary hover:underline"
+                      to={`/listing/${report.listing?.id}`}
+                    >
+                      {report.listing?.title || report.listingTitle || "Untitled"}
+                      <span className="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] font-black text-neutral-600">
+                        {report.listing?.status}
+                      </span>
+                    </Link>
+                  </div>
+                  {report.evidenceUrl && (
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-neutral-400">{t("admin.reportEvidence")}</label>
+                      <div className="mt-1 flex gap-2">
+                        <a href={report.evidenceUrl} target="_blank" rel="noopener noreferrer">
+                          <img
+                            alt="Evidence"
+                            className="h-16 w-16 rounded-lg border border-neutral-200 object-cover hover:opacity-80 transition-opacity"
+                            src={report.evidenceUrl}
+                          />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {(report.userAgent || report.reporterSessionId) && (
+                <div className="mt-3 border-t border-neutral-100 pt-3">
+                  <details className="cursor-pointer group">
+                    <summary className="text-[10px] font-black uppercase tracking-wider text-neutral-400 hover:text-neutral-600 transition-colors list-none flex items-center gap-1">
+                      {t("admin.systemMetadata")}
+                      <span className="inline-block transition-transform group-open:rotate-90">›</span>
+                    </summary>
+                    <div className="mt-2 space-y-1 rounded-lg bg-neutral-50/50 p-2 text-[10px] font-mono text-neutral-500">
+                      {report.userAgent && <p className="break-all"><span className="font-bold">UA:</span> {report.userAgent}</p>}
+                      {report.reporterSessionId && <p><span className="font-bold">Session:</span> {report.reporterSessionId}</p>}
+                    </div>
+                  </details>
+                </div>
+              )}
             </article>
           ))}
         </div>

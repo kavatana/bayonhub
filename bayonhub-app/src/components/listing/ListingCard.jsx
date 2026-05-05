@@ -5,7 +5,8 @@ import { Camera, Heart, MapPin, Share2, TrendingDown } from "lucide-react"
 import { useTranslation } from "../../hooks/useTranslation"
 import { cardHover } from "../../lib/animations"
 import { getPromotionState, isPromotedListing, PROMOTION_LABELS } from "../../lib/promotionStates"
-import { cn, formatPrice, getListingImage, getListingSlug, getSrcSet, timeAgo } from "../../lib/utils"
+import { cn, formatPrice, getListingImage, getSrcSet, listingUrl, timeAgo } from "../../lib/utils"
+import { sanitizeText } from "../../lib/sanitize"
 import { useListingStore } from "../../store/useListingStore"
 import { useAuthStore } from "../../store/useAuthStore"
 import { useUIStore } from "../../store/useUIStore"
@@ -15,12 +16,15 @@ import StarRating from "../ui/StarRating"
 function ListingCard({ listing }) {
   const cardRef = useRef(null)
   const { t, language } = useTranslation()
-  const savedIds = useListingStore((state) => state.savedIds)
+  const saved = useListingStore((state) => state.savedIds.includes(listing?.id || ""))
   const toggleSaved = useListingStore((state) => state.toggleSaved)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
-  const saved = savedIds.includes(listing.id)
+  
+  useGSAP(() => cardHover(cardRef), { scope: cardRef })
+
+  if (!listing) return null
   const image = getListingImage(listing)
   const imageCount = Array.isArray(listing.images) ? listing.images.length : 0
   const hasPriceDrop = Number(listing.previousPrice || 0) > Number(listing.price || 0)
@@ -31,13 +35,11 @@ function ListingCard({ listing }) {
   const promotionLabel = PROMOTION_LABELS[promotionState]?.[language]
   const promoted = isPromotedListing(listing)
 
-  useGSAP(() => cardHover(cardRef), { scope: cardRef })
-
   async function shareListing(event) {
     event.preventDefault()
-    const url = `${window.location.origin}/listing/${listing.id}/${getListingSlug(listing)}`
+    const url = `${window.location.origin}${listingUrl(listing)}`
     if (navigator.share) {
-      await navigator.share({ title: listing.title, text: listing.description, url })
+      await navigator.share({ title: sanitizeText(listing.title), text: sanitizeText(listing.description), url })
     } else {
       await navigator.clipboard?.writeText(url)
     }
@@ -61,11 +63,11 @@ function ListingCard({ listing }) {
         <span className="pointer-events-none absolute left-0 top-0 h-full w-[3px] bg-gradient-to-b from-amber-400 to-amber-300/30 z-10" />
       )}
 
-      <Link to={`/listing/${listing.id}/${getListingSlug(listing)}`} className="block">
+      <Link to={listingUrl(listing)} className="block">
         {/* Image */}
         <div className="relative aspect-[4/3] overflow-hidden bg-neutral-100 dark:bg-neutral-700">
           <img
-            alt={listing.title}
+            alt={sanitizeText(listing.title)}
             className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
             loading="lazy"
             src={image}
@@ -73,7 +75,7 @@ function ListingCard({ listing }) {
           />
           {/* Price pill — top right */}
           <span className="absolute right-3 top-3 rounded-full bg-white/95 px-3 py-1 text-sm font-black text-primary shadow-md backdrop-blur-sm dark:bg-neutral-900/90 dark:text-primary">
-            {formatPrice(listing.price, listing.currency)}
+            {formatPrice(listing.price, listing.currency, language)}
           </span>
           {/* Badges — top left */}
           <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5">
@@ -105,7 +107,7 @@ function ListingCard({ listing }) {
         <div className="space-y-2.5 p-4">
           <div className="flex items-start justify-between gap-3">
             <h3 className="line-clamp-2 min-h-12 text-base font-bold leading-6 text-neutral-900 dark:text-neutral-100">
-              {listing.title}
+              {sanitizeText(listing.title)}
             </h3>
             {/* Save / heart button */}
             <button
@@ -140,7 +142,7 @@ function ListingCard({ listing }) {
           {hasPriceDrop ? (
             <div className="flex items-center gap-1.5 text-xs">
               <span className="text-neutral-400 line-through">
-                {formatPrice(listing.previousPrice, listing.currency)}
+                {formatPrice(listing.previousPrice, listing.currency, language)}
               </span>
               <span className="flex items-center gap-0.5 font-semibold text-emerald-600">
                 <TrendingDown className="h-3 w-3" aria-hidden="true" />
@@ -152,7 +154,7 @@ function ListingCard({ listing }) {
           {/* Seller row */}
           <div className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-300">
             <span className="truncate font-semibold text-neutral-700 dark:text-neutral-300">
-              {listing.sellerName || t("listing.seller")}
+              {sanitizeText(listing.sellerName || t("listing.seller"))}
             </span>
             {(listing.seller?.verificationTier === "PHONE" ||
               listing.seller?.verificationTier === "IDENTITY" ||

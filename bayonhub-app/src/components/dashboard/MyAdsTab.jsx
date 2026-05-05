@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom"
 import { BarChart2, Check, Pencil, PlusCircle, Rocket, Trash2, TrendingUp } from "lucide-react"
 import { useTranslation } from "../../hooks/useTranslation"
 import { getPromotionState, isPromotedListing, PROMOTION_LABELS } from "../../lib/promotionStates"
-import { formatPrice, getListingImage, getListingSlug, timeAgo } from "../../lib/utils"
+import { formatPrice, getListingImage, listingUrl, timeAgo } from "../../lib/utils"
 import { useAuthStore } from "../../store/useAuthStore"
 import { useListingStore } from "../../store/useListingStore"
 import { useUIStore } from "../../store/useUIStore"
@@ -98,7 +98,7 @@ export default function MyAdsTab() {
                 <span className="text-xs font-bold text-neutral-500">{t("dashboard.topListing")}:</span>
                 <Link
                   className="truncate text-xs font-black text-neutral-900 hover:text-primary hover:underline"
-                  to={`/listing/${analytics.topListing.id}/${getListingSlug(analytics.topListing)}`}
+                  to={listingUrl(analytics.topListing)}
                 >
                   {analytics.topListing.title}
                 </Link>
@@ -168,7 +168,7 @@ export default function MyAdsTab() {
                         <img alt={listing.title} className="h-14 w-16 rounded-lg object-cover" src={getListingImage(listing)} />
                       </td>
                       <td className="max-w-56 p-3 font-bold text-neutral-900">
-                        <Link className="hover:text-primary hover:underline" to={`/listing/${listing.id}/${getListingSlug(listing)}`}>
+                        <Link className="hover:text-primary hover:underline" to={listingUrl(listing)}>
                           {listing.title}
                         </Link>
                       </td>

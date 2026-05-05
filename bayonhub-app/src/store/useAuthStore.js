@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import toast from "react-hot-toast"
-import { getProfile, login as loginApi, logout as logoutApi, register as registerApi, sendOtp as sendOtpApi, verifyOTP as verifyOTPApi } from "../api/auth"
+import { getProfile, login as loginApi, logout as logoutApi, register as registerApi, sendOtp as sendOtpApi, verifyOTP as verifyOTPApi, resetPassword as resetPasswordApi } from "../api/auth"
 import { API_BASE_URL, IS_PRODUCTION, STORAGE_KEYS } from "../api/client"
 import { storage } from "../lib/storage"
 import { translate } from "../lib/translations"
@@ -33,66 +33,41 @@ export const useAuthStore = create((set, get) => ({
   login: async (phone, password) => {
     set({ loading: true, error: null })
     try {
-      const result = await loginApi(phone, password)
-      const user = result.user || result
-      const token = canUseLocalAuthToken ? result.token || null : null
-      if (canUseLocalAuthToken && token) {
-        storage.set(STORAGE_KEYS.authToken, token)
-      }
+      const { user, accessToken } = await loginApi(phone, password)
       get().setUser(user)
       set({
-        token,
-        isAuthenticated: Boolean(user),
+        token: accessToken,
+        isAuthenticated: true,
+        loading: false,
+        error: null,
       })
       return user
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "auth.loginError"
-      set({ error: message })
-      toast.error(authErrorMessage(message))
-      throw error
-    } finally {
-      set({ loading: false })
+    } catch (err) {
+      set({ loading: false, error: err.message })
+      throw err // MUST re-throw so AuthModal can handle it
     }
   },
 
   register: async (data) => {
     set({ loading: true, error: null })
     try {
-      const result = await registerApi(data)
-      const user = result.user || result
-      const token = canUseLocalAuthToken ? result.token || null : null
-      if (canUseLocalAuthToken && token) {
-        storage.set(STORAGE_KEYS.authToken, token)
-      }
+      const { user, accessToken } = await registerApi(data)
       get().setUser(user)
       set({
-        token,
-        isAuthenticated: Boolean(user),
+        token: accessToken,
+        isAuthenticated: true,
+        loading: false,
       })
       return user
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "auth.registrationFailed"
-      set({ error: message })
-      toast.error(authErrorMessage(message))
-      throw error
-    } finally {
-      set({ loading: false })
+    } catch (err) {
+      set({ loading: false, error: err.message })
+      throw err // MUST re-throw
     }
   },
 
   sendOtp: async (phone) => {
-    set({ loading: true, error: null })
-    try {
-      const result = await sendOtpApi(phone)
-      return result
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "ui.error"
-      set({ error: message })
-      toast.error(authErrorMessage(message))
-      throw error
-    } finally {
-      set({ loading: false })
-    }
+    await sendOtpApi(phone)
+    return { success: true }
   },
 
   verifyOTP: async (phone, code) => {
@@ -105,16 +80,9 @@ export const useAuthStore = create((set, get) => ({
         verificationTier: user.verificationTier || "PHONE",
         verified: true,
       }
-      const token = canUseLocalAuthToken
-        ? storage.get(STORAGE_KEYS.authToken, null) || `local-${btoa(`${phone}:${Date.now()}`)}`
-        : null
-      if (canUseLocalAuthToken && token) {
-        storage.set(STORAGE_KEYS.authToken, token)
-      }
       persistUser(verifiedUser)
       set({
         user: verifiedUser,
-        token,
         isAuthenticated: true,
       })
       return verifiedUser
@@ -128,15 +96,40 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
+  resetPassword: async (phone, code, newPassword) => {
+    set({ loading: true, error: null })
+    try {
+      await resetPasswordApi(phone, code, newPassword)
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "ui.error"
+      set({ error: message })
+      toast.error(authErrorMessage(message))
+      throw error
+    } finally {
+      set({ loading: false })
+    }
+  },
+
   loadProfile: async () => {
     set({ loading: true })
     try {
-      const user = await getProfile()
+      const { user, accessToken } = await getProfile()
       persistUser(user)
-      set({ user, token: API_BASE_URL ? null : get().token, isAuthenticated: Boolean(user), loading: false })
+      set({ 
+        user, 
+        token: accessToken, 
+        isAuthenticated: Boolean(user), 
+        loading: false 
+      })
       return user
     } catch {
-      set({ user: null, token: API_BASE_URL ? null : get().token, isAuthenticated: false, loading: false })
+      set({ 
+        user: null, 
+        token: null, 
+        isAuthenticated: false, 
+        loading: false 
+      })
       return null
     }
   },
@@ -145,9 +138,6 @@ export const useAuthStore = create((set, get) => ({
     try {
       await logoutApi()
     } finally {
-      if (!API_BASE_URL) {
-        storage.remove(STORAGE_KEYS.authToken)
-      }
       storage.remove(STORAGE_KEYS.authUser)
       set({
         user: null,
@@ -208,3 +198,7 @@ export const useAuthStore = create((set, get) => ({
 
   isFollowing: (sellerId) => get().following.includes(String(sellerId)),
 }))
+
+if (typeof window !== "undefined") {
+  window.authStore = useAuthStore
+}

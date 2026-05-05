@@ -4,7 +4,7 @@
 Name: BayonHub
 Type: Cambodian classifieds marketplace (Khmer24 competitor)
 Frontend: bayonhub-app/ — React 19, Vite 5, Tailwind v3, Zustand, GSAP 3, React Three Fiber, React Router v6, Axios, Socket.io-client, vite-plugin-pwa
-Backend: bayonhub-api/ — Node.js 20, Express 5, PostgreSQL 16, Prisma, Redis, Cloudflare R2, JWT, Twilio (NOT YET CONNECTED)
+Backend: bayonhub-api/ — Node.js 20, Express 5, PostgreSQL 16, Prisma, Redis, Cloudflare R2, JWT, Twilio (NoOT YET CONNECTED)
 
 ## Behavior Rules
 

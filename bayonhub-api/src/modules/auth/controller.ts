@@ -7,6 +7,7 @@ import {
   logoutUser,
   refreshAuthTokens,
   registerUser,
+  resetPassword as resetPasswordService,
   sendOTP,
   verifyOTP,
 } from "./service"
@@ -39,6 +40,15 @@ export const verifyOtp: RequestHandler = async (req, res, next) => {
   try {
     const user = await verifyOTP(req.body.phone, req.body.code)
     res.status(200).json({ user })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const resetPassword: RequestHandler = async (req, res, next) => {
+  try {
+    const result = await resetPasswordService(req.body.phone, req.body.code, req.body.newPassword)
+    res.status(200).json(result)
   } catch (error) {
     next(error)
   }

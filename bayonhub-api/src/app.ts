@@ -2,6 +2,7 @@ import crypto from "crypto"
 import cookieParser from "cookie-parser"
 import cors from "cors"
 import express, { ErrorRequestHandler } from "express"
+import passport from "passport"
 import helmet from "helmet"
 import morgan from "morgan"
 
@@ -18,12 +19,22 @@ import sellersRouter from "./modules/sellers/router"
 import usersRouter from "./modules/users/router"
 import paymentsRouter from "./modules/payments/router"
 import merchantRouter from "./modules/merchant/router"
+import sitemapRouter from "./modules/sitemap/router"
+import storefrontRouter from "./modules/storefront/router"
+import statsRouter from "./modules/stats/router"
 import { apiLimiter } from "./middleware/rateLimiter"
+import { setCsrfCookie, verifyCsrfToken } from "./middleware/csrf"
+import prerenderMiddleware from "./middleware/prerender"
+import path from "path"
+import fs from "fs"
 
 export const app = express()
 app.set("trust proxy", 1)
 
-app.use(helmet())
+app.use(helmet({
+  contentSecurityPolicy: false, // Prerender.io and some of our Three.js assets need flexibility
+}))
+app.use(prerenderMiddleware)
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -45,10 +56,13 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "X-XSRF-TOKEN"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-XSRF-TOKEN"],
   }),
 )
 app.use(cookieParser())
+app.use(passport.initialize())
+app.use(setCsrfCookie)
+app.use(verifyCsrfToken)
 app.use(express.json({ limit: "10kb" }))
 
 app.use((req, _res, next) => {
@@ -80,9 +94,13 @@ app.use("/api/search", searchRouter)
 app.use("/api/users", usersRouter)
 app.use("/api/sellers", sellersRouter)
 app.use("/api/messages", messagesRouter)
+app.use("/api", sitemapRouter)
 app.use("/api/admin", adminRouter)
 app.use("/api/payments", paymentsRouter)
 app.use("/api/v1/merchant", merchantRouter)
+app.use("/api/storefront", storefrontRouter)
+app.use("/api", statsRouter)
+app.use("/", sitemapRouter)
 
 app.get("/health", async (_req, res) => {
   const startTime = Date.now()
@@ -114,6 +132,23 @@ app.get("/health", async (_req, res) => {
     version: process.env.npm_package_version || "1.0.0",
   })
 })
+
+// Handle SPA routing in production
+if (env.nodeEnv === "production") {
+  const distPath = path.join(__dirname, "../../bayonhub-app/dist")
+  app.use(express.static(distPath))
+  
+  app.get("*", (req, res, next) => {
+    // Only serve index.html for non-API routes
+    if (!req.path.startsWith("/api/")) {
+      const indexPath = path.join(distPath, "index.html")
+      if (fs.existsSync(indexPath)) {
+        return res.sendFile(indexPath)
+      }
+    }
+    next()
+  })
+}
 
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" })

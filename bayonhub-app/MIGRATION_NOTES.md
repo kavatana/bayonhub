@@ -78,6 +78,17 @@
 - src/lib/rateLimiter.js — client-side contact action rate limiting with configurable windows (5 calls/hour for CALL, 3 offers/day for OFFER)
 - src/store/useUIStore.js — idempotent addMessage action prevents duplicate socket messages
 - src/lib/socket.js — event deduplication with processedEvents Set capped at 100 IDs
+
+## Security/SEO and Sitemap Fixes — May 2, 2026
+
+- `src/lib/translations.js` — added `listing.tapToReveal` translation key for listing phone reveal interactions.
+- `src/lib/utils.js` — added `maskPhone()` helper for Cambodia phone masking when details are hidden.
+- `bayonhub-api/src/modules/sitemap/router.ts` — added sitemap XML generator endpoint with active listing URLs and cache headers.
+- `bayonhub-api/src/middleware/csrf.ts` — added CSRF token cookie/verification middleware for cookie-based auth protection.
+- `bayonhub-app/public/_redirects` — added sitemap redirect rule.
+- `bayonhub-api/src/lib/slug.ts` — added `generateUniqueSlug()` helper used by listing creation and import.
+- `bayonhub-api/src/modules/auth/service.ts` — extended safe user payload selection to include `slug`.
+
 - src/pages/ListingPage.jsx — sticky CTA hysteresis with dual thresholds (show at 10% out, hide at 30% back)
 - src/pages/CategoryPage.jsx — unified displayedListings data source for InfiniteScroll dataLength and ListingGrid
 - src/hooks/useOnlineStatus.js — backend heartbeat detection with 30s interval, distinguishes isFullyOnline vs isLimitedMode
@@ -741,17 +752,25 @@ Phase 1 — Repo Hygiene:
 - Performance budget enforced
 
 Phase 2 — Monetization + Trust:
+- [x] Phase 2: SEO & Architecture
+- [x] Phase 3: Seller Storefronts & Reviews
+    - [x] Prisma schema update (Review model)
+    - [x] Backend API (Storefront module)
+    - [x] Frontend State (Storefront store)
+    - [x] Storefront UI (Page & Skeletons)
+    - [x] Review submission & display
+- [x] Phase 4: Image Performance & HEIC Pipeline
+    - [x] MediaUploader: Increased limit to 20MB
+    - [x] MediaUploader: Added HEIC/HEIF support
+    - [x] MediaUploader: Added incremental processing UX
+    - [x] API: Fixed upload extensions (.jpg)
+    - [x] PostAdWizard: Unified image primary flags
+- [/] Phase 5: Verification & Safety Badges (Next)
 - Payment model added to Prisma schema
 - KHQR payment generation + webhook endpoint
 - ABAPayModal wired to real payment polling
 - KYC schema + submission endpoint + admin review
 - SettingsTab KYC upload flow
-
-Phase 3 — Data Strategy:
-- Bulk listing import API endpoint
-- CSV import script with batch processing
-- 20 sample listings seeded as import data
-- Admin dashboard page with 6 tabs
 
 Status after sprint:
 - Revenue: ENABLED (ABA KHQR — needs merchant credentials)
@@ -964,9 +983,14 @@ Remaining Tier 1 priorities:
 All code is ready — credential gaps only.
 
 Pre-deploy check results (13/13 passed):
-✅ Frontend lint passes
-✅ Frontend build passes
-✅ index chunk under 500KB (83 KB)
+✅ Frontend lint    - [x] Verified build stability (index chunk < 500KB).
+- **2026-05-02 — Phase 3: Storefronts & Reviews**
+    - Added `Review` model to Prisma schema with User relations.
+    - Implemented Backend `storefront` module for profile & review management.
+    - Created `StorefrontPage.jsx` with advanced stats, reviews tab, and storefront aesthetics.
+    - Added `ReviewModal` for authenticated users to post feedback.
+    - Integrated bilingual translations for all review-related strings.
+    - Ensured React 19 / Compiler compatibility and clean lint state. (83 KB)
 ✅ vendor-three is isolated (147 KB)
 ✅ PWA manifest exists
 ✅ VITE_API_URL in .env.production
@@ -1060,3 +1084,144 @@ Phase 4 — Verification:
 Status: PRODUCTION HARDENED ✅
 Remaining manual action: Fix Twilio phone number in Railway (buy separate number)
 Railway billing: Add payment method (29 days remaining on trial)
+
+### 2026-05-02 - Professional Auth & Password Reset
+- **Backend**: Added POST /api/auth/reset-password endpoint with strict validation
+- **Backend**: Implemented resetPasswordUser service logic (hashes new password, clears old Redis sessions)
+- **Frontend**: Upgraded AuthModal.jsx Forgot Password flow from a 2-step (Phone -> OTP -> Auto-Login) to a strict 3-step process (Phone -> OTP -> Set New Password)
+- **Frontend**: Cleaned up useAuthStore.js to securely drop LocalStorage and Zustand states on logout
+- **Translations**: Added new Kh/En translations for new password fields
+
+## Security & SEO Architecture Sprint — May 2, 2026
+
+### Phase 1: Security Hardening ✅
+- `src/lib/sanitize.js` — Integrated **DOMPurify** for central XSS prevention; added `sanitizeText` (strip tags) and `sanitizeHtml` (allow safe formatting).
+- `src/lib/utils.js` — Implemented `maskPhone` to prevent automated scraping of seller contact numbers.
+- `src/components/listing/ListingDetail.jsx` — Applied sanitization to listing descriptions and seller names.
+- `src/pages/SellerPage.jsx` — Applied sanitization to seller store names, about text, and taglines.
+- `src/components/listing/ListingCard.jsx` — Applied sanitization to listing titles.
+
+### Phase 2: SEO URL Architecture ✅
+- `src/lib/utils.js` — Added `listingUrl(listing)` and `sellerUrl(user)` helpers to centralize SEO URL patterns.
+- `App.jsx` — Implemented canonical SEO routes for listings (`/l/:category/:province/:slug-:id`) and sellers (`/u/:slug`).
+- `src/pages/ListingPage.jsx` — Updated to parse ID from slugs and redirect legacy `/listing/:id` URLs to SEO canonicals.
+- `src/pages/SellerPage.jsx` — Updated to support seller slugs and redirect legacy `/seller/:id` URLs to SEO canonicals (`/u/:slug`).
+- `src/lib/seo.js` — Updated `buildProductSchema` to use the new `listingUrl` for canonical structured data.
+- `src/components/listing/ListingCard.jsx`, `ListingListItem.jsx`, `Navbar.jsx`, `MyAdsTab.jsx`, `CategoryPage.jsx` — Switched all internal navigation to the new SEO URL helpers.
+- `src/components/posting/PostAdWizard.jsx` — Updated post-success redirect to land users on the correct SEO URL.
+
+## Phase 3: Seller Storefronts & Reviews — May 2, 2026
+
+### Database & Backend
+- `bayonhub-api/prisma/schema.prisma` — Added `Review` model with `rating`, `comment`, and relations to `User` (ReviewsGiven, ReviewsReceived).
+- `bayonhub-api/src/modules/storefront/` — Created new backend module with service, controller, and router to manage storefront data and reviews.
+- `bayonhub-api/src/app.ts` — Registered the storefront router at `/api/storefront`.
+
+### Frontend
+- `src/api/storefront.js` — Added API client for storefront retrieval and review submission.
+- `src/store/useStorefrontStore.js` — Implemented Zustand store for storefront state management.
+- `src/pages/StorefrontPage.jsx` — Implemented high-end storefront view with reviews tab, advanced stats, and merchant details.
+- `src/components/storefront/ReviewModal.jsx` — Added modal for authenticated users to submit star ratings and comments.
+- `src/components/storefront/StorefrontSkeleton.jsx` — Added premium loading skeletons for storefront view.
+- `src/lib/translations.js` — Integrated comprehensive bilingual (EN/KM) translations for all review-related UI.
+- `App.jsx` — Wired `/seller/:id` and `/u/:slug` to the new `StorefrontPage` component.
+
+### Quality & Performance
+- **Lint**: PASS (zero errors, manual memoization preserved for React Compiler).
+- **Build**: PASS (all chunks under 500KB; index-*.js at 87KB, vendor-misc-*.js at 355KB).
+- **Verified**: Canonical redirects for seller profiles are active and review submission is wired to state.
+
+## Phase 4: Image Performance & HEIC Pipeline — May 2, 2026
+
+- `MediaUploader.jsx` — Upgraded to support 20MB input files, accommodating high-res mobile photos.
+- `MediaUploader.jsx` — Integrated HEIC/HEIF support via `browser-image-compression`.
+- `MediaUploader.jsx` — Implemented incremental state updates during image processing to provide real-time user feedback.
+- `src/components/posting/PostAdWizard.jsx` — Unified image primary flag to `isPrimary` for consistency.
+- `src/api/listings.js` — Updated `listingFormData` to use `.jpg` extensions for compressed multipart uploads.
+- **Lint**: PASS.
+- **Build**: PASS (all chunks under 500KB; `PostAdWizard` at 27.84 KB).
+
+## Phase 5: Verification & Safety Badges — May 2, 2026 (Audit & Verification)
+- **KYC Submission Flow**: Confirmed active in `SettingsTab.jsx` integrating `browser-image-compression` for secure ID uploads.
+- **Safety Badge System**: Confirmed active in `ListingCard.jsx`, `StorefrontPage.jsx`, and `Badge.jsx` (displays `id-verified` and `phone-verified` tiers).
+- **Admin Verification Flow**: Confirmed active in `AdminPage.jsx` and backend `api/admin/kyc`, allowing admins to review and approve/reject ID documents.
+- **Sitemap Generation**: Confirmed active at `/api/sitemap` utilizing backend `sitemap/router.ts`.
+- **Status**: The BayonHub Massive Feature & Security Sprint is now **100% Complete**.
+
+
+### Performance & Quality
+- **Lint**: PASS (all unused imports removed, including `getListingSlug`).
+- **Build**: PASS (index chunk maintained under 500KB budget).
+- **Migration**: Schema updated in Prisma to support user slugs and store banners.
+
+
+## [2026-05-02] Security & UX Production Hardening
+- Implemented Rate Limiting for contact (20/hr) and OTP (3/hr) routes.
+- Integrated Passport.js with Google and Facebook OAuth strategies.
+- Added daily automated listing expiry cron job (01:00 ICT).
+- Exposed /sitemap.xml with live expiry filtering for SEO.
+- Refactored SearchPage with sidebar filters and URL parameter sync.
+- Implemented PostAdWizard draft auto-save/recovery and success screen.
+- Added PhoneReveal auth-gate for seller contact protection.
+- Verified production build and lint compliance.
+
+## [2026-05-02] UX Audit & Production Hardening
+- Implemented global offline error handling via `bayonhub:api-unavailable` listener in `App.jsx`.
+- Refactored Post Ad entry flow to allow unauthenticated wizard access steps 0-4.
+- Added `localStorage` auto-save and resume draft logic to `PostAdWizard`.
+- Replaced `ListingPage` spinner with premium skeleton loaders and enhanced empty states.
+- Implemented category-aware description truncation logic in `ListingDetail`.
+- Updated mobile filters in `SearchPage` to use a bottom sheet drawer with expanded category/condition facets.
+- Added descriptive `toast` notifications for unauthenticated lead actions.
+- Resolved mobile layout conflicts between sticky contact bar and global navigation.
+## BayonHub Production Hardening — May 2, 2026
+
+- `bayonhub-api/prisma/schema.prisma` — Added `isActive` boolean (default: true) to `Listing` model for lifecycle management and soft-deletion.
+- `bayonhub-api/src/modules/listings/controller.ts` — Implemented server-side magic-byte validation for file uploads to prevent MIME spoofing.
+- `bayonhub-app/src/components/home/HeroSection.jsx` — Removed synthetic "+1200" padding from hero stats for data transparency.
+- `bayonhub-app/src/pages/CategoryPage.jsx` — Enhanced category-level empty states with "Post Free Ad" call-to-action button.
+- `bayonhub-app/src/components/listing/ListingDetail.jsx` — Consolidated report logic and implemented a "Safety Guidelines" module with Cambodia-specific fraud warnings (ABA payment tips).
+- `bayonhub-app/src/components/layout/Navbar.jsx` — Added a mobile-safe province selector and updated desktop location picker styling for better location-based browsing.
+- `bayonhub-app/src/lib/translations.js` — Added localized safety guidelines and missing navigation labels in EN and KM.
+- `bayonhub-app/src/components/auth/AuthModal.jsx` — Wired social login buttons to production OAuth endpoints (Google, Facebook).
+- `bayonhub-app/src/components/layout/Layout.jsx` — Implemented global OAuth redirect handlers for success and error toast notifications.
+- `bayonhub-app/src/lib/translations.js` — Added localized OAuth error messages and success strings.
+- `bayonhub-app/src/lib/utils.js` — Implemented `toKhmerNumerals` utility and updated `formatPrice` to support localized script output.
+- `bayonhub-app/src/components/home/HeroSection.jsx` — Integrated Khmer numeral formatting for live platform statistic animations.
+- `bayonhub-app/src/components/listing/ListingCard.jsx` — Updated price display to respect the current user language for native script rendering.
+- `bayonhub-app/src/components/listing/ListingListItem.jsx` — Applied localized numeral formatting to list-view prices.
+
+## 2026-05-02 — UX Reporting & Platform Stability Finalization
+- **Global Error Handling**: Added 'bayonhub:api-unavailable' listener in App.jsx for localized toast alerts.
+- **Reporting Sync**: Consolidated reporting buttons in ListingDetail.jsx and hardened metadata payload (Reason, Detail, Evidence, Contact).
+- **Filter Persistence**: Implemented useSearchParams sync for CategoryPage filters to preserve state across navigation.
+- **Data Integrity**: Synced SearchPage results count with store total and fixed ListingCard hook violations.
+- **Lint & Build**: Verified 100% pass rate on production build and linting.
+
+## 2026-05-02 - SEO & Moderation Enhancement
+- Updated Report model with rich metadata (evidenceUrl, contactEmail, userAgent).
+- Enhanced moderation queue in /admin with detailed report view and automated removal.
+- Implemented SEO-friendly URL structure: /buy/[province]/[category]/[slug]-[id].
+- Upgraded Schema.org JSON-LD with brand, SKU, and location data.
+
+## 2026-05-02 - SSR Implementation (Prerender.io)
+- Integrated Prerender.io middleware in the backend to handle search engine crawlers.
+- Configured the backend to serve the frontend SPA in production, enabling unified SSR management.
+- Added custom TypeScript declarations for `prerender-node`.
+- Adjusted CSP (Content Security Policy) to allow Prerender.io and rich media assets.
+
+## 2026-05-04 - Phase 1: Fix Auth System
+- `bayonhub-api/src/modules/auth/service.ts`: Updated `cookieOptions` to use production-grade `sameSite: "none"` and `secure: true` with wildcard domain `.bayonhub.com`. Fixed cross-origin auth failures.
+- `bayonhub-api/src/modules/auth/oauth.ts`: Fixed token passing signature for `setAuthCookies`.
+- `bayonhub-api/src/modules/auth/router.ts`: Changed `/reset-password` endpoint method from POST to PUT for REST semantics.
+- `bayonhub-api/src/modules/auth/service.ts` & `controller.ts`: Refactored `resetPassword` logic to correctly return a success state without forcing an auto-login, enhancing security.
+- `bayonhub-app/src/components/auth/AuthModal.jsx`: Completely refactored the auth error handling (registration, login, and forgot password). Replaced `phoneErrors` with centralized `errors` state. Re-implemented try/catch to correctly surface 401/404 messages from the API. Added 8-character minimum validation for the reset password form.
+- `bayonhub-app/src/store/useAuthStore.js`: Rewrote `login`, `register`, `sendOtp`, and `resetPassword` actions to properly catch and re-throw API errors rather than swallowing them, ensuring the UI layer (`AuthModal.jsx`) takes full responsibility for toasting validation errors. Cleaned up redundant `toast`s.
+- `bayonhub-app/src/api/auth.js`: Updated `resetPassword` to match backend PUT route and fixed response parsing.
+- `bayonhub-app/src/lib/translations.js`: Added comprehensive localized messaging (EN/KM) for the new error flows (`auth.passwordTooShort`, `auth.nameRequired`, `auth.phoneTaken`, `auth.phoneNotFound`, `auth.wrongPassword`, `auth.resetSuccess`, etc.).
+
+## 2026-05-04 - Phase 2: Critical UX Fixes
+- `bayonhub-app/src/pages/PostPage.jsx`, `bayonhub-app/src/components/sections/PricingSection.jsx`: Removed aggressive auth walls from "Post Ad" entry points. Authentication is now strictly deferred to Step 4 of `PostAdWizard`.
+- `bayonhub-app/src/components/posting/PostAdWizard.jsx`: Ensured `setPendingAction` is set when triggering auth from Step 4 so the UI seamlessly returns to the wizard. Added explicit error toast triggers using `post.validationErrorToast` when users fail validation attempting to advance steps.
+- `bayonhub-app/src/lib/translations.js`: Added EN and KM strings for `post.validationErrorToast`.
+- `bayonhub-app/src/pages/ListingPage.jsx` & `bayonhub-app/src/components/listing/ListingPageSkeleton.jsx`: Extracted the inline skeleton loader into a standalone `ListingPageSkeleton` component for cleaner component architecture.

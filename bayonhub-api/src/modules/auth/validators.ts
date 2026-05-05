@@ -28,3 +28,10 @@ export const validateVerifyOtp = [
   body("code").isLength({ min: 6, max: 6 }).isNumeric().withMessage("OTP must be 6 digits"),
   validate,
 ]
+
+export const validateResetPassword = [
+  body("phone").matches(cambodiaPhoneRegex).withMessage("Invalid Cambodia phone number"),
+  body("code").isLength({ min: 6, max: 6 }).isNumeric().withMessage("OTP must be 6 digits"),
+  body("newPassword").isLength({ min: 8 }).withMessage("Password must be at least 8 characters"),
+  validate,
+]

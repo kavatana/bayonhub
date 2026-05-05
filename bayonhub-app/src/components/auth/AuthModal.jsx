@@ -52,16 +52,18 @@ export default function AuthModal() {
   const register = useAuthStore((state) => state.register)
   const sendOtp = useAuthStore((state) => state.sendOtp)
   const verifyOTP = useAuthStore((state) => state.verifyOTP)
+  const resetPassword = useAuthStore((state) => state.resetPassword)
   const loading = useAuthStore((state) => state.loading)
   const toggleSaved = useListingStore((state) => state.toggleSaved)
   const saveSearch = useListingStore((state) => state.saveSearch)
   const [tab, setTab] = useState("login")
   const [showPassword, setShowPassword] = useState(false)
   const [otpStep, setOtpStep] = useState(false)
-  // forgotStep: null | "phone" | "otp"
+  // forgotStep: null | "phone" | "otp" | "password"
   const [forgotStep, setForgotStep] = useState(null)
   const [timer, setTimer] = useState(60)
   const [otp, setOtp] = useState(["", "", "", "", "", ""])
+  const [resetPasswords, setResetPasswords] = useState({ newPassword: "", confirmNewPassword: "" })
   const [form, setForm] = useState({
     name: "",
     phone: "",
@@ -71,7 +73,7 @@ export default function AuthModal() {
     terms: false,
   })
   const [resetPhone, setResetPhone] = useState("")
-  const [phoneErrors, setPhoneErrors] = useState({})
+  const [errors, setErrors] = useState({})
   const otpRefs = useRef([])
   const resetOtpRefs = useRef([])
   const [resetOtp, setResetOtp] = useState(["", "", "", "", "", ""])
@@ -86,17 +88,17 @@ export default function AuthModal() {
 
   function update(name, value) {
     setForm((current) => ({ ...current, [name]: value }))
-    if (name === "phone") setPhoneErrors((current) => ({ ...current, phone: null }))
+    setErrors((current) => ({ ...current, [name]: null }))
   }
 
   function validateAuthPhone(field = "phone") {
     const value = field === "resetPhone" ? resetPhone : form.phone
     const result = validatePhone(value)
     if (!result.valid) {
-      setPhoneErrors((current) => ({ ...current, [field]: t(`validation.${result.error}`) }))
+      setErrors((current) => ({ ...current, [field]: t(`validation.${result.error}`) }))
       return null
     }
-    setPhoneErrors((current) => ({ ...current, [field]: null }))
+    setErrors((current) => ({ ...current, [field]: null }))
     if (field === "resetPhone") {
       setResetPhone(result.normalized)
     } else {
@@ -153,24 +155,45 @@ export default function AuthModal() {
 
   async function submitLogin(event) {
     event.preventDefault()
+    setErrors({})
     const normalizedPhone = validateAuthPhone()
     if (!normalizedPhone) return
+    if (!form.password) {
+      setErrors({ password: t("auth.passwordRequired") })
+      return
+    }
     try {
       await login(normalizedPhone, form.password)
-      toast.success(t("auth.welcome"))
+      toast.success(t("auth.welcomeBack"))
       close()
       completePendingAction()
-    } catch {
-      return
+    } catch (err) {
+      const status = err.response?.status || err.status
+      if (status === 401) {
+        setErrors({ password: t("auth.wrongPassword") })
+      } else if (status === 404) {
+        setErrors({ phone: t("auth.phoneNotFound") })
+      } else {
+        toast.error(err.message || t("auth.loginFailed"))
+      }
     }
   }
 
   async function submitRegister(event) {
     event.preventDefault()
+    setErrors({})
     const normalizedPhone = validateAuthPhone()
     if (!normalizedPhone) return
+    if (!form.password || form.password.length < 8) {
+      setErrors((prev) => ({ ...prev, password: t("auth.passwordTooShort") }))
+      return
+    }
     if (form.password !== form.confirmPassword) {
       toast.error(t("auth.passwordMismatch"))
+      return
+    }
+    if (!form.name || form.name.trim().length < 2) {
+      setErrors((prev) => ({ ...prev, name: t("auth.nameRequired") }))
       return
     }
     if (!form.terms) {
@@ -179,7 +202,7 @@ export default function AuthModal() {
     }
     try {
       await register({
-        name: form.name,
+        name: form.name.trim(),
         phone: normalizedPhone,
         password: form.password,
         language: form.language,
@@ -188,9 +211,15 @@ export default function AuthModal() {
       setLanguage(form.language)
       setOtpStep(true)
       setTimer(60)
+      toast.success(t("auth.otpSent"))
       window.setTimeout(() => otpRefs.current[0]?.focus(), 50)
-    } catch {
-      return
+    } catch (err) {
+      const message = err.message || t("auth.registerFailed")
+      if (message.includes("already")) {
+        setErrors({ phone: t("auth.phoneTaken") })
+      } else {
+        toast.error(message)
+      }
     }
   }
 
@@ -208,26 +237,45 @@ export default function AuthModal() {
 
   async function submitForgotPhone(event) {
     event.preventDefault()
+    setErrors({})
     const normalizedPhone = validateAuthPhone("resetPhone")
     if (!normalizedPhone) return
     try {
       await sendOtp(normalizedPhone)
-      setForgotStep("otp")
-      setTimer(60)
-      window.setTimeout(() => resetOtpRefs.current[0]?.focus(), 50)
     } catch {
-      return
+      // Prevent enumeration
+    }
+    toast.success(t("auth.passwordReset"))
+    setForgotStep("otp")
+    setTimer(60)
+    window.setTimeout(() => resetOtpRefs.current[0]?.focus(), 50)
+  }
+
+  function submitResetOtp(event) {
+    event.preventDefault()
+    if (resetOtp.join("").length === 6) {
+      setForgotStep("password")
     }
   }
 
-  async function submitResetOtp(event) {
+  async function submitResetPassword(event) {
     event.preventDefault()
-    try {
-      await verifyOTP(resetPhone, resetOtp.join(""))
-      toast.success(t("auth.passwordReset"))
-      close()
-    } catch {
+    setErrors({})
+    if (!resetPasswords.newPassword || resetPasswords.newPassword.length < 8) {
+      toast.error(t("auth.passwordTooShort"))
       return
+    }
+    if (resetPasswords.newPassword !== resetPasswords.confirmNewPassword) {
+      toast.error(t("auth.passwordMismatch"))
+      return
+    }
+    try {
+      await resetPassword(resetPhone, resetOtp.join(""), resetPasswords.newPassword)
+      toast.success(t("auth.resetSuccess"))
+      setForgotStep(null)
+      update("phone", resetPhone)
+    } catch (err) {
+      toast.error(err.message || t("ui.error"))
     }
   }
 
@@ -280,11 +328,10 @@ export default function AuthModal() {
     }
   }
 
-  function handleSocialPlaceholder() {
-    toast(t("auth.comingSoon"))
-  }
 
   function renderSocialLoginOptions() {
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:4000"
+    
     return (
       <div>
         <div className="relative my-4">
@@ -297,17 +344,10 @@ export default function AuthModal() {
         </div>
         <div className="grid gap-2">
           <Button
-            className="w-full border border-neutral-200 text-sky-600 hover:border-sky-500 hover:bg-sky-500 hover:text-white"
-            onClick={handleSocialPlaceholder}
-            type="button"
-            variant="ghost"
-          >
-            <TelegramIcon />
-            {t("auth.telegramLogin")}
-          </Button>
-          <Button
             className="w-full border border-neutral-200 text-blue-600 hover:border-blue-600 hover:bg-blue-600 hover:text-white"
-            onClick={handleSocialPlaceholder}
+            onClick={() => {
+              window.location.href = `${apiUrl}/api/auth/facebook`
+            }}
             type="button"
             variant="ghost"
           >
@@ -316,7 +356,9 @@ export default function AuthModal() {
           </Button>
           <Button
             className="w-full border border-neutral-300 text-neutral-700 hover:bg-neutral-50"
-            onClick={handleSocialPlaceholder}
+            onClick={() => {
+              window.location.href = `${apiUrl}/api/auth/google`
+            }}
             type="button"
             variant="ghost"
           >
@@ -343,13 +385,13 @@ export default function AuthModal() {
               onBlur={() => validateAuthPhone("resetPhone")}
               onChange={(event) => {
                 setResetPhone(event.target.value)
-                setPhoneErrors((current) => ({ ...current, resetPhone: null }))
+                setErrors((current) => ({ ...current, resetPhone: null }))
               }}
               required
               value={resetPhone}
             />
           </span>
-          {phoneErrors.resetPhone ? <span className="text-xs text-red-600">{phoneErrors.resetPhone}</span> : null}
+          {errors.resetPhone ? <span className="text-xs text-red-600">{errors.resetPhone}</span> : null}
         </label>
         <Button loading={loading} type="submit">{t("ui.continue")}</Button>
         <button className="justify-self-start text-sm font-black text-primary" onClick={() => setForgotStep(null)} type="button">{t("auth.backToLogin")}</button>
@@ -400,7 +442,47 @@ export default function AuthModal() {
         <button className="justify-self-start text-sm font-black text-primary disabled:text-neutral-400" disabled={timer > 0} onClick={handleResetResend} type="button">
           {timer > 0 ? t("auth.resendIn", { seconds: timer }) : t("auth.resend")}
         </button>
-        <Button loading={loading} type="submit">{t("auth.verifyPhone")}</Button>
+        <Button loading={loading} type="submit">{t("ui.continue")}</Button>
+        <button className="justify-self-start text-sm font-black text-primary" onClick={() => setForgotStep(null)} type="button">{t("ui.cancel")}</button>
+      </form>
+    ))
+  }
+
+  // ── Forgot Password — Password step ─────────────────────────────────────────
+  if (forgotStep === "password") {
+    return renderPanel(t("auth.forgotTitle"), (
+      <form className="mt-6 grid gap-5" onSubmit={submitResetPassword}>
+        <p className="text-sm font-semibold leading-6 text-neutral-500">{t("auth.enterNewPassword")}</p>
+        <label className="grid gap-2 text-sm font-bold text-neutral-700 dark:text-neutral-200">
+          {t("auth.newPassword")}
+          <span className="relative">
+            <input
+              className="h-11 w-full rounded-xl border border-neutral-200 px-3 outline-none focus:border-primary dark:border-neutral-700 dark:bg-neutral-800 dark:text-white dark:placeholder-neutral-500"
+              onChange={(event) => setResetPasswords((prev) => ({ ...prev, newPassword: event.target.value }))}
+              required
+              type={showPassword ? "text" : "password"}
+              value={resetPasswords.newPassword}
+            />
+            <button
+              className="absolute right-3 top-3 text-neutral-500"
+              onClick={() => setShowPassword(!showPassword)}
+              type="button"
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </span>
+        </label>
+        <label className="grid gap-2 text-sm font-bold text-neutral-700 dark:text-neutral-200">
+          {t("auth.confirmNewPassword")}
+          <input
+            className="h-11 rounded-xl border border-neutral-200 px-3 outline-none focus:border-primary dark:border-neutral-700 dark:bg-neutral-800 dark:text-white dark:placeholder-neutral-500"
+            onChange={(event) => setResetPasswords((prev) => ({ ...prev, confirmNewPassword: event.target.value }))}
+            required
+            type={showPassword ? "text" : "password"}
+            value={resetPasswords.confirmNewPassword}
+          />
+        </label>
+        <Button loading={loading} type="submit">{t("auth.resetPasswordBtn")}</Button>
         <button className="justify-self-start text-sm font-black text-primary" onClick={() => setForgotStep(null)} type="button">{t("ui.cancel")}</button>
       </form>
     ))
@@ -426,6 +508,7 @@ export default function AuthModal() {
               <label className="grid gap-2 text-sm font-bold text-neutral-700 dark:text-neutral-200">
                 {t("auth.fullName")}
                 <input className="h-11 rounded-xl border border-neutral-200 px-3 outline-none focus:border-primary dark:bg-neutral-800 dark:border-neutral-700 dark:text-white dark:placeholder-neutral-500" onChange={(event) => update("name", event.target.value)} required value={form.name} />
+                {errors.name ? <span className="text-xs text-red-600">{errors.name}</span> : null}
               </label>
             ) : null}
             <label className="grid gap-2 text-sm font-bold text-neutral-700 dark:text-neutral-200">
@@ -441,7 +524,7 @@ export default function AuthModal() {
                   value={form.phone}
                 />
               </span>
-              {phoneErrors.phone ? <span className="text-xs text-red-600">{phoneErrors.phone}</span> : null}
+              {errors.phone ? <span className="text-xs text-red-600">{errors.phone}</span> : null}
             </label>
             <label className="grid gap-2 text-sm font-bold text-neutral-700 dark:text-neutral-200">
               {t("auth.password")}
@@ -451,6 +534,7 @@ export default function AuthModal() {
                   {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
                 </button>
               </span>
+              {errors.password ? <span className="text-xs text-red-600">{errors.password}</span> : null}
             </label>
             {tab === "login" ? (
               <button className="justify-self-start text-sm font-black text-primary" onClick={() => setForgotStep("phone")} type="button">

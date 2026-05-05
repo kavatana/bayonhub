@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react"
 import imageCompression from "browser-image-compression"
 import { useDropzone } from "react-dropzone"
-import { Camera, GripHorizontal, ImagePlus, Star, X } from "lucide-react"
+import { Camera, GripHorizontal, ImagePlus, Star, X, Loader2 } from "lucide-react"
 import { useTranslation } from "../../hooks/useTranslation"
 import { cn } from "../../lib/utils"
 
@@ -17,66 +17,91 @@ function readFileAsDataUrl(file) {
 export default function MediaUploader({ value = [], onChange, loading = false, error = null }) {
   const { t } = useTranslation()
   const [errors, setErrors] = useState([])
+  const [isProcessing, setIsProcessing] = useState(false)
   const dragIndexRef = useRef(null)
   const cameraInputRef = useRef(null)
 
   const addFiles = useCallback(
     async (files) => {
+      if (!files.length) return
+      
+      setIsProcessing(true)
       const nextErrors = []
-      const imageFiles = files.filter((file) => {
-        if (!file.type.startsWith("image/")) {
+      
+      // Filter valid files (increased limit to 20MB)
+      const validFiles = files.filter((file) => {
+        const isImage = file.type.startsWith("image/") || 
+                        file.name.toLowerCase().endsWith(".heic") || 
+                        file.name.toLowerCase().endsWith(".heif")
+        
+        if (!isImage) {
           nextErrors.push(t("post.mediaWrongType"))
           return false
         }
-        if (file.size > 5 * 1024 * 1024) {
+        if (file.size > 20 * 1024 * 1024) {
           nextErrors.push(t("post.mediaTooLarge"))
           return false
         }
         return true
       })
-      if (value.length + imageFiles.length > 8) {
+
+      if (value.length + validFiles.length > 8) {
         nextErrors.push(t("post.mediaTooMany"))
       }
-      const accepted = imageFiles.slice(0, Math.max(0, 8 - value.length))
-      const compressed = await Promise.all(
-        accepted.map(async (file, index) => {
-          const output = await imageCompression(file, {
-            maxWidthOrHeight: 1200,
-            maxSizeMB: 1,
+
+      const accepted = validFiles.slice(0, Math.max(0, 8 - value.length))
+      const newImages = []
+
+      // Process one by one for better UX
+      for (let i = 0; i < accepted.length; i++) {
+        const file = accepted[i]
+        try {
+          // HEIC support check and conversion
+          const options = {
+            maxWidthOrHeight: 1600, // Increased slightly for better quality on modern phones
+            maxSizeMB: 0.8, // Target under 1MB
             useWebWorker: true,
-          })
+            initialQuality: 0.8,
+            fileType: "image/jpeg", // Always convert to JPEG for backend compatibility
+          }
+
+          const output = await imageCompression(file, options)
           const preview = await readFileAsDataUrl(output)
-          return {
-            id: globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${file.name}-${index}`,
+          
+          const newImage = {
+            id: globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${file.name}-${i}`,
             preview,
             url: preview,
             file: output,
             name: file.name,
-            order: value.length + index,
-            isPrimary: value.length === 0 && index === 0,
-            primary: value.length === 0,
+            order: value.length + i,
+            isPrimary: value.length === 0 && i === 0,
           }
-        }),
-      )
-      const next = [...value, ...compressed]
-      const primaryIndex = next.findIndex((image) => image.isPrimary || image.primary)
-      onChange?.(
-        next.map((item, index) => ({
-          ...item,
-          order: index,
-          isPrimary: primaryIndex === -1 ? index === 0 : index === primaryIndex,
-          primary: primaryIndex === -1 ? index === 0 : index === primaryIndex,
-        })),
-      )
+          
+          newImages.push(newImage)
+          
+          // Update state incrementally so user sees progress
+          const currentTotal = [...value, ...newImages]
+          onChange?.(currentTotal.map((img, idx) => ({ ...img, order: idx })))
+        } catch (err) {
+          console.error("Compression error:", err)
+          nextErrors.push(`${file.name}: ${t("ui.error")}`)
+        }
+      }
+
       setErrors([...new Set(nextErrors)])
+      setIsProcessing(false)
     },
     [onChange, t, value],
   )
 
   const onDrop = useCallback((acceptedFiles) => addFiles(acceptedFiles), [addFiles])
+  
   const { getInputProps, getRootProps, isDragActive } = useDropzone({
-    accept: { "image/*": [] },
-    disabled: loading,
+    accept: { 
+      "image/*": [".jpeg", ".jpg", ".png", ".webp", ".heic", ".heif"] 
+    },
+    disabled: loading || isProcessing,
     maxFiles: 8,
     onDrop,
   })
@@ -87,14 +112,13 @@ export default function MediaUploader({ value = [], onChange, loading = false, e
       next.map((item, index) => ({
         ...item,
         order: index,
-        isPrimary: index === 0 ? true : item.isPrimary,
-        primary: index === 0 ? true : item.primary,
+        isPrimary: index === 0,
       })),
     )
   }
 
   function makePrimary(id) {
-    onChange?.(value.map((item) => ({ ...item, isPrimary: item.id === id, primary: item.id === id })))
+    onChange?.(value.map((item) => ({ ...item, isPrimary: item.id === id })))
   }
 
   function reorder(dropIndex) {
@@ -103,7 +127,7 @@ export default function MediaUploader({ value = [], onChange, loading = false, e
     const next = [...value]
     const [moved] = next.splice(dragIndex, 1)
     next.splice(dropIndex, 0, moved)
-    onChange?.(next.map((item, index) => ({ ...item, order: index })))
+    onChange?.(next.map((item, index) => ({ ...item, order: index, isPrimary: index === 0 })))
     dragIndexRef.current = null
   }
 
@@ -112,44 +136,63 @@ export default function MediaUploader({ value = [], onChange, loading = false, e
       <div
         {...getRootProps({
           className: cn(
-            "grid min-h-40 cursor-pointer place-items-center rounded-2xl border border-dashed p-6 text-center transition",
-            isDragActive ? "border-primary bg-primary/5" : "border-neutral-300 bg-white hover:border-primary",
+            "grid min-h-40 cursor-pointer place-items-center rounded-3xl border-2 border-dashed p-8 text-center transition-all duration-300",
+            isDragActive ? "border-primary bg-primary/5 scale-[0.99]" : "border-neutral-200 bg-white hover:border-primary hover:bg-neutral-50/50",
+            (loading || isProcessing) && "opacity-50 cursor-not-allowed"
           ),
         })}
       >
         <input {...getInputProps()} />
-        <div>
-          <ImagePlus className="mx-auto h-9 w-9 text-primary" aria-hidden="true" />
-          <p className="mt-3 text-sm font-black text-neutral-900">{t("post.mediaDrop")}</p>
-          <p className="mt-1 text-sm font-semibold text-neutral-500">{t("post.mediaBrowse")}</p>
+        <div className="space-y-3">
+          <div className="relative mx-auto w-16 h-16 bg-primary/10 rounded-2xl grid place-items-center">
+            {isProcessing ? (
+              <Loader2 className="h-8 w-8 text-primary animate-spin" />
+            ) : (
+              <ImagePlus className="h-8 w-8 text-primary" />
+            )}
+          </div>
+          <div>
+            <p className="text-base font-black text-neutral-900">
+              {isProcessing ? t("ui.loading") : t("post.mediaDrop")}
+            </p>
+            <p className="text-sm font-bold text-neutral-500">{t("post.mediaBrowse")}</p>
+          </div>
+          <div className="flex justify-center gap-4 text-[10px] font-black uppercase tracking-widest text-neutral-400">
+            <span>Max 20MB</span>
+            <span>JPG, PNG, HEIC</span>
+          </div>
         </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
         <button
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 text-sm font-bold text-neutral-700 md:hidden"
+          disabled={loading || isProcessing}
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-neutral-200 bg-white px-6 text-sm font-black text-neutral-700 transition-all hover:bg-neutral-50 disabled:opacity-50 md:hidden"
           onClick={() => cameraInputRef.current?.click()}
           type="button"
         >
-          <Camera className="h-4 w-4" aria-hidden="true" />
+          <Camera className="h-5 w-5 text-primary" aria-hidden="true" />
           {t("post.mediaCamera")}
         </button>
+        
         {!import.meta.env.PROD && (
           <button
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 text-sm font-bold text-primary transition hover:bg-primary/10"
+            disabled={loading || isProcessing}
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary/5 px-6 text-sm font-black text-primary transition-all hover:bg-primary/10 disabled:opacity-50"
             onClick={() => {
               const mockFiles = [
-                new File([""], "mock-image-1.jpg", { type: "image/jpeg" }),
+                new File([""], "large-test.jpg", { type: "image/jpeg" }),
               ]
               addFiles(mockFiles)
             }}
             type="button"
           >
-            <ImagePlus className="h-4 w-4" aria-hidden="true" />
+            <ImagePlus className="h-5 w-5" aria-hidden="true" />
             {t("ui.simulateMedia")}
           </button>
         )}
       </div>
+
       <input
         ref={cameraInputRef}
         accept="image/*"
@@ -163,17 +206,18 @@ export default function MediaUploader({ value = [], onChange, loading = false, e
       />
 
       {[error, ...errors].filter(Boolean).map((message) => (
-        <p className="text-sm font-semibold text-red-600" key={message}>
+        <div key={message} className="flex items-center gap-2 rounded-2xl bg-red-50 p-4 text-sm font-bold text-red-600 border border-red-100">
+          <X className="h-4 w-4" />
           {message}
-        </p>
+        </div>
       ))}
 
       {value.length ? (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
           {value.map((image, index) => (
             <div
               draggable
-              className="group relative aspect-square overflow-hidden rounded-xl border border-neutral-200 bg-neutral-100"
+              className="group relative aspect-square overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 shadow-sm transition-all hover:shadow-md"
               key={image.id}
               onDragOver={(event) => event.preventDefault()}
               onDragStart={() => {
@@ -181,31 +225,41 @@ export default function MediaUploader({ value = [], onChange, loading = false, e
               }}
               onDrop={() => reorder(index)}
             >
-              <img alt={t("post.images")} className="h-full w-full object-cover" src={image.preview || image.url} />
+              <img 
+                alt={t("post.images")} 
+                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                src={image.preview || image.url} 
+                loading="lazy"
+              />
+              
+              <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+
               <button
                 aria-label={t("post.removeImage")}
-                className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-white text-neutral-700 shadow"
+                className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-xl bg-white/90 text-red-500 shadow-lg backdrop-blur-sm transition-transform hover:scale-110"
                 onClick={() => removeImage(image.id)}
                 type="button"
               >
-                <X className="h-4 w-4" aria-hidden="true" />
+                <X className="h-5 w-5" aria-hidden="true" />
               </button>
+
               <button
-                aria-label={image.isPrimary || image.primary ? t("post.primaryImage") : t("post.makePrimary")}
+                aria-label={image.isPrimary ? t("post.primaryImage") : t("post.makePrimary")}
                 className={cn(
-                  "absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-black shadow",
-                  image.isPrimary || image.primary ? "bg-amber-400 text-neutral-950" : "bg-white text-neutral-700",
+                  "absolute bottom-2 left-2 inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-wider shadow-lg backdrop-blur-sm transition-all",
+                  image.isPrimary ? "bg-amber-400 text-neutral-900" : "bg-white/90 text-neutral-600 hover:bg-white"
                 )}
                 onClick={() => makePrimary(image.id)}
                 type="button"
               >
-                <Star className={cn("h-3.5 w-3.5", (image.isPrimary || image.primary) && "fill-neutral-950")} aria-hidden="true" />
-                {image.isPrimary || image.primary ? t("post.primaryImage") : t("post.makePrimary")}
+                <Star className={cn("h-3.5 w-3.5", image.isPrimary && "fill-neutral-900")} aria-hidden="true" />
+                {image.isPrimary ? t("post.primaryImage") : t("post.makePrimary")}
               </button>
-              <span className="absolute bottom-2 right-2 grid h-8 w-8 place-items-center rounded-full bg-white/90 text-neutral-500">
-                <GripHorizontal className="h-4 w-4" aria-hidden="true" />
+
+              <div className="absolute bottom-2 right-2 grid h-9 w-9 place-items-center rounded-xl bg-white/50 text-white backdrop-blur-sm cursor-grab active:cursor-grabbing">
+                <GripHorizontal className="h-5 w-5" aria-hidden="true" />
                 <span className="sr-only">{t("post.dragImage")}</span>
-              </span>
+              </div>
             </div>
           ))}
         </div>

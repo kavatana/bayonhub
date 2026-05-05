@@ -2,10 +2,10 @@ import React, { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import gsap from "gsap"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "../../hooks/useTranslation"
-import { PROVINCES } from "../../lib/locations"
-import { useAuthStore } from "../../store/useAuthStore"
 import { useListingStore } from "../../store/useListingStore"
 import { useUIStore } from "../../store/useUIStore"
+import { fetchStats } from "../../api/listings"
+import { toKhmerNumerals } from "../../lib/utils"
 import Button from "../ui/Button"
 
 const HeroOrb = React.lazy(() => import("../three/HeroOrb"))
@@ -14,22 +14,40 @@ export default function HeroSection() {
   const { t, language } = useTranslation()
   const navigate = useNavigate()
   const listings = useListingStore((state) => state.listings)
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
-  const togglePostModal = useUIStore((state) => state.togglePostModal)
-  const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
+  const togglePostModal = useUIStore((state) => state.togglePostModal)
   const [activeSlide, setActiveSlide] = useState(0)
   const [searchQuery, setSearchQuery] = useState("")
+  const [realStats, setRealStats] = useState(null)
+  const [weekAgo, setWeekAgo] = useState(null)
+
+  useEffect(() => {
+    setTimeout(() => {
+      setWeekAgo(new Date(Date.now() - 7 * 86400000))
+    }, 0)
+  }, [])
   const sectionRef = useRef(null)
   const slideRef = useRef(null)
   const statRefs = useRef([])
 
-  const verifiedSellers = useMemo(
+  const verifiedSellersCount = useMemo(
     () => new Set(listings.filter((listing) => listing.verified).map((listing) => listing.sellerId)).size,
     [listings],
   )
 
   const titleClass = language === "km" ? "font-khmer text-3xl sm:text-4xl lg:text-5xl" : "font-display text-4xl sm:text-5xl lg:text-6xl"
+
+  useEffect(() => {
+    async function loadStats() {
+      try {
+        const data = await fetchStats()
+        if (data) setRealStats(data)
+      } catch {
+        console.warn("[Hero] Could not fetch real stats, using store fallback")
+      }
+    }
+    loadStats()
+  }, [])
 
   useEffect(() => {
     const section = sectionRef.current
@@ -38,13 +56,18 @@ export default function HeroSection() {
       ([entry]) => {
         if (!entry.isIntersecting) return
         statRefs.current.forEach((element) => {
+          if (!element) return
+          const targetValue = Number(element.dataset.value || 0)
           const state = { value: 0 }
           gsap.to(state, {
-            value: Number(element?.dataset.value || 0),
+            value: targetValue,
             duration: 1.4,
             ease: "power2.out",
             onUpdate: () => {
-              if (element) element.textContent = Math.round(state.value).toLocaleString()
+              if (element) {
+                const rounded = Math.round(state.value).toLocaleString()
+                element.textContent = language === "km" ? toKhmerNumerals(rounded) : rounded
+              }
             },
           })
         })
@@ -54,7 +77,7 @@ export default function HeroSection() {
     )
     observer.observe(section)
     return () => observer.disconnect()
-  }, [listings.length, verifiedSellers])
+  }, [realStats, listings.length, verifiedSellersCount, language])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -74,11 +97,6 @@ export default function HeroSection() {
 
   function openPostFlow(prefill = null) {
     const pendingAction = prefill ? { type: "post", prefill } : { type: "post" }
-    if (!isAuthenticated) {
-      setPendingAction(pendingAction)
-      toggleAuthModal(true)
-      return
-    }
     setPendingAction(pendingAction)
     togglePostModal(true)
   }
@@ -112,10 +130,20 @@ export default function HeroSection() {
   ]
   const currentSlide = slides[activeSlide]
 
+
   const stats = [
-    { value: (listings.length > 0 ? listings.length : 0) + 5420, label: t("hero.totalListings") },
-    { value: (verifiedSellers > 0 ? verifiedSellers : 0) + 1240, label: t("hero.verifiedSellers") },
-    { value: PROVINCES.length, label: t("hero.provincesCovered") },
+    {
+      value: realStats?.totalListings ?? listings.length,
+      label: t("hero.totalAds"),
+    },
+    {
+      value: realStats?.verifiedSellers ?? verifiedSellersCount,
+      label: t("hero.verifiedSellers"),
+    },
+    {
+      value: realStats?.weeklyListings ?? (weekAgo ? listings.filter(l => new Date(l.postedAt || l.createdAt) > weekAgo).length : 0),
+      label: t("hero.weeklyListings"),
+    },
   ]
 
   return (

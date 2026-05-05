@@ -71,6 +71,7 @@ export const useUIStore = create((set, get) => ({
   pendingAction: null,
   searchQuery: "",
   locationSelectorOpen: false,
+  hideBottomNav: false,
 
   setLanguage: (language) => {
     storage.set(STORAGE_KEYS.language, language)
@@ -96,6 +97,10 @@ export const useUIStore = create((set, get) => ({
 
   setPendingAction: (pendingAction) => {
     set({ pendingAction })
+  },
+
+  setHideBottomNav: (hideBottomNav) => {
+    set({ hideBottomNav })
   },
 
   setSelectedProvince: (selectedProvince) => {
