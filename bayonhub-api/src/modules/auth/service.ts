@@ -191,7 +191,7 @@ export async function loginUser(
   } catch (error: any) {
     if (error.code === 'P2022') {
       const column = error.meta?.column || 'unknown'
-      throw createHttpError(500, `Prisma P2022: Column missing: ${column}`)
+      throw createHttpError(418, `Prisma P2022: Column missing: ${column}`)
     }
     throw error
   }
