@@ -138,7 +138,7 @@ if (env.nodeEnv === "production") {
   const distPath = path.join(__dirname, "../../bayonhub-app/dist")
   app.use(express.static(distPath))
   
-  app.get("*", (req, res, next) => {
+  app.get("*splat", (req, res, next) => {
     // Only serve index.html for non-API routes
     if (!req.path.startsWith("/api/")) {
       const indexPath = path.join(distPath, "index.html")
