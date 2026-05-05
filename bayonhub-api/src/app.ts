@@ -156,7 +156,10 @@ app.use((_req, res) => {
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   const status = err.status || err.statusCode || 500
-  const message = err.message
+  const message =
+    env.nodeEnv === "production" && status === 500
+      ? "Internal server error"
+      : err.message
   res.status(status).json({ error: message, code: err.code })
 }
 
