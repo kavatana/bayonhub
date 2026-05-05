@@ -17,7 +17,7 @@ import type { Router, Request, Response } from "express"
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "https://bayonhub.com"
 
-const apiBase = (process.env.API_URL || "https://api.bayonhub.com").replace(/\/$/, "")
+const apiBase = "https://api.bayonhub.com"
 
 // ─── Google ───────────────────────────────────────────────────────────────────
 
