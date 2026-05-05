@@ -70,6 +70,7 @@ function ListingCard({ listing }) {
             alt={sanitizeText(listing.title)}
             className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
             loading="lazy"
+            onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.onerror = null }}
             src={image}
             srcSet={getSrcSet(image)}
           />

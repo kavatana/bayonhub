@@ -46,6 +46,7 @@ export default function StorefrontPage() {
   const following = useAuthStore((state) => state.following)
   const followSeller = useAuthStore((state) => state.followSeller)
   const unfollowSeller = useAuthStore((state) => state.unfollowSeller)
+  const user = useAuthStore((state) => state.user)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   
@@ -87,7 +88,21 @@ export default function StorefrontPage() {
   }, [seller])
 
   if (loading) return <StorefrontSkeleton />
-  if (error || (!seller && !loading)) return <NotFoundPage message={t("seller.notFound")} />
+  if (error) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-12 text-center">
+        <div className="mx-auto inline-flex flex-col items-center gap-4 rounded-3xl border border-red-100 bg-red-50 p-10 text-red-700 shadow-sm sm:px-16">
+          <h2 className="text-2xl font-black">{t("ui.error")}</h2>
+          <p className="max-w-xl text-sm font-bold">{error}</p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <Button onClick={() => fetchStorefront(identifier)} variant="secondary">{t("ui.retry")}</Button>
+            <Button onClick={() => navigate("/")}>{t("listing.browseAll")}</Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  if (!seller && !loading) return <NotFoundPage message={t("seller.notFound")} />
 
   const merchant = seller.merchantProfile || {}
   const isFollowing = following.includes(seller.id)
@@ -109,7 +124,9 @@ export default function StorefrontPage() {
               <img 
                 alt={seller.name} 
                 className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" 
-                src={banner} 
+                src={banner}
+                loading="lazy"
+                onError={(e) => { e.currentTarget.style.display = "none" }}
               />
             ) : (
               <div className="relative w-full h-full bg-gradient-to-br from-neutral-100 to-neutral-200 dark:from-neutral-800 dark:to-neutral-900 bg-bayon-sketch bg-bayon-sketch-20">
@@ -125,7 +142,7 @@ export default function StorefrontPage() {
                 <div className="relative group">
                   <div className="h-32 w-32 overflow-hidden rounded-full border-8 border-white bg-white shadow-2xl transition-transform duration-300 group-hover:scale-105">
                     {logo ? (
-                      <img alt={seller.name} className="h-full w-full object-cover" src={logo} />
+                      <img alt={seller.name} className="h-full w-full object-cover" src={logo} loading="lazy" />
                     ) : (
                       <div className="grid h-full w-full place-items-center bg-primary text-4xl font-black text-white">
                         {seller.name.slice(0, 2).toUpperCase()}
@@ -179,7 +196,7 @@ export default function StorefrontPage() {
                 >
                   {isFollowing ? t("seller.following") : t("seller.follow")}
                 </Button>
-                {isAuthenticated && seller.id !== useAuthStore.getState().user?.id && (
+                {isAuthenticated && seller.id !== user?.id && (
                   <Button size="lg" variant="outline" onClick={() => setReviewModalOpen(true)}>
                     <Star className="h-5 w-5 mr-2" />
                     {t("review.submit")}

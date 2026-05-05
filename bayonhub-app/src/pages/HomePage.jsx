@@ -56,6 +56,7 @@ export default function HomePage() {
   const { t, language } = useTranslation()
   const listings = useListingStore((state) => state.listings)
   const loading = useListingStore((state) => state.loading)
+  const error = useListingStore((state) => state.error)
   const fetchListings = useListingStore((state) => state.fetchListings)
   const recentlyViewed = useListingStore((state) => state.recentlyViewed)
   const getRecentlyViewedListings = useListingStore((state) => state.getRecentlyViewedListings)
@@ -129,7 +130,7 @@ export default function HomePage() {
       bg: "bg-emerald-50 dark:bg-emerald-900/20",
       border: "border-emerald-200 dark:border-emerald-800",
       title: t("trust.verifiedSellers"),
-      desc: "Phone-verified sellers, identity badges, and seller ratings so buyers act with confidence.",
+      desc: t("trust.verifiedSellersDesc"),
     },
     {
       icon: Shield,
@@ -137,7 +138,7 @@ export default function HomePage() {
       bg: "bg-blue-50 dark:bg-blue-900/20",
       border: "border-blue-200 dark:border-blue-800",
       title: t("trust.safePayments"),
-      desc: "ABA KHQR checkout, meet-in-public guidance, and scam reporting built in.",
+      desc: t("trust.safePaymentsDesc"),
     },
     {
       icon: MapPin,
@@ -145,7 +146,7 @@ export default function HomePage() {
       bg: "bg-primary/5",
       border: "border-primary/20",
       title: `${PROVINCES.length} ${t("hero.provinces")}`,
-      desc: "From Phnom Penh to Rattanakiri — every province and major district covered.",
+      desc: t("trust.provincesCoveredDesc"),
     },
   ]
 
@@ -248,7 +249,7 @@ export default function HomePage() {
           {t("listing.featured")}
         </h2>
         <div className="mt-5">
-          <ListingGrid listings={featured.slice(0, 4)} loading={loading} />
+          <ListingGrid listings={featured.slice(0, 4)} loading={loading} error={error} onRetry={fetchListings} />
         </div>
       </section>
 
@@ -271,7 +272,7 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="mt-5">
-              <ListingGrid listings={[]} loading={loading} emptyMessage={t("listing.empty")} />
+              <ListingGrid listings={[]} loading={loading} error={error} onRetry={fetchListings} emptyMessage={t("listing.empty")} />
             </div>
           )}
         </section>
@@ -293,7 +294,7 @@ export default function HomePage() {
               </Link>
             </div>
             <div className="mt-5">
-              <ListingGrid listings={nearYouListings} loading={loading} emptyMessage={t("listing.empty")} />
+              <ListingGrid listings={nearYouListings} loading={loading} error={error} onRetry={fetchListings} emptyMessage={t("listing.empty")} />
             </div>
           </>
         ) : (
@@ -392,7 +393,7 @@ export default function HomePage() {
             {t("home.trustTitle")}
           </h2>
           <p className="mt-2 text-neutral-500 dark:text-neutral-400">
-            Built for Cambodian buyers and sellers — safe, fast, and verified.
+            {t("trust.subtitle")}
           </p>
         </div>
         <div className="grid gap-5 sm:grid-cols-3">

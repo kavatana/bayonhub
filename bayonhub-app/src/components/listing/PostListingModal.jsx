@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import toast from "react-hot-toast"
 import { CATEGORIES } from "../../lib/categories"
 import { PROVINCES } from "../../lib/locations"
 import { useTranslation } from "../../hooks/useTranslation"
@@ -84,17 +85,22 @@ export default function PostListingModal() {
     event.preventDefault()
     if (!validate()) return
     setLoading(true)
-    const listing = await createListing({
-      ...form,
-      price: Number(form.price),
-      images,
-    })
-    setLoading(false)
-    if (listing) {
-      setForm(initialForm)
-      setImages([])
-      setPreviews([])
-      togglePostModal(false)
+    try {
+      const listing = await createListing({
+        ...form,
+        price: Number(form.price),
+        images,
+      })
+      if (listing) {
+        setForm(initialForm)
+        setImages([])
+        setPreviews([])
+        togglePostModal(false)
+      }
+    } catch (err) {
+      toast.error(err?.message || t("ui.error"))
+    } finally {
+      setLoading(false)
     }
   }
 

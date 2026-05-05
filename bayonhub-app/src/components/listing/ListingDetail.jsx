@@ -88,12 +88,24 @@ export default function ListingDetail({ listing }) {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [descriptionLanguage, setDescriptionLanguage] = useState(language)
   const [offer, setOffer] = useState({ price: "", message: "" })
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false)
+  const [isSubmittingOffer, setIsSubmittingOffer] = useState(false)
   const mainImageRef = useRef(null)
   const createLead = useListingStore((state) => state.createLead)
   const reportListing = useListingStore((state) => state.reportListing)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
+  const openReportListingId = useUIStore((state) => state.openReportListingId)
+  const setOpenReportListingId = useUIStore((state) => state.setOpenReportListingId)
+
+  // Open report modal after login completes a pending report action for this listing
+  useEffect(() => {
+    if (openReportListingId && openReportListingId === listing.id) {
+      setOpenReportListingId(null)
+      Promise.resolve().then(() => setReportOpen(true))
+    }
+  }, [openReportListingId, listing.id, setOpenReportListingId])
   const phone = listing.phone || null
   const hasPhone = Boolean(phone)
   const category = findCategoryForListing(listing)
@@ -146,6 +158,41 @@ export default function ListingDetail({ listing }) {
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [images.length, lightboxOpen])
+
+  useEffect(() => {
+    if (lightboxOpen) {
+      document.body.style.overflow = "hidden"
+    } else {
+      document.body.style.overflow = ""
+    }
+    return () => {
+      document.body.style.overflow = ""
+    }
+  }, [lightboxOpen])
+
+  const touchStartX = useRef(null)
+  const touchStartY = useRef(null)
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+  }
+
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null) return
+    const diffX = touchStartX.current - e.changedTouches[0].clientX
+    const diffY = Math.abs(touchStartY.current - e.changedTouches[0].clientY)
+    
+    if (Math.abs(diffX) > 50 && Math.abs(diffX) > diffY) {
+      if (diffX > 0) {
+        setActiveImage((value) => (value + 1) % images.length)
+      } else {
+        setActiveImage((value) => (value - 1 + images.length) % images.length)
+      }
+    }
+    touchStartX.current = null
+    touchStartY.current = null
+  }
 
   async function shareListing() {
     const url = window.location.href
@@ -214,53 +261,66 @@ export default function ListingDetail({ listing }) {
   async function submitReport(event) {
     event.preventDefault()
     if (reportDetail.trim() && reportDetail.trim().length < 20) {
-      toast.error(t("ui.error"))
+      toast.error(t("report.detailTooShort"))
       return
     }
     if (evidenceUrl.trim()) {
       try {
         new URL(evidenceUrl)
       } catch {
-        toast.error(t("ui.error"))
+        toast.error(t("report.invalidUrl"))
         return
       }
     }
-    const reportPayload = {
-      reason: selectedReason,
-      detail: reportDetail.trim() || null,
-      evidenceUrl: evidenceUrl.trim() || null,
-      contactEmail: contactEmail.trim() || null,
-      userAgent: navigator.userAgent,
-      reportedAt: new Date().toISOString(),
-      listingId: listing.id,
-      listingTitle: listing.title,
-      reporterSessionId: sessionStorage.getItem("bayonhub:session"),
-    }
-    const result = await reportListing(listing.id, reportPayload)
-    if (!result) {
+    setIsSubmittingReport(true)
+    try {
+      const reportPayload = {
+        reason: selectedReason,
+        detail: reportDetail.trim() || null,
+        evidenceUrl: evidenceUrl.trim() || null,
+        contactEmail: contactEmail.trim() || null,
+        userAgent: navigator.userAgent,
+        reportedAt: new Date().toISOString(),
+        listingId: listing.id,
+        listingTitle: listing.title,
+        reporterSessionId: sessionStorage.getItem("bayonhub:session"),
+      }
+      const result = await reportListing(listing.id, reportPayload)
+      if (!result) {
+        toast.error(t("ui.error"))
+        return
+      }
+      setReportOpen(false)
+      setReportDetail("")
+      setEvidenceUrl("")
+      setContactEmail("")
+      setSelectedReason("SCAM")
+      toast.success(t("report.submitted"))
+    } catch {
       toast.error(t("ui.error"))
-      return
+    } finally {
+      setIsSubmittingReport(false)
     }
-    setReportOpen(false)
-    setReportDetail("")
-    setEvidenceUrl("")
-    setContactEmail("")
-    setSelectedReason("SCAM")
-    toast.success(t("report.submitted"))
   }
 
   function submitOffer(event) {
     event.preventDefault()
-    if (!canPerformContact("OFFER")) return
-    try {
-      createLead(listing.id, buildLeadPayload("OFFER", { offerPrice: offer.price, message: offer.message }))
-      recordContact("OFFER")
-    } catch {
+    if (!offer.price || Number(offer.price) <= 0) {
       toast.error(t("post.validationPrice"))
       return
     }
-    setOfferOpen(false)
-    toast.success(t("ui.success"))
+    if (!canPerformContact("OFFER")) return
+    setIsSubmittingOffer(true)
+    try {
+      createLead(listing.id, buildLeadPayload("OFFER", { offerPrice: offer.price, message: offer.message }))
+      recordContact("OFFER")
+      setOfferOpen(false)
+      toast.success(t("ui.success"))
+    } catch {
+      toast.error(t("post.validationPrice"))
+    } finally {
+      setIsSubmittingOffer(false)
+    }
   }
 
   return (
@@ -533,24 +593,54 @@ export default function ListingDetail({ listing }) {
       </aside>
 
       <Modal open={lightboxOpen} onClose={() => setLightboxOpen(false)} title={listing.title} size="xl">
-        <div className="relative">
-          <img alt={listing.title} className="max-h-[76vh] w-full rounded-2xl object-contain" src={images[activeImage]} />
+        <div 
+          className="relative outline-none"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          style={{ userSelect: 'none', touchAction: 'pan-y' }}
+          tabIndex={-1}
+        >
+          {/* Counter Badge */}
+          <div className="absolute right-4 top-4 z-10 rounded-full bg-black/60 px-3 py-1 text-sm font-bold tracking-widest text-white backdrop-blur-md">
+            {activeImage + 1} / {images.length}
+          </div>
+
+          <img alt={listing.title} className="max-h-[76vh] w-full rounded-2xl object-contain select-none pointer-events-none" src={images[activeImage]} />
+          
           <button
             aria-label={t("listing.previousImage")}
-            className="absolute left-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-neutral-900 shadow"
+            className="absolute left-3 top-1/2 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-neutral-900 shadow hover:bg-white sm:grid"
             onClick={() => setActiveImage((value) => (value - 1 + images.length) % images.length)}
             type="button"
           >
             <ChevronLeft className="h-5 w-5" aria-hidden="true" />
           </button>
+          
           <button
             aria-label={t("listing.nextImage")}
-            className="absolute right-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-neutral-900 shadow"
+            className="absolute right-3 top-1/2 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-neutral-900 shadow hover:bg-white sm:grid"
             onClick={() => setActiveImage((value) => (value + 1) % images.length)}
             type="button"
           >
             <ChevronRight className="h-5 w-5" aria-hidden="true" />
           </button>
+
+          {/* Dots Indicator */}
+          {images.length > 1 && (
+            <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
+              {images.map((_, index) => (
+                <button
+                  key={index}
+                  aria-label={t("hero.goToSlide", { number: index + 1 })}
+                  className={`h-2 w-2 rounded-full transition-all duration-300 ${
+                    index === activeImage ? "bg-white w-4" : "bg-white/40 hover:bg-white/60"
+                  }`}
+                  onClick={() => setActiveImage(index)}
+                  type="button"
+                />
+              ))}
+            </div>
+          )}
         </div>
       </Modal>
 
@@ -604,7 +694,7 @@ export default function ListingDetail({ listing }) {
               value={contactEmail}
             />
           </label>
-          <Button type="submit">{t("report.submit")}</Button>
+          <Button disabled={isSubmittingReport} loading={isSubmittingReport} type="submit">{t("report.submit")}</Button>
         </form>
       </Modal>
 
@@ -618,7 +708,7 @@ export default function ListingDetail({ listing }) {
             {t("listing.offerMessage")}
             <textarea className="min-h-24 rounded-xl border border-neutral-200 p-3 outline-none focus:border-primary" onChange={(event) => setOffer((current) => ({ ...current, message: event.target.value }))} value={offer.message} />
           </label>
-          <Button type="submit">{t("listing.submitOffer")}</Button>
+          <Button disabled={isSubmittingOffer} loading={isSubmittingOffer} type="submit">{t("listing.submitOffer")}</Button>
         </form>
       </Modal>
     </article>

@@ -161,9 +161,6 @@ export const useAuthStore = create((set, get) => ({
     })
   },
 
-  clearUser: () => {
-    get().clearAuthState()
-  },
 
   setUser: (user) => {
     persistUser(user)
@@ -196,9 +193,8 @@ export const useAuthStore = create((set, get) => ({
     return following
   },
 
-  isFollowing: (sellerId) => get().following.includes(String(sellerId)),
 }))
 
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && import.meta.env.DEV) {
   window.authStore = useAuthStore
 }

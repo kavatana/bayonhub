@@ -33,6 +33,7 @@ export default function ListingPage() {
   const listing = useListingStore((state) => state.currentListing)
   const listings = useListingStore((state) => state.listings)
   const loading = useListingStore((state) => state.loading)
+  const error = useListingStore((state) => state.error)
   const fetchListingById = useListingStore((state) => state.fetchListingById)
   const fetchListings = useListingStore((state) => state.fetchListings)
   const createLead = useListingStore((state) => state.createLead)
@@ -130,6 +131,21 @@ export default function ListingPage() {
     return <ListingPageSkeleton />
   }
 
+  if (error) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-12 text-center">
+        <div className="mx-auto inline-flex flex-col items-center gap-4 rounded-3xl border border-red-100 bg-red-50 p-10 text-red-700 shadow-sm sm:px-16">
+          <h2 className="text-2xl font-black">{t("ui.error")}</h2>
+          <p className="max-w-xl text-sm font-bold">{error}</p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <Button onClick={() => fetchListingById(listingId)} variant="secondary">{t("ui.retry")}</Button>
+            <Button onClick={() => navigate("/")}>{t("listing.browseAll")}</Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (!listing) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-12 text-center">
@@ -203,7 +219,7 @@ export default function ListingPage() {
             onReveal={() => {
               createLead(listing.id, buildLeadPayload("CALL", { phone: listing.phone }))
             }}
-            className="!h-10 !text-xs"
+            className="!h-11 !text-xs"
           />
           <Button
             disabled={!listing.phone}

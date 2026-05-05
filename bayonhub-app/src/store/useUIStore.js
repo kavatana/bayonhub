@@ -69,6 +69,7 @@ export const useUIStore = create((set, get) => ({
   postModalOpen: false,
   authModalOpen: false,
   pendingAction: null,
+  openReportListingId: null,
   searchQuery: "",
   locationSelectorOpen: false,
   hideBottomNav: false,
@@ -97,6 +98,10 @@ export const useUIStore = create((set, get) => ({
 
   setPendingAction: (pendingAction) => {
     set({ pendingAction })
+  },
+
+  setOpenReportListingId: (id) => {
+    set({ openReportListingId: id })
   },
 
   setHideBottomNav: (hideBottomNav) => {

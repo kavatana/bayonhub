@@ -13,6 +13,10 @@ export const getStorefront = async (identifier) => {
 }
 
 export const submitReview = async (reviewData) => {
-  const response = await client.post("/storefront/review", reviewData)
-  return response.data
+  try {
+    const response = await client.post("/storefront/review", reviewData)
+    return response.data
+  } catch (err) {
+    throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
+  }
 }

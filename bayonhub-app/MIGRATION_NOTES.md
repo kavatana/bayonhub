@@ -1,6 +1,50 @@
 # BayonHub Migration Notes
 
-## Backend Connection Sprint — Task 1 — April 30, 2026
+## Forensic Audit Fix Sprint — May 5, 2026
+
+### Security
+- `src/store/useAuthStore.js` — Wrapped `window.authStore` in `import.meta.env.DEV` guard. Previously exposed entire auth store including user, token, and all actions to any script in production console.
+
+### Dead Code Removal
+- `src/pages/SellerPage.jsx` — DELETED. 311-line page was never registered in `App.jsx`. `/seller/:id` and `/u/:slug` routes both use `StorefrontPage`.
+- `src/components/seller/SellerPageSkeleton.jsx` — DELETED. Only imported by `SellerPage.jsx`.
+- `src/store/useAuthStore.js` — Removed `clearUser()` alias (duplicate of `clearAuthState()`). Removed `isFollowing()` method (never called by any component).
+- `src/components/dashboard/SettingsTab.jsx` — Removed 200+ lines of duplicate KYC form, all associated state (`kycForm`, `kycLoading`, `kycSubmitting`, etc.), and orphaned helper functions (`submitKyc`, `handleKycFile`, `updateKyc`, `getTierLabel`, etc.). Replaced with a single "Go to Verification" button that navigates to `/dashboard?tab=verification`.
+
+### Bug Fixes
+- `src/components/listing/ListingDetail.jsx` — Report pending action now works after login. Subscribes to `openReportListingId` from UIStore; opens report modal asynchronously via `Promise.resolve().then()` to satisfy lint rule.
+- `src/store/useUIStore.js` — Added `openReportListingId` state and `setOpenReportListingId()` action to support cross-component report modal re-trigger after auth.
+- `src/components/auth/AuthModal.jsx` — Added `type: "report"` handler in `completePendingAction()`. Password mismatch now shows inline error under confirm-password field instead of a floating toast.
+- `src/components/dashboard/StoreTab.jsx` — Outer Save button now has `loading={saving} disabled={saving}` to prevent double-submit. Moved `updateUser()` call to AFTER all API calls succeed (was called before, causing dirty state on error).
+- `src/pages/StorefrontPage.jsx` — Replaced `useAuthStore.getState().user` in JSX render with reactive `user = useAuthStore(state => state.user)` subscription.
+- `src/components/layout/Navbar.jsx` — `openPostFlow()` no longer sets `pendingAction` when user is already authenticated (prevents stale post intent leaking into other auth flows).
+
+### Validation Improvements
+- `src/components/dashboard/VerificationTab.jsx` — Added explicit JS validation for `fullName` and `idNumber` before KYC submit. Fixed `alt="Preview"` hardcoded string to `alt={t("ui.preview")}`.
+- `src/components/listing/ListingDetail.jsx` — `submitOffer()` now validates `offer.price > 0` before submitting. `submitReport()` now shows specific error messages (`report.detailTooShort`, `report.invalidUrl`) instead of generic `ui.error`.
+- `src/components/auth/AuthModal.jsx` — Password mismatch validation is now inline field error (not toast).
+
+### Error Handling
+- `src/components/dashboard/SettingsTab.jsx` — `save()` catch block now shows real API error (`err.response.data.error || err.message`) instead of generic string.
+- `src/components/payments/ABAPayModal.jsx` — Added prominent error state with retry button when payment generation or polling fails. Added `IS_PRODUCTION` guard to "Confirm local payment" dev button.
+
+### UX Fixes
+- `src/components/ui/FeedbackTab.jsx` — Removed `window.innerWidth` read from inline style (SSR-unsafe + stale on resize). Now uses Tailwind responsive classes only. Success toast changed to clarify feedback is saved locally (no API call is made).
+
+### Image/Performance
+- `src/pages/StorefrontPage.jsx` — Added `loading="lazy"` to banner and logo images. Added `onError` fallback for broken banner URLs.
+- `src/pages/AdminPage.jsx` — Added `loading="lazy"` to reporter avatar and KYC document images.
+
+### Translations (EN + KM)
+- `ui.preview`, `ui.feedbackSaved` — new keys
+- `report.detailTooShort`, `report.invalidUrl` — specific validation error messages
+- `kyc.goToVerification`, `kyc.openVerification` — for SettingsTab KYC redirect
+
+### Lint & Build
+- Lint: **PASS** (0 errors, 0 warnings)
+- Build: **PASS** — all chunks under 500KB, vendor-three isolated
+
+
 
 - `.env.local` — Confirmed backend API URL and added the local Vite site URL for connected development.
 - `src/api/client.js` — Verified credentialed Axios requests and offline-only token reads, then added a dev-only `/health` connectivity probe for the backend.
@@ -1245,3 +1289,11 @@ Status after sprint:
 - Database: ✅ SYNCED (All migrations applied)
 - Production: ✅ STABLE
 - Readiness: 10/10
+
+### Phase 9: Error States (2026-05-05)
+- Standardized error states across data-fetching pages (`ListingPage`, `HomePage`, `CategoryPage`, `SearchPage`, `StorefrontPage`, `AdminPage`)
+- Added `error` state handling and extraction from `useListingStore`
+- Replaced generic 404 pages or blank screens with actionable `bg-red-50` error cards containing clear messages and "Try again" retry buttons
+- Updated translations to include `ui.retry` in both English and Khmer namespaces
+- Maintained stability with passing lint and build checks
+

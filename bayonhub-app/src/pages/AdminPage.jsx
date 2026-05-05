@@ -172,7 +172,12 @@ export default function AdminPage() {
       </div>
 
       {loading ? <p className="rounded-xl bg-white p-4 text-sm font-bold text-neutral-500">{t("ui.loading")}</p> : null}
-      {error ? <p className="rounded-xl bg-red-50 p-4 text-sm font-bold text-red-700">{error}</p> : null}
+      {error ? (
+        <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm font-bold text-red-700">
+          <h3 className="mb-1 text-base font-black">{t("ui.error")}</h3>
+          <p>{error}</p>
+        </div>
+      ) : null}
       {!loading && empty ? <p className="rounded-xl bg-white p-4 text-sm font-bold text-neutral-500">{t("ui.empty")}</p> : null}
 
       {activeTab === "listings" && listings.length ? (
@@ -205,7 +210,7 @@ export default function AdminPage() {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                   {report.reporter?.avatarUrl ? (
-                    <img alt="" className="h-10 w-10 rounded-full object-cover" src={report.reporter.avatarUrl} />
+                    <img alt="" className="h-10 w-10 rounded-full object-cover" loading="lazy" src={report.reporter.avatarUrl} />
                   ) : (
                     <div className="grid h-10 w-10 place-items-center rounded-full bg-neutral-100 font-bold text-neutral-500">
                       {report.reporter?.name?.charAt(0) || "U"}
@@ -324,9 +329,9 @@ export default function AdminPage() {
               <h2 className="font-black text-neutral-900">{application.fullName}</h2>
               <p className="text-sm font-semibold text-neutral-500">{application.idType} · {application.idNumber}</p>
               <div className="mt-3 flex gap-3 overflow-x-auto">
-                <img alt={t("kyc.uploadId")} className="h-28 w-40 rounded-xl object-cover" src={`${API_BASE_URL}/api/admin/kyc/${application.id}/document/idFront`} />
-                {application.idBackKey ? <img alt={t("kyc.uploadIdBack")} className="h-28 w-40 rounded-xl object-cover" src={`${API_BASE_URL}/api/admin/kyc/${application.id}/document/idBack`} /> : null}
-                {application.selfieKey ? <img alt={t("kyc.uploadSelfie")} className="h-28 w-40 rounded-xl object-cover" src={`${API_BASE_URL}/api/admin/kyc/${application.id}/document/selfie`} /> : null}
+                <img alt={t("kyc.uploadId")} className="h-28 w-40 rounded-xl object-cover" loading="lazy" src={`${API_BASE_URL}/api/admin/kyc/${application.id}/document/idFront`} />
+                {application.idBackKey ? <img alt={t("kyc.uploadIdBack")} className="h-28 w-40 rounded-xl object-cover" loading="lazy" src={`${API_BASE_URL}/api/admin/kyc/${application.id}/document/idBack`} /> : null}
+                {application.selfieKey ? <img alt={t("kyc.uploadSelfie")} className="h-28 w-40 rounded-xl object-cover" loading="lazy" src={`${API_BASE_URL}/api/admin/kyc/${application.id}/document/selfie`} /> : null}
               </div>
               <div className="mt-3 flex gap-2">
                 <Button onClick={() => reviewKyc(application.id, "APPROVED")} size="sm">{t("admin.approve")}</Button>

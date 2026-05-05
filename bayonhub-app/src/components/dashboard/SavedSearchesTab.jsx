@@ -1,6 +1,6 @@
 import { memo, useMemo } from "react"
 import { Bell, Bookmark, Search, Trash2 } from "lucide-react"
-import { Link, useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { useTranslation } from "../../hooks/useTranslation"
 import { CATEGORIES } from "../../lib/categories"
 import { PROVINCES } from "../../lib/locations"
@@ -61,12 +61,17 @@ function SavedSearchesTab() {
 
   if (!sortedSearches.length) {
     return (
-      <div className="grid min-h-64 place-items-center rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center">
-        <Bookmark className="h-10 w-10 text-neutral-300" aria-hidden="true" />
-        <p className="mt-3 font-bold text-neutral-500">{t("search.noSavedSearches")}</p>
-        <Link className="mt-4 text-sm font-black text-primary" to="/">
+      <div className="grid min-h-64 place-items-center gap-4 rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 p-8 text-center">
+        <div className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary">
+          <Bookmark className="h-8 w-8" />
+        </div>
+        <div>
+          <h3 className="text-lg font-black text-neutral-900">{t("search.noSavedSearches")}</h3>
+          <p className="mt-1 text-sm font-semibold text-neutral-500">{t("search.noSavedSearchesDesc")}</p>
+        </div>
+        <Button onClick={() => navigate("/")} variant="secondary">
           {t("nav.home")}
-        </Link>
+        </Button>
       </div>
     )
   }

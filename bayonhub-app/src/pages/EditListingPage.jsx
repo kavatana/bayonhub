@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect } from "react"
 import { Helmet } from "react-helmet-async"
 import { useNavigate, useParams } from "react-router-dom"
-import Spinner from "../components/ui/Spinner"
+import { PostAdWizardSkeleton } from "../components/ui/Skeletons"
 import { useTranslation } from "../hooks/useTranslation"
 import { useAuthStore } from "../store/useAuthStore"
 import { useListingStore } from "../store/useListingStore"
@@ -42,8 +42,8 @@ export default function EditListingPage() {
 
   if (loading && !listing) {
     return (
-      <div className="grid min-h-[60vh] place-items-center">
-        <Spinner className="h-8 w-8 text-primary" />
+      <div className="mx-auto max-w-7xl px-4 py-8">
+        <PostAdWizardSkeleton />
       </div>
     )
   }
@@ -57,8 +57,8 @@ export default function EditListingPage() {
       </Helmet>
       <Suspense
         fallback={
-          <div className="grid min-h-[60vh] place-items-center">
-            <Spinner className="h-8 w-8 text-primary" />
+          <div className="mx-auto max-w-7xl px-4 py-8">
+            <PostAdWizardSkeleton />
           </div>
         }
       >

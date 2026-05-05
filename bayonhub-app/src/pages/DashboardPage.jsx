@@ -3,18 +3,19 @@ import { useGSAP } from "@gsap/react"
 import { Helmet } from "react-helmet-async"
 import gsap from "gsap"
 import { Heart } from "lucide-react"
-import { useSearchParams } from "react-router-dom"
+import { useSearchParams, useNavigate } from "react-router-dom"
 import { getSavedListings } from "../api/users"
 import ListingGrid from "../components/listing/ListingGrid"
 import PageTransition from "../components/ui/PageTransition"
-import Spinner from "../components/ui/Spinner"
+import { DashboardSkeleton } from "../components/ui/Skeletons"
+import Button from "../components/ui/Button"
 import { useTranslation } from "../hooks/useTranslation"
 import { useAuthStore } from "../store/useAuthStore"
 import { API_BASE_URL } from "../api/client"
 import { useListingStore } from "../store/useListingStore"
 import { useUIStore } from "../store/useUIStore"
 
-const EmptyStateOrb = React.lazy(() => import("../components/three/EmptyStateOrb"))
+
 const MyAdsTab = React.lazy(() => import("../components/dashboard/MyAdsTab"))
 const MessagesTab = React.lazy(() => import("../components/dashboard/MessagesTab"))
 const NotificationsTab = React.lazy(() => import("../components/dashboard/NotificationsTab"))
@@ -36,6 +37,7 @@ const tabs = [
 
 export default function DashboardPage() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [apiSavedListings, setApiSavedListings] = React.useState([])
   const [savedLoading, setSavedLoading] = React.useState(false)
   const [savedError, setSavedError] = React.useState("")
@@ -148,17 +150,13 @@ export default function DashboardPage() {
         <section ref={contentRef} className="min-w-0">
           <Suspense
             fallback={
-              <div className="grid min-h-64 place-items-center">
-                <Spinner className="h-8 w-8 text-primary" />
-              </div>
+              <DashboardSkeleton />
             }
           >
             {activeTab === "ads" ? <MyAdsTab /> : null}
             {activeTab === "saved" ? (
               savedLoading ? (
-                <div className="grid min-h-64 place-items-center">
-                  <Spinner className="h-8 w-8 text-primary" />
-                </div>
+                  <DashboardSkeleton />
               ) : savedError ? (
                 <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-bold text-red-700">
                   {savedError}
@@ -171,12 +169,17 @@ export default function DashboardPage() {
                   <ListingGrid listings={savedListings} />
                 </div>
               ) : (
-                <div className="grid min-h-64 place-items-center rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center">
-                  <Suspense fallback={<div className="h-32 w-32 rounded-full bg-neutral-100 animate-pulse dark:bg-neutral-800" />}>
-                    <EmptyStateOrb />
-                  </Suspense>
-                  <Heart className="sr-only" aria-hidden="true" />
-                  <p className="mt-3 font-bold text-neutral-500">{t("dashboard.savedEmpty")}</p>
+                <div className="grid min-h-64 place-items-center gap-4 rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 p-8 text-center">
+                  <div className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary">
+                    <Heart className="h-8 w-8" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-neutral-900">{t("dashboard.savedEmpty")}</h3>
+                    <p className="mt-1 text-sm font-semibold text-neutral-500">{t("dashboard.savedEmptyDesc")}</p>
+                  </div>
+                  <Button onClick={() => navigate("/")} variant="secondary">
+                    {t("nav.home")}
+                  </Button>
                 </div>
               )
             ) : null}

@@ -1,6 +1,6 @@
-import React, { Suspense, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { BarChart2, Check, Pencil, PlusCircle, Rocket, Trash2, TrendingUp } from "lucide-react"
+import { BarChart2, Check, Pencil, PlusCircle, Rocket, Trash2, TrendingUp, MoreVertical } from "lucide-react"
 import { useTranslation } from "../../hooks/useTranslation"
 import { getPromotionState, isPromotedListing, PROMOTION_LABELS } from "../../lib/promotionStates"
 import { formatPrice, getListingImage, listingUrl, timeAgo } from "../../lib/utils"
@@ -10,7 +10,7 @@ import { useUIStore } from "../../store/useUIStore"
 import Button from "../ui/Button"
 import Modal from "../ui/Modal"
 
-const EmptyStateOrb = React.lazy(() => import("../three/EmptyStateOrb"))
+import { Tag } from "lucide-react"
 
 const statuses = ["active", "pending", "sold", "expired", "removed"]
 const perPage = 10
@@ -29,6 +29,8 @@ export default function MyAdsTab() {
   const [activeStatus, setActiveStatus] = useState("active")
   const [page, setPage] = useState(1)
   const [deleteId, setDeleteId] = useState(null)
+  const [actionSheetListing, setActionSheetListing] = useState(null)
+  const [actionSheetConfirmDelete, setActionSheetConfirmDelete] = useState(false)
   const userId = user?.id
 
   const myAllListings = useMemo(
@@ -165,7 +167,7 @@ export default function MyAdsTab() {
                   return (
                     <tr key={listing.id}>
                       <td className="p-3">
-                        <img alt={listing.title} className="h-14 w-16 rounded-lg object-cover" src={getListingImage(listing)} />
+                        <img alt={listing.title} className="h-14 w-16 rounded-lg object-cover" onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.onerror = null }} src={getListingImage(listing)} />
                       </td>
                       <td className="max-w-56 p-3 font-bold text-neutral-900">
                         <Link className="hover:text-primary hover:underline" to={listingUrl(listing)}>
@@ -188,21 +190,21 @@ export default function MyAdsTab() {
                       </td>
                       <td className="p-3">
                         <div className="flex gap-1">
-                          <button className="grid h-9 w-9 place-items-center rounded-lg hover:bg-neutral-100" onClick={() => navigate(`/listing/${listing.id}/edit`)} type="button">
+                          <button title={t("ui.edit")} className="group flex h-11 items-center gap-2 rounded-lg px-2 hover:bg-neutral-100" onClick={() => navigate(`/listing/${listing.id}/edit`)} type="button">
                             <Pencil className="h-4 w-4" aria-hidden="true" />
-                            <span className="sr-only">{t("ui.edit")}</span>
+                            <span className="hidden text-xs font-bold text-neutral-600 group-hover:inline-block">{t("ui.edit")}</span>
                           </button>
-                          <button className="grid h-9 w-9 place-items-center rounded-lg hover:bg-neutral-100" onClick={() => updateListing(listing.id, { status: "sold" })} type="button">
+                          <button title={t("dashboard.markSold")} className="group flex h-11 items-center gap-2 rounded-lg px-2 hover:bg-neutral-100" onClick={() => updateListing(listing.id, { status: "sold" })} type="button">
                             <Check className="h-4 w-4" aria-hidden="true" />
-                            <span className="sr-only">{t("dashboard.markSold")}</span>
+                            <span className="hidden text-xs font-bold text-neutral-600 group-hover:inline-block">{t("dashboard.markSold")}</span>
                           </button>
-                          <button className="grid h-9 w-9 place-items-center rounded-lg hover:bg-neutral-100" onClick={() => bumpListing(listing.id)} type="button">
+                          <button title={t("dashboard.bump")} className="group flex h-11 items-center gap-2 rounded-lg px-2 hover:bg-neutral-100" onClick={() => bumpListing(listing.id)} type="button">
                             <Rocket className="h-4 w-4" aria-hidden="true" />
-                            <span className="sr-only">{t("dashboard.bump")}</span>
+                            <span className="hidden text-xs font-bold text-neutral-600 group-hover:inline-block">{t("dashboard.bump")}</span>
                           </button>
-                          <button className="grid h-9 w-9 place-items-center rounded-lg text-red-600 hover:bg-red-50" onClick={() => setDeleteId(listing.id)} type="button">
+                          <button title={t("ui.delete")} className="group flex h-11 items-center gap-2 rounded-lg px-2 text-red-600 hover:bg-red-50" onClick={() => setDeleteId(listing.id)} type="button">
                             <Trash2 className="h-4 w-4" aria-hidden="true" />
-                            <span className="sr-only">{t("ui.delete")}</span>
+                            <span className="hidden text-xs font-bold text-red-600 group-hover:inline-block">{t("ui.delete")}</span>
                           </button>
                         </div>
                       </td>
@@ -221,7 +223,7 @@ export default function MyAdsTab() {
               return (
                 <article className="rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm" key={listing.id}>
                   <div className="flex gap-3">
-                    <img alt={listing.title} className="h-20 w-24 rounded-xl object-cover" src={getListingImage(listing)} />
+                    <img alt={listing.title} className="h-20 w-24 rounded-xl object-cover" onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.onerror = null }} src={getListingImage(listing)} />
                     <div className="min-w-0">
                       <h3 className="line-clamp-2 font-black text-neutral-900">{listing.title}</h3>
                       <p className="mt-1 font-black text-primary">{formatPrice(listing.price, listing.currency)}</p>
@@ -231,11 +233,17 @@ export default function MyAdsTab() {
                       </span>
                     </div>
                   </div>
-                  <div className="mt-3 grid grid-cols-4 gap-2">
-                    <Button aria-label={t("ui.edit")} onClick={() => navigate(`/listing/${listing.id}/edit`)} size="sm" variant="secondary"><Pencil className="h-4 w-4" aria-hidden="true" /></Button>
-                    <Button aria-label={t("dashboard.markSold")} onClick={() => updateListing(listing.id, { status: "sold" })} size="sm" variant="secondary"><Check className="h-4 w-4" aria-hidden="true" /></Button>
-                    <Button aria-label={t("dashboard.bump")} onClick={() => bumpListing(listing.id)} size="sm" variant="secondary"><Rocket className="h-4 w-4" aria-hidden="true" /></Button>
-                    <Button aria-label={t("ui.delete")} onClick={() => setDeleteId(listing.id)} size="sm" variant="danger"><Trash2 className="h-4 w-4" aria-hidden="true" /></Button>
+                  <div className="mt-3 flex justify-end border-t border-neutral-100 pt-3">
+                    <button
+                      className="grid h-11 w-11 place-items-center rounded-full bg-neutral-100 text-neutral-600 transition hover:bg-neutral-200"
+                      onClick={() => {
+                        setActionSheetListing(listing)
+                        setActionSheetConfirmDelete(false)
+                      }}
+                      type="button"
+                    >
+                      <MoreVertical className="h-5 w-5" aria-hidden="true" />
+                    </button>
                   </div>
                 </article>
               )
@@ -243,11 +251,14 @@ export default function MyAdsTab() {
           </div>
         </>
       ) : (
-        <div className="grid min-h-64 place-items-center gap-4 rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center">
-          <Suspense fallback={<div className="h-32 w-32 rounded-full bg-neutral-100 animate-pulse dark:bg-neutral-800" />}>
-            <EmptyStateOrb />
-          </Suspense>
-          <p className="font-bold text-neutral-500">{t("dashboard.emptyAds")}</p>
+        <div className="grid min-h-64 place-items-center gap-4 rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 p-8 text-center">
+          <div className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary">
+            <Tag className="h-8 w-8" />
+          </div>
+          <div>
+            <h3 className="text-lg font-black text-neutral-900">{t("dashboard.emptyAds")}</h3>
+            <p className="mt-1 text-sm font-semibold text-neutral-500">{t("dashboard.emptyAdsDesc")}</p>
+          </div>
           <Button onClick={() => togglePostModal(true)}>
             <PlusCircle className="h-4 w-4" aria-hidden="true" />
             {t("post.postAd")}
@@ -281,6 +292,92 @@ export default function MyAdsTab() {
           </Button>
         </div>
       </Modal>
+
+      {/* Mobile Action Sheet */}
+      {actionSheetListing && (
+        <div className="fixed inset-0 z-50 flex items-end md:hidden">
+          <div 
+            className="absolute inset-0 bg-neutral-900/60 backdrop-blur-sm transition-opacity" 
+            onClick={() => setActionSheetListing(null)} 
+          />
+          <div className="relative w-full rounded-t-3xl bg-white pb-safe pt-2 shadow-2xl animate-in slide-in-from-bottom-full duration-200 ease-out">
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-neutral-200" />
+            
+            {actionSheetConfirmDelete ? (
+              <div className="px-6 pb-6 text-center">
+                <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-red-100 text-red-600">
+                  <Trash2 className="h-8 w-8" />
+                </div>
+                <h3 className="text-xl font-black text-neutral-900">{t("dashboard.confirmDelete")}</h3>
+                <p className="mt-2 text-sm text-neutral-500">Are you sure? This cannot be undone.</p>
+                <div className="mt-8 flex gap-3">
+                  <Button className="flex-1" onClick={() => setActionSheetConfirmDelete(false)} size="lg" variant="secondary">
+                    {t("ui.cancel")}
+                  </Button>
+                  <Button 
+                    className="flex-1" 
+                    onClick={async () => {
+                      await deleteListing(actionSheetListing.id)
+                      setActionSheetListing(null)
+                    }} 
+                    size="lg" 
+                    variant="danger"
+                  >
+                    {t("ui.delete")}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col pb-4">
+                <button 
+                  className="flex h-14 items-center gap-4 px-6 text-left hover:bg-neutral-50"
+                  onClick={() => {
+                    navigate(`/listing/${actionSheetListing.id}/edit`)
+                    setActionSheetListing(null)
+                  }}
+                >
+                  <Pencil className="h-5 w-5 text-neutral-500" />
+                  <span className="flex-1 font-bold text-neutral-900">{t("ui.edit")} Ad</span>
+                </button>
+                <button 
+                  className="flex h-14 items-center gap-4 px-6 text-left hover:bg-neutral-50"
+                  onClick={() => {
+                    updateListing(actionSheetListing.id, { status: "sold" })
+                    setActionSheetListing(null)
+                  }}
+                >
+                  <Check className="h-5 w-5 text-neutral-500" />
+                  <span className="flex-1 font-bold text-neutral-900">{t("dashboard.markSold")}</span>
+                </button>
+                <button 
+                  className="flex h-14 items-center gap-4 px-6 text-left hover:bg-neutral-50"
+                  onClick={() => {
+                    bumpListing(actionSheetListing.id)
+                    setActionSheetListing(null)
+                  }}
+                >
+                  <Rocket className="h-5 w-5 text-neutral-500" />
+                  <span className="flex-1 font-bold text-neutral-900">{t("dashboard.bump")} Ad</span>
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700">Free</span>
+                </button>
+                <div className="mx-6 my-2 h-px bg-neutral-100" />
+                <button 
+                  className="flex h-14 items-center gap-4 px-6 text-left hover:bg-red-50"
+                  onClick={() => setActionSheetConfirmDelete(true)}
+                >
+                  <Trash2 className="h-5 w-5 text-red-600" />
+                  <span className="flex-1 font-bold text-red-600">{t("ui.delete")} Ad</span>
+                </button>
+                <div className="mt-4 px-6">
+                  <Button className="w-full" onClick={() => setActionSheetListing(null)} size="lg" variant="secondary">
+                    {t("ui.cancel")}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

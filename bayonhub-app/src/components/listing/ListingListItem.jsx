@@ -34,7 +34,7 @@ const ListingListItem = memo(function ListingListItem({ listing, highlightQuery 
     <article className="rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm transition hover:border-primary">
       <div className="flex gap-3">
         <Link className="shrink-0" to={listingUrl(listing)}>
-          <img alt={listing.title} className="h-[90px] w-[120px] rounded-xl object-cover" loading="lazy" src={image} />
+          <img alt={listing.title} className="h-[90px] w-[120px] rounded-xl object-cover" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.onerror = null }} src={image} />
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex gap-3">

@@ -30,23 +30,35 @@ function normalizeSavedResponse(data) {
 
 export async function getSavedListings() {
   if (!hasApiBackend()) return mockGetSaved()
-  const response = await client.get("/api/users/me/saved")
-  return normalizeSavedResponse(response.data)
+  try {
+    const response = await client.get("/api/users/me/saved")
+    return normalizeSavedResponse(response.data)
+  } catch (err) {
+    throw new Error(err?.response?.data?.error || err?.message || "users.loadError", { cause: err })
+  }
 }
 
 export async function updateProfile(data) {
   if (!hasApiBackend()) return mockUpdateProfile(data)
-  const response = await client.put("/api/users/me", {
-    name: data.name,
-    bio: data.bio,
-    avatarUrl: data.avatarUrl || data.avatar,
-    language: data.language,
-  })
-  return response.data.user || response.data
+  try {
+    const response = await client.put("/api/users/me", {
+      name: data.name,
+      bio: data.bio,
+      avatarUrl: data.avatarUrl || data.avatar,
+      language: data.language,
+    })
+    return response.data.user || response.data
+  } catch (err) {
+    throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
+  }
 }
 
 export async function changePassword(oldPassword, newPassword) {
   if (!hasApiBackend()) return { success: true }
-  await client.put("/api/users/me/password", { oldPassword, newPassword })
-  return { success: true }
+  try {
+    await client.put("/api/users/me/password", { oldPassword, newPassword })
+    return { success: true }
+  } catch (err) {
+    throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
+  }
 }

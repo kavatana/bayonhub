@@ -42,6 +42,7 @@ export default function SearchPage() {
   const fetchListings = useListingStore((state) => state.fetchListings)
   const fetchMoreListings = useListingStore((state) => state.fetchMoreListings)
   const hasMore = useListingStore((state) => state.hasMore)
+  const error = useListingStore((state) => state.error)
   const resetStoreFilters = useListingStore((state) => state.resetFilters)
   const total = useListingStore((state) => state.total)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -119,7 +120,7 @@ export default function SearchPage() {
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  placeholder="Min"
+                  placeholder={t("filter.minPrice")}
                   className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-primary"
                   value={minPrice}
                   onChange={(e) => updateParam("minPrice", e.target.value)}
@@ -127,7 +128,7 @@ export default function SearchPage() {
                 <span className="text-neutral-300">-</span>
                 <input
                   type="number"
-                  placeholder="Max"
+                  placeholder={t("filter.maxPrice")}
                   className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-primary"
                   value={maxPrice}
                   onChange={(e) => updateParam("maxPrice", e.target.value)}
@@ -211,7 +212,7 @@ export default function SearchPage() {
               </Button>
               
               <select
-                className="h-10 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary"
+                className="h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary"
                 onChange={(event) => updateParam("sort", event.target.value)}
                 value={sort}
               >
@@ -226,6 +227,16 @@ export default function SearchPage() {
           {loading ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }, (_, i) => <SkeletonCard key={i} />)}
+            </div>
+          ) : error ? (
+            <div className="grid min-h-64 place-items-center rounded-2xl border border-red-100 bg-red-50 p-8 text-center">
+              <div>
+                <h3 className="text-lg font-black text-red-700">{t("ui.error")}</h3>
+                <p className="mt-1 text-sm font-semibold text-red-600">{error}</p>
+                <Button className="mt-5" onClick={() => fetchListings({ q: query, minPrice, maxPrice, province, condition, category, sort })} variant="secondary">
+                  {t("ui.retry")}
+                </Button>
+              </div>
             </div>
           ) : displayedListings.length ? (
             <InfiniteScroll
@@ -276,7 +287,7 @@ export default function SearchPage() {
                 <h2 className="text-xl font-black text-neutral-900">{t("filter.title")}</h2>
                 <p className="text-xs font-bold text-neutral-500">{t("filter.refineResults")}</p>
               </div>
-              <button onClick={() => setShowMobileFilters(false)} className="grid h-10 w-10 place-items-center rounded-full bg-neutral-100 text-neutral-500">
+              <button onClick={() => setShowMobileFilters(false)} className="grid h-11 w-10 place-items-center rounded-full bg-neutral-100 text-neutral-500">
                 <X className="h-6 w-6" />
               </button>
             </header>
@@ -288,14 +299,14 @@ export default function SearchPage() {
                 <div className="flex gap-3">
                   <input
                     type="number"
-                    placeholder="Min"
+                    placeholder={t("filter.minPrice")}
                     className="h-12 w-full rounded-2xl border border-neutral-200 px-4 text-sm font-bold"
                     value={minPrice}
                     onChange={(e) => updateParam("minPrice", e.target.value)}
                   />
                   <input
                     type="number"
-                    placeholder="Max"
+                    placeholder={t("filter.maxPrice")}
                     className="h-12 w-full rounded-2xl border border-neutral-200 px-4 text-sm font-bold"
                     value={maxPrice}
                     onChange={(e) => updateParam("maxPrice", e.target.value)}

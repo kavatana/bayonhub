@@ -98,9 +98,6 @@ export default function StoreTab() {
     }
 
     try {
-      updateUser({ store: nextStore })
-      setStore(nextStore)
-
       const endpoints = nextStore.initialCatalogEndpoints
         .split(/\r?\n/)
         .map((line) => line.trim())
@@ -133,6 +130,9 @@ export default function StoreTab() {
         }
       }
 
+      // Only persist after all API calls succeed
+      updateUser({ store: nextStore })
+      setStore(nextStore)
       toast.success(t("dashboard.savedSuccess"))
     } catch (error) {
       const message = error instanceof Error ? error.message : t("ui.error")
@@ -180,8 +180,8 @@ export default function StoreTab() {
           {Object.entries(store.hours).map(([day, hours]) => (
             <div className="grid grid-cols-[80px_1fr_1fr_auto] items-center gap-2 rounded-xl bg-white p-2" key={day}>
               <span className="text-sm font-black text-neutral-700">{t(`day.${day}`)}</span>
-              <input className="h-10 rounded-lg border border-neutral-200 px-2" disabled={!hours.open} onChange={(event) => updateHours(day, { from: event.target.value })} type="time" value={hours.from} />
-              <input className="h-10 rounded-lg border border-neutral-200 px-2" disabled={!hours.open} onChange={(event) => updateHours(day, { to: event.target.value })} type="time" value={hours.to} />
+              <input className="h-11 rounded-lg border border-neutral-200 px-2" disabled={!hours.open} onChange={(event) => updateHours(day, { from: event.target.value })} type="time" value={hours.from} />
+              <input className="h-11 rounded-lg border border-neutral-200 px-2" disabled={!hours.open} onChange={(event) => updateHours(day, { to: event.target.value })} type="time" value={hours.to} />
               <label className="flex items-center gap-2 text-xs font-bold text-neutral-600">
                 <input checked={hours.open} onChange={(event) => updateHours(day, { open: event.target.checked })} type="checkbox" />
                 {hours.open ? t("dashboard.open") : t("dashboard.closed")}
@@ -269,7 +269,7 @@ export default function StoreTab() {
           </Button>
         </div>
       </section>
-      <Button className="justify-self-start" onClick={save} disabled={saving}>{t("dashboard.saveStore")}</Button>
+      <Button className="justify-self-start" onClick={save} disabled={saving} loading={saving}>{t("dashboard.saveStore")}</Button>
     </div>
   )
 }

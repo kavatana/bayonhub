@@ -55,6 +55,14 @@ export default function VerificationTab() {
 
   async function handleSubmit(event) {
     event.preventDefault()
+    if (!formData.fullName.trim()) {
+      toast.error(t("dashboard.kycFullName") + " " + t("ui.required"))
+      return
+    }
+    if (!formData.idNumber.trim()) {
+      toast.error(t("dashboard.kycIdNumber") + " " + t("ui.required"))
+      return
+    }
     if (!files.idFront) {
       toast.error(t("dashboard.kycIdFront") + " " + t("ui.required"))
       return
@@ -198,7 +206,7 @@ export default function VerificationTab() {
                   {files[field.id] ? (
                     <img
                       src={URL.createObjectURL(files[field.id])}
-                      alt="Preview"
+                      alt={t("ui.preview")}
                       className="h-full w-full rounded-xl object-cover"
                     />
                   ) : (

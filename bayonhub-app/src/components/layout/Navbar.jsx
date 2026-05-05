@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import gsap from "gsap"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import {
+  Settings,
+  HelpCircle,
   Bell,
   BookmarkPlus,
   BookOpen,
@@ -304,8 +306,9 @@ export default function Navbar() {
   }
 
   function openPostFlow() {
-    const pendingAction = { type: "post" }
-    setPendingAction(pendingAction)
+    if (!isAuthenticated) {
+      setPendingAction({ type: "post" })
+    }
     togglePostModal(true)
   }
 
@@ -626,42 +629,61 @@ export default function Navbar() {
               {t("nav.postFreeAd")}
             </Button>
             <div ref={userMenuRef} className="relative hidden lg:block">
-              <Button
-                onClick={() => {
-                  if (!isAuthenticated) {
-                    toggleAuthModal(true)
-                  } else {
-                    setUserMenuOpen(!userMenuOpen)
-                  }
-                }}
-                variant="secondary"
-              >
-                {isAuthenticated ? (
-                  <User className="h-4 w-4" aria-hidden="true" />
-                ) : (
+              {isAuthenticated ? (
+                <button
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="flex h-11 items-center gap-2 rounded-full border border-neutral-200 bg-white pl-1.5 pr-4 text-sm font-bold text-neutral-700 shadow-sm transition hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white dark:hover:bg-neutral-800"
+                >
+                  <div className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-xs font-black text-primary">
+                    {user?.name?.charAt(0)?.toUpperCase() || "U"}
+                  </div>
+                  <span className="max-w-[100px] truncate">{user?.name}</span>
+                  <ChevronDown className={cn("h-4 w-4 opacity-50 transition-transform", userMenuOpen && "rotate-180")} />
+                </button>
+              ) : (
+                <Button onClick={() => toggleAuthModal(true)} variant="secondary" className="h-11">
                   <LogIn className="h-4 w-4" aria-hidden="true" />
-                )}
-                {user?.name || t("nav.login")}
-                {isAuthenticated && <ChevronDown className={cn("h-4 w-4 transition-transform", userMenuOpen && "rotate-180")} />}
-              </Button>
+                  {t("nav.login")}
+                </Button>
+              )}
 
               {userMenuOpen && isAuthenticated && (
-                <div className="absolute right-0 z-50 mt-2 min-w-48 overflow-hidden rounded-2xl border border-neutral-100 bg-white p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-200 dark:bg-neutral-900 dark:border-neutral-800">
-                  <button
-                    onClick={openDashboard}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-neutral-700 transition hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                  >
-                    <User className="h-4 w-4 opacity-50" />
-                    {t("nav.profile")}
-                  </button>
-                  <div className="my-1 h-px bg-neutral-100 dark:bg-neutral-800" />
-                  <button
-                    onClick={handleLogout}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/30"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    {t("nav.logout") || "Logout"}
-                  </button>
+                <div className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200 dark:bg-neutral-900 dark:border-neutral-800">
+                  <div className="border-b border-neutral-100 bg-neutral-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/50">
+                    <p className="truncate font-black text-neutral-900 dark:text-white">{user?.name}</p>
+                    <p className="truncate text-xs font-semibold text-neutral-500">{user?.phone || user?.email || t("nav.profile")}</p>
+                  </div>
+                  <div className="p-1.5">
+                    <button
+                      onClick={openDashboard}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-neutral-700 transition hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                    >
+                      <User className="h-4 w-4 opacity-50" />
+                      {t("nav.profile")}
+                    </button>
+                    <button
+                      onClick={() => { navigate("/dashboard?tab=settings"); setUserMenuOpen(false); }}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-neutral-700 transition hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                    >
+                      <Settings className="h-4 w-4 opacity-50" />
+                      {t("dashboard.settings")}
+                    </button>
+                    <button
+                      onClick={() => { navigate("/help"); setUserMenuOpen(false); }}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-neutral-700 transition hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                    >
+                      <HelpCircle className="h-4 w-4 opacity-50" />
+                      {t("nav.help")}
+                    </button>
+                    <div className="my-1 h-px bg-neutral-100 dark:bg-neutral-800" />
+                    <button
+                      onClick={handleLogout}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/30"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      {t("nav.logout")}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -785,15 +807,17 @@ export default function Navbar() {
               <button
                 key={item.label}
                 className={cn(
-                  "flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-black transition",
+                  "flex h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-black transition-all",
                   item.col,
-                  active ? "text-primary" : "text-neutral-500",
+                  active ? "text-primary" : "text-neutral-500 hover:text-neutral-900",
                 )}
                 onClick={() => (item.path === "/dashboard" ? openDashboard() : navigate(item.path))}
                 type="button"
               >
-                <Icon className="h-5 w-5" aria-hidden="true" />
-                <span>{item.label}</span>
+                <div className={cn("grid h-8 w-14 place-items-center rounded-full transition-colors", active && "bg-primary/10")}>
+                  <Icon className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <span className={cn("transition-opacity", active ? "opacity-100" : "opacity-80")}>{item.label}</span>
               </button>
             )
           })}

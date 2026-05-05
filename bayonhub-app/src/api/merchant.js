@@ -39,18 +39,30 @@ function mockUpdateMerchantProfile(merchantId, data) {
 
 export async function getMerchantProfile(merchantId) {
   if (!hasApiBackend()) return mockGetMerchantProfile(merchantId)
-  const response = await client.get(`/api/v1/merchant/profile/${merchantId}`)
-  return response.data.merchant_profile || response.data
+  try {
+    const response = await client.get(`/api/v1/merchant/profile/${merchantId}`)
+    return response.data.merchant_profile || response.data
+  } catch (err) {
+    throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
+  }
 }
 
 export async function createMerchantProfile(data) {
   if (!hasApiBackend()) return mockCreateMerchantProfile(data)
-  const response = await client.post("/api/v1/merchant/onboard", data)
-  return response.data.merchant_profile || response.data
+  try {
+    const response = await client.post("/api/v1/merchant/onboard", data)
+    return response.data.merchant_profile || response.data
+  } catch (err) {
+    throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
+  }
 }
 
 export async function updateMerchantProfile(merchantId, data) {
   if (!hasApiBackend()) return mockUpdateMerchantProfile(merchantId, data)
-  const response = await client.put(`/api/v1/merchant/profile/${merchantId}`, data)
-  return response.data.merchant_profile || response.data
+  try {
+    const response = await client.put(`/api/v1/merchant/profile/${merchantId}`, data)
+    return response.data.merchant_profile || response.data
+  } catch (err) {
+    throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
+  }
 }

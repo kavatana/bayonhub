@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ArrowLeft, ImagePlus, Send } from "lucide-react"
 import { getConversations, getThread } from "../../api/messages"
 import { API_BASE_URL, readStorage, STORAGE_KEYS, writeStorage } from "../../api/client"
@@ -10,7 +10,7 @@ import { useAuthStore } from "../../store/useAuthStore"
 import { useUIStore } from "../../store/useUIStore"
 import Button from "../ui/Button"
 
-const EmptyStateOrb = React.lazy(() => import("../three/EmptyStateOrb"))
+import { MessageSquare } from "lucide-react"
 
 const mockConversations = [
   {
@@ -187,11 +187,14 @@ export default function MessagesTab() {
 
   if (!conversations.length) {
     return (
-      <div className="grid min-h-64 place-items-center rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center">
-        <Suspense fallback={<div className="h-32 w-32 rounded-full bg-neutral-100 animate-pulse dark:bg-neutral-800" />}>
-          <EmptyStateOrb />
-        </Suspense>
-        <p className="font-bold text-neutral-500">{t("dashboard.noMessages")}</p>
+      <div className="grid min-h-64 place-items-center gap-4 rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 p-8 text-center">
+        <div className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary">
+          <MessageSquare className="h-8 w-8" />
+        </div>
+        <div>
+          <h3 className="text-lg font-black text-neutral-900">{t("dashboard.noMessages")}</h3>
+          <p className="mt-1 text-sm font-semibold text-neutral-500">{t("dashboard.noMessagesDesc")}</p>
+        </div>
       </div>
     )
   }
@@ -234,7 +237,7 @@ export default function MessagesTab() {
 
       <section className={cn("flex flex-col", !activeId && "hidden md:flex")}>
         <header className="flex items-center gap-3 border-b border-neutral-100 p-4">
-          <button className="grid h-9 w-9 place-items-center rounded-full border border-neutral-200 md:hidden" onClick={() => setActiveId(null)} type="button">
+          <button className="grid h-11 w-9 place-items-center rounded-full border border-neutral-200 md:hidden" onClick={() => setActiveId(null)} type="button">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             <span className="sr-only">{t("ui.back")}</span>
           </button>

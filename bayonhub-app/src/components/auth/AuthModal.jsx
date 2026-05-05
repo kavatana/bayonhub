@@ -56,6 +56,7 @@ export default function AuthModal() {
   const loading = useAuthStore((state) => state.loading)
   const toggleSaved = useListingStore((state) => state.toggleSaved)
   const saveSearch = useListingStore((state) => state.saveSearch)
+  const setOpenReportListingId = useUIStore((state) => state.setOpenReportListingId)
   const [tab, setTab] = useState("login")
   const [showPassword, setShowPassword] = useState(false)
   const [otpStep, setOtpStep] = useState(false)
@@ -128,7 +129,7 @@ export default function AuthModal() {
         <div className="flex flex-1 flex-col p-5 md:w-3/5">
           <header className="flex items-center justify-between gap-4">
             <h2 className="text-xl font-black text-neutral-900 dark:text-white">{title}</h2>
-            <button className="grid h-10 w-10 place-items-center rounded-full border border-neutral-200 dark:border-neutral-700" onClick={close} type="button" aria-label={t("ui.close")}>
+            <button className="grid h-11 w-10 place-items-center rounded-full border border-neutral-200 dark:border-neutral-700" onClick={close} type="button" aria-label={t("ui.close")}>
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
           </header>
@@ -150,6 +151,7 @@ export default function AuthModal() {
     if (pendingAction.type === "dashboard" || pendingAction.type === "message") navigate("/dashboard")
     if (pendingAction.type === "save" && pendingAction.listingId) toggleSaved(pendingAction.listingId)
     if (pendingAction.type === "saveSearch") saveSearch(pendingAction.query, pendingAction.filters)
+    if (pendingAction.type === "report" && pendingAction.listingId) setOpenReportListingId(pendingAction.listingId)
     setPendingAction(null)
   }
 
@@ -189,7 +191,7 @@ export default function AuthModal() {
       return
     }
     if (form.password !== form.confirmPassword) {
-      toast.error(t("auth.passwordMismatch"))
+      setErrors((prev) => ({ ...prev, confirmPassword: t("auth.passwordMismatch") }))
       return
     }
     if (!form.name || form.name.trim().length < 2) {
@@ -545,6 +547,7 @@ export default function AuthModal() {
                 <label className="grid gap-2 text-sm font-bold text-neutral-700 dark:text-neutral-200">
                   {t("auth.confirmPassword")}
                   <input className="h-11 rounded-xl border border-neutral-200 px-3 outline-none focus:border-primary dark:bg-neutral-800 dark:border-neutral-700 dark:text-white dark:placeholder-neutral-500" onChange={(event) => update("confirmPassword", event.target.value)} required type={showPassword ? "text" : "password"} value={form.confirmPassword} />
+                  {errors.confirmPassword ? <span className="text-xs text-red-600">{errors.confirmPassword}</span> : null}
                 </label>
                 <div>
                   <p className="mb-2 text-sm font-bold text-neutral-700">{t("auth.languagePreference")}</p>

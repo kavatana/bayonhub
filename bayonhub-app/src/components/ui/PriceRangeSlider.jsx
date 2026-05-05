@@ -38,7 +38,7 @@ export default function PriceRangeSlider({
         <span>{t("filter.minPrice")}</span>
         <span>{t("filter.maxPrice")}</span>
       </div>
-      <div className="relative h-8">
+      <div className="relative h-11">
         <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-neutral-200" />
         <div className="absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-primary" style={fillStyle} />
         <input

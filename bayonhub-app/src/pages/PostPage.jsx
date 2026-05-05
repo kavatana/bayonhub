@@ -2,7 +2,7 @@ import { useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useUIStore } from "../store/useUIStore"
 import PageTransition from "../components/ui/PageTransition"
-import Spinner from "../components/ui/Spinner"
+import { PostAdWizardSkeleton } from "../components/ui/Skeletons"
 
 export default function PostPage() {
   const navigate = useNavigate()
@@ -17,8 +17,8 @@ export default function PostPage() {
 
   return (
     <PageTransition>
-      <div className="grid min-h-[60vh] place-items-center">
-        <Spinner className="h-8 w-8 text-primary" />
+      <div className="mx-auto max-w-7xl px-4 py-8">
+        <PostAdWizardSkeleton />
       </div>
     </PageTransition>
   )

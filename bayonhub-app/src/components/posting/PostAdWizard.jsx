@@ -308,48 +308,52 @@ export default function PostAdWizard({
       return
     }
     setLoading(true)
-    const submitAction = onSubmitListing || createListing
-    const phoneResult = validatePhone(data.phone)
-    const listing = await submitAction({
-      title: data.title.trim(),
-      price: Number(data.price),
-      currency: data.currency,
-      category: category?.label.en,
-      categorySlug: category?.slug || category?.id,
-      subcategory: detailCategory?.label.en || subcategory?.label.en,
-      subcategorySlug: detailCategory?.slug || subcategory?.slug || subcategory?.id,
-      condition: data.fields.condition || "Used",
-      location: data.province,
-      province: data.province,
-      district: data.district,
-      commune: data.commune,
-      addressDetail: data.addressDetail,
-      lat: data.lat,
-      lng: data.lng,
-      sellerName: user?.name || t("app.name"),
-      phone: phoneResult.normalized,
-      description: data.fields.description || data.title,
-      facets: Object.fromEntries(
-        Object.entries(data.fields).filter(([key]) => !["description", "condition"].includes(key)),
-      ),
-      images: data.images,
-      imageUrl: coverImage?.preview || coverImage?.url,
-      promotion: data.promotion,
-      premium: data.promotion !== "standard",
-      status: "active",
-      leads: 0,
-    })
-    setLoading(false)
-    if (listing) {
-      localStorage.removeItem(DRAFT_KEY)
-      setCreatedListing(listing)
-      setIsSuccess(true)
-      
-      if (data.promotion !== "standard") {
-        setKhqrOpen(true)
+    try {
+      const submitAction = onSubmitListing || createListing
+      const phoneResult = validatePhone(data.phone)
+      const listing = await submitAction({
+        title: data.title.trim(),
+        price: Number(data.price),
+        currency: data.currency,
+        category: category?.label.en,
+        categorySlug: category?.slug || category?.id,
+        subcategory: detailCategory?.label.en || subcategory?.label.en,
+        subcategorySlug: detailCategory?.slug || subcategory?.slug || subcategory?.id,
+        condition: data.fields.condition || "Used",
+        location: data.province,
+        province: data.province,
+        district: data.district,
+        commune: data.commune,
+        addressDetail: data.addressDetail,
+        lat: data.lat,
+        lng: data.lng,
+        sellerName: user?.name || t("app.name"),
+        phone: phoneResult.normalized,
+        description: data.fields.description || data.title,
+        facets: Object.fromEntries(
+          Object.entries(data.fields).filter(([key]) => !["description", "condition"].includes(key)),
+        ),
+        images: data.images,
+        imageUrl: coverImage?.preview || coverImage?.url,
+        promotion: data.promotion,
+        premium: data.promotion !== "standard",
+        status: "active",
+        leads: 0,
+      })
+      if (listing) {
+        localStorage.removeItem(DRAFT_KEY)
+        setCreatedListing(listing)
+        setIsSuccess(true)
+        if (data.promotion !== "standard") {
+          setKhqrOpen(true)
+        }
+      } else {
+        toast.error(t("post.error"))
       }
-    } else {
-      toast.error(t("post.error"))
+    } catch (err) {
+      toast.error(err?.message || t("post.error"))
+    } finally {
+      setLoading(false)
     }
   }
 

@@ -112,7 +112,7 @@ function QuickFilterDropdown({ label, activeLabel, options, value, onChange }) {
     <div ref={dropdownRef} className="relative">
       <button
         className={cn(
-          "inline-flex h-10 items-center gap-2 rounded-full border border-neutral-200 px-3 text-sm font-black transition",
+          "inline-flex h-11 items-center gap-2 rounded-full border border-neutral-200 px-3 text-sm font-black transition",
           active && "border-primary bg-primary text-white",
         )}
         onClick={() => setOpen((current) => !current)}
@@ -226,6 +226,7 @@ export default function CategoryPage() {
   const fetchListings = useListingStore((state) => state.fetchListings)
   const fetchMoreListings = useListingStore((state) => state.fetchMoreListings)
   const hasMore = useListingStore((state) => state.hasMore)
+  const error = useListingStore((state) => state.error)
   const selectedProvince = useUIStore((state) => state.selectedProvince)
   const setSelectedProvince = useUIStore((state) => state.setSelectedProvince)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -514,7 +515,7 @@ export default function CategoryPage() {
           lng: listing.lng,
           popup: (
             <div className="w-44">
-              <img alt={listing.title} className="mb-2 h-20 w-full rounded-lg object-cover" src={getListingImage(listing)} />
+              <img alt={listing.title} className="mb-2 h-20 w-full rounded-lg object-cover" onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.onerror = null }} src={getListingImage(listing)} />
               <Link className="block text-sm font-black text-neutral-900 hover:text-primary" to={listingUrl(listing)}>
                 {listing.title}
               </Link>
@@ -587,7 +588,7 @@ export default function CategoryPage() {
             <div className="grid grid-cols-2 gap-2">
               <input
                 aria-label={t("filter.minSize")}
-                className="h-10 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
+                className="h-11 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
                 max="2000"
                 min="0"
                 onChange={(event) => setSizeRange([Number(event.target.value), sizeRange[1]])}
@@ -596,7 +597,7 @@ export default function CategoryPage() {
               />
               <input
                 aria-label={t("filter.maxSize")}
-                className="h-10 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
+                className="h-11 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
                 max="2000"
                 min="0"
                 onChange={(event) => setSizeRange([sizeRange[0], Number(event.target.value)])}
@@ -617,7 +618,7 @@ export default function CategoryPage() {
           <label className="grid gap-2 text-sm font-bold text-neutral-700">
             {t("filter.floorNumber")}
             <input
-              className="h-10 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
+              className="h-11 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
               min="0"
               onChange={(event) => setFloorNumber(event.target.value)}
               type="number"
@@ -687,10 +688,10 @@ export default function CategoryPage() {
                   />
                 </>
               ) : null}
-              <button className="inline-flex h-10 items-center gap-2 rounded-xl border border-neutral-200 px-3 text-sm font-black lg:hidden" onClick={() => setSortOpen(true)} type="button">
+              <button className="inline-flex h-11 items-center gap-2 rounded-xl border border-neutral-200 px-3 text-sm font-black lg:hidden" onClick={() => setSortOpen(true)} type="button">
                 {t("filter.sortButton")}
               </button>
-              <button ref={filterTriggerRef} className="inline-flex h-10 items-center gap-2 rounded-xl border border-neutral-200 px-3 text-sm font-black lg:hidden" onClick={() => setFilterOpen(true)} type="button">
+              <button ref={filterTriggerRef} className="inline-flex h-11 items-center gap-2 rounded-xl border border-neutral-200 px-3 text-sm font-black lg:hidden" onClick={() => setFilterOpen(true)} type="button">
                 <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
                 {t("filter.filters")}
                 {activeFilters.length ? <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-white">{activeFilters.length}</span> : null}
@@ -726,7 +727,17 @@ export default function CategoryPage() {
               </button>
             </div>
           ) : null}
-          {displayedListings.length ? (
+          {error ? (
+            <div className="grid min-h-64 place-items-center rounded-2xl border border-red-100 bg-red-50 p-8 text-center">
+              <div>
+                <h3 className="text-lg font-black text-red-700">{t("ui.error")}</h3>
+                <p className="mt-1 text-sm font-semibold text-red-600">{error}</p>
+                <Button className="mt-5" onClick={() => fetchListings({ category: activeSubcategory?.label.en || category?.label.en || "" })} variant="secondary">
+                  {t("ui.retry")}
+                </Button>
+              </div>
+            </div>
+          ) : displayedListings.length ? (
             view === "map" ? (
               <Suspense fallback={<div className="h-[60vh] w-full animate-pulse rounded-2xl bg-neutral-100" />}>
                 <MapView

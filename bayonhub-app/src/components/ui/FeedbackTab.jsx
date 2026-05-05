@@ -29,7 +29,7 @@ export default function FeedbackTab() {
     })
     localStorage.setItem('bayonhub:feedback', JSON.stringify(existing))
 
-    toast.success(t("ui.feedbackSuccess"))
+    toast.success(t("ui.feedbackSaved"))
     setOpen(false)
     setRating(0)
     setComment("")
@@ -39,11 +39,7 @@ export default function FeedbackTab() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-24 right-4 z-40 flex items-center gap-2 rounded-full bg-primary p-3 text-sm font-bold text-white shadow-xl transition hover:scale-110 active:scale-95 md:bottom-auto md:right-0 md:top-1/2 md:rounded-full-none md:rounded-t-xl md:px-4 md:py-2"
-        style={{ 
-          transform: window.innerWidth < 768 ? "none" : "translateY(-50%) rotate(-90deg)", 
-          transformOrigin: "bottom right" 
-        }}
+        className="fixed bottom-24 right-4 z-40 flex items-center gap-2 rounded-full bg-primary p-3 text-sm font-bold text-white shadow-xl transition hover:scale-110 active:scale-95 md:bottom-auto md:right-0 md:top-1/2 md:rounded-none md:rounded-tl-xl md:rounded-bl-xl md:px-4 md:py-2 md:-translate-y-1/2 md:-rotate-90 md:[transform-origin:bottom_right]"
         type="button"
       >
         <MessageSquare className="h-5 w-5 md:h-4 md:w-4" aria-hidden="true" />

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { CheckCircle2, Clipboard, Loader2, QrCode, X } from "lucide-react"
 import toast from "react-hot-toast"
 
-import client, { hasApiBackend } from "../../api/client"
+import client, { hasApiBackend, IS_PRODUCTION } from "../../api/client"
 import { useTranslation } from "../../hooks/useTranslation"
 import { getPromotionState, PROMOTION_LABELS, PROMOTION_STATES } from "../../lib/promotionStates"
 import Button from "../ui/Button"
@@ -149,6 +149,35 @@ export default function ABAPayModal({ open, onClose, onDone, listing, promotionS
     onClose?.()
   }
 
+  function retryPayment() {
+    setPaymentData(null)
+    setStatus("generating")
+    setError("")
+    // Re-trigger the generatePayment effect by briefly resetting to idle then back
+    // We use a local re-mount trick: toggle open off/on isn't available here,
+    // so we directly call generate inline
+    async function regen() {
+      try {
+        if (!hasApiBackend()) {
+          const localPayment = createLocalPayment(plan)
+          setPaymentData(localPayment)
+          setStatus("waiting")
+          return
+        }
+        const response = await client.post("/api/payments/khqr/generate", {
+          listingId: listing?.id,
+          plan,
+        })
+        setPaymentData(response.data)
+        setStatus("waiting")
+      } catch {
+        setError(t("payment.pollError"))
+        setStatus("error")
+      }
+    }
+    regen()
+  }
+
   async function copyPayload() {
     if (!paymentData?.qrPayload) return
     await navigator.clipboard?.writeText(paymentData.qrPayload)
@@ -202,6 +231,15 @@ export default function ABAPayModal({ open, onClose, onDone, listing, promotionS
             <h3 className="text-lg font-bold text-neutral-900">{t("ui.success")}</h3>
             <p className="mt-2 text-sm font-medium text-neutral-600">{t("payment.confirmed")}</p>
           </div>
+        ) : status === "error" ? (
+          <div className="flex flex-col items-center gap-5 py-10 text-center">
+            <div className="rounded-3xl border border-red-100 bg-red-50 px-8 py-6 text-red-700">
+              <h3 className="text-base font-black">{t("ui.error")}</h3>
+              <p className="mt-1 text-sm font-bold">{error}</p>
+            </div>
+            <Button onClick={retryPayment} type="button">{t("ui.retry")}</Button>
+            <Button onClick={handleClose} type="button" variant="secondary">{t("ui.cancel")}</Button>
+          </div>
         ) : (
           <>
             <p className="mt-3 text-sm font-semibold leading-6 text-neutral-500">{t("payment.scanQR")}</p>
@@ -247,7 +285,7 @@ export default function ABAPayModal({ open, onClose, onDone, listing, promotionS
                 <Clipboard aria-hidden="true" className="h-4 w-4" />
                 {t("ui.copy")}
               </Button>
-              {!hasApiBackend() ? (
+              {!hasApiBackend() && !IS_PRODUCTION ? (
                 <Button disabled={!paymentData || status === "expired"} onClick={confirmLocalPayment} type="button">
                   {t("khqr.done")}
                 </Button>

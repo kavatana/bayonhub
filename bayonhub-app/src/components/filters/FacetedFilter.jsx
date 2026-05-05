@@ -45,7 +45,7 @@ export default function FacetedFilter({ category, currentFilters = {}, hiddenFac
               <label className="text-sm font-semibold text-neutral-700">{facet.label[language]}</label>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <input
-                  className="h-10 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
+                  className="h-11 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
                   min="0"
                   onChange={(event) => updateFacet(`${facet.id}Min`, event.target.value)}
                   placeholder={t("filter.minPrice")}
@@ -53,7 +53,7 @@ export default function FacetedFilter({ category, currentFilters = {}, hiddenFac
                   value={currentFilters[`${facet.id}Min`] || ""}
                 />
                 <input
-                  className="h-10 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
+                  className="h-11 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
                   min="0"
                   onChange={(event) => updateFacet(`${facet.id}Max`, event.target.value)}
                   placeholder={t("filter.maxPrice")}

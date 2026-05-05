@@ -1,4 +1,4 @@
-import React, { Suspense } from "react"
+
 import { SearchX } from "lucide-react"
 import { useTranslation } from "../../hooks/useTranslation"
 import { useUIStore } from "../../store/useUIStore"
@@ -6,7 +6,6 @@ import Button from "../ui/Button"
 import ListingCard from "./ListingCard"
 import SellCTACard from "./SellCTACard"
 
-const EmptyStateOrb = React.lazy(() => import("../three/EmptyStateOrb"))
 
 function SkeletonCard() {
   return (
@@ -21,7 +20,7 @@ function SkeletonCard() {
   )
 }
 
-export default function ListingGrid({ listings = [], loading = false, emptyMessage, showSellCTA = false }) {
+export default function ListingGrid({ listings = [], loading = false, error = null, onRetry = null, emptyMessage, showSellCTA = false }) {
   const { t } = useTranslation()
   const togglePostModal = useUIStore((state) => state.togglePostModal)
 
@@ -35,17 +34,35 @@ export default function ListingGrid({ listings = [], loading = false, emptyMessa
     )
   }
 
+  if (error) {
+    return (
+      <div className="grid min-h-64 place-items-center rounded-2xl border border-red-100 bg-red-50 p-8 text-center">
+        <div>
+          <h3 className="text-lg font-black text-red-700">{t("ui.error")}</h3>
+          <p className="mt-1 text-sm font-semibold text-red-600">{error}</p>
+          {onRetry && (
+            <Button className="mt-5" onClick={onRetry} variant="secondary">
+              {t("ui.retry")}
+            </Button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   if (!listings.length) {
     return (
-      <div className="grid min-h-80 place-items-center rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center bg-bayon-line bg-bayon-line-8 bg-bayon-line-empty">
-        <div>
-          <Suspense fallback={<div className="h-32 w-32 rounded-full bg-neutral-100 animate-pulse dark:bg-neutral-800" />}>
-            <EmptyStateOrb />
-          </Suspense>
-          <SearchX className="sr-only" aria-hidden="true" />
-          <h3 className="mt-4 text-xl font-bold text-neutral-900">
+      <div className="grid min-h-80 place-items-center gap-4 rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 p-8 text-center">
+        <div className="flex flex-col items-center">
+          <div className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary mb-4">
+            <SearchX className="h-8 w-8" />
+          </div>
+          <h3 className="text-lg font-black text-neutral-900">
             {emptyMessage || t("listing.empty")}
           </h3>
+          <p className="mt-1 text-sm font-semibold text-neutral-500">
+            {t("listing.emptyDesc")}
+          </p>
           <Button className="mt-5" onClick={() => togglePostModal(true)}>
             {t("listing.postFirst")}
           </Button>
