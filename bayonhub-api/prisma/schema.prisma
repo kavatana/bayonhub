@@ -14,7 +14,6 @@ model User {
   passwordHash     String
   name             String
   avatarUrl        String?
-  bannerUrl        String? @ignore // Temporarily ignored as it's not migrated yet
   slug             String?          @unique
   bio              String?
   language         String           @default("en")
@@ -35,8 +34,6 @@ model User {
   payments         Payment[]
   kycApplication   KYCApplication?
   merchantProfile  MerchantProfile?
-  reviewsGiven     Review[]         @relation("ReviewsGiven")
-  reviewsReceived  Review[]         @relation("ReviewsReceived")
 }
 
 enum Role {
@@ -323,18 +320,4 @@ model MerchantProfile {
   updatedAt       DateTime  @updatedAt
 }
 
-model Review {
-  id         String   @id @default(uuid())
-  rating     Int      @default(5)
-  comment    String?
-  reviewerId String
-  reviewer   User     @relation("ReviewsGiven", fields: [reviewerId], references: [id])
-  sellerId   String
-  seller     User     @relation("ReviewsReceived", fields: [sellerId], references: [id])
-  listingId  String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
 
-  @@index([sellerId])
-  @@index([reviewerId])
-}
