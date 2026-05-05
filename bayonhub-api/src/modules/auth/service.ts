@@ -174,19 +174,27 @@ export async function loginUser(
   phone: string,
   password: string,
 ): Promise<{ user: SafeUser; accessToken: string }> {
-  const user = await prisma.user.findUnique({ 
-    where: { phone },
-    select: { id: true, phone: true, passwordHash: true, role: true, verificationTier: true }
-  })
-  if (!user) throw createHttpError(401, "Invalid credentials")
+  try {
+    const user = await prisma.user.findUnique({ 
+      where: { phone },
+      select: { id: true, phone: true, passwordHash: true, role: true, verificationTier: true }
+    })
+    if (!user) throw createHttpError(401, "Invalid credentials")
 
-  const match = await bcrypt.compare(password, user.passwordHash)
-  if (!match) throw createHttpError(401, "Invalid credentials")
+    const match = await bcrypt.compare(password, user.passwordHash)
+    if (!match) throw createHttpError(401, "Invalid credentials")
 
-  const tokens = await generateTokens(user.id, user.role, user.verificationTier)
-  setAuthCookies(res, tokens)
-  const { passwordHash: _passwordHash, ...safeUser } = user
-  return { user: safeUser as any, accessToken: tokens.accessToken }
+    const tokens = await generateTokens(user.id, user.role, user.verificationTier)
+    setAuthCookies(res, tokens)
+    const { passwordHash: _passwordHash, ...safeUser } = user
+    return { user: safeUser as any, accessToken: tokens.accessToken }
+  } catch (error: any) {
+    if (error.code === 'P2022') {
+      const column = error.meta?.column || 'unknown'
+      throw createHttpError(500, `Prisma P2022: Column missing: ${column}`)
+    }
+    throw error
+  }
 }
 
 async function findStoredRefreshToken(
