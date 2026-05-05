@@ -17,6 +17,8 @@ import type { Router, Request, Response } from "express"
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "https://bayonhub.com"
 
+const apiBase = (process.env.API_URL || "https://api.bayonhub.com").replace(/\/$/, "")
+
 // ─── Google ───────────────────────────────────────────────────────────────────
 
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
@@ -25,7 +27,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: process.env.GOOGLE_CALLBACK_URL || `${process.env.API_URL || "https://api.bayonhub.com"}/api/auth/google/callback`,
+        callbackURL: process.env.GOOGLE_CALLBACK_URL || `${apiBase}/api/auth/google/callback`,
         scope: ["profile", "email"],
       },
       async (_accessToken: any, _refreshToken: any, profile: any, done: any) => {
@@ -69,7 +71,7 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
       {
         clientID: process.env.FACEBOOK_APP_ID,
         clientSecret: process.env.FACEBOOK_APP_SECRET,
-        callbackURL: process.env.FACEBOOK_CALLBACK_URL || `${process.env.API_URL || "https://api.bayonhub.com"}/api/auth/facebook/callback`,
+        callbackURL: process.env.FACEBOOK_CALLBACK_URL || `${apiBase}/api/auth/facebook/callback`,
         profileFields: ["id", "displayName", "emails", "photos"],
       },
       async (_accessToken: any, _refreshToken: any, profile: any, done: any) => {

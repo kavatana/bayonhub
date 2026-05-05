@@ -83,7 +83,7 @@ client.interceptors.request.use((config) => {
   if (token) config.headers["Authorization"] = `Bearer ${token}`
   
   const csrfToken = getCookieValue("XSRF-TOKEN")
-  if (csrfToken) config.headers["X-XSRF-TOKEN"] = csrfToken
+  if (csrfToken) config.headers["x-xsrf-token"] = csrfToken
   return config
 })
 
@@ -98,6 +98,18 @@ client.interceptors.response.use(
         window.dispatchEvent(new CustomEvent("bayonhub:api-unavailable"))
       }
       return Promise.reject(error)
+    }
+
+    // CSRF Retry Logic: If 403 Forbidden, we likely missing a CSRF cookie.
+    // Fetch it from /health and retry once.
+    if (error.response?.status === 403 && !originalRequest._csrfRetry) {
+      originalRequest._csrfRetry = true
+      try {
+        await client.get("/health")
+        return client(originalRequest)
+      } catch (csrfError) {
+        return Promise.reject(csrfError)
+      }
     }
 
     if (error.response?.status !== 401 || originalRequest._retry || originalRequest.skipAuthRefresh) {
