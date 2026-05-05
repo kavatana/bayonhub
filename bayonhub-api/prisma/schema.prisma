@@ -14,7 +14,7 @@ model User {
   passwordHash     String
   name             String
   avatarUrl        String?
-  bannerUrl        String?
+  bannerUrl        String? @ignore // Temporarily ignored as it's not migrated yet
   slug             String?          @unique
   bio              String?
   language         String           @default("en")
