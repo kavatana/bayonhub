@@ -174,7 +174,10 @@ export async function loginUser(
   phone: string,
   password: string,
 ): Promise<{ user: SafeUser; accessToken: string }> {
-  const user = await prisma.user.findUnique({ where: { phone } })
+  const user = await prisma.user.findUnique({ 
+    where: { phone },
+    select: { id: true, phone: true, passwordHash: true, role: true, verificationTier: true }
+  })
   if (!user) throw createHttpError(401, "Invalid credentials")
 
   const match = await bcrypt.compare(password, user.passwordHash)
@@ -183,7 +186,7 @@ export async function loginUser(
   const tokens = await generateTokens(user.id, user.role, user.verificationTier)
   setAuthCookies(res, tokens)
   const { passwordHash: _passwordHash, ...safeUser } = user
-  return { user: safeUser, accessToken: tokens.accessToken }
+  return { user: safeUser as any, accessToken: tokens.accessToken }
 }
 
 async function findStoredRefreshToken(
