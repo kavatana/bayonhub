@@ -18,34 +18,7 @@ const prerenderMiddleware: RequestHandler = (req, res, next) => {
       middleware.set("prerenderToken", token)
     }
 
-    // List of additional bot agents we want to handle
-    middleware.addSearchEngineUserAgent("googlebot")
-    middleware.addSearchEngineUserAgent("bingbot")
-    middleware.addSearchEngineUserAgent("baiduspider")
-    middleware.addSearchEngineUserAgent("facebookexternalhit")
-    middleware.addSearchEngineUserAgent("twitterbot")
-    middleware.addSearchEngineUserAgent("rogerbot")
-    middleware.addSearchEngineUserAgent("linkedinbot")
-    middleware.addSearchEngineUserAgent("embedly")
-    middleware.addSearchEngineUserAgent("quora link preview")
-    middleware.addSearchEngineUserAgent("showyoubot")
-    middleware.addSearchEngineUserAgent("outbrain")
-    middleware.addSearchEngineUserAgent("pinterest/0.")
-    middleware.addSearchEngineUserAgent("developers.google.com/+/web/snippet")
-    middleware.addSearchEngineUserAgent("slackbot")
-    middleware.addSearchEngineUserAgent("vkShare")
-    middleware.addSearchEngineUserAgent("W3C_Validator")
-    middleware.addSearchEngineUserAgent("redditbot")
-    middleware.addSearchEngineUserAgent("Applebot")
-    middleware.addSearchEngineUserAgent("WhatsApp")
-    middleware.addSearchEngineUserAgent("flipboard")
-    middleware.addSearchEngineUserAgent("tumblr")
-    middleware.addSearchEngineUserAgent("bitlybot")
-    middleware.addSearchEngineUserAgent("SkypeShell")
-    middleware.addSearchEngineUserAgent("bufferbot")
-    middleware.addSearchEngineUserAgent("adidxbot")
-    middleware.addSearchEngineUserAgent("CloudFlare-AlwaysOnline")
-    middleware.addSearchEngineUserAgent("Google-Structure-Data-Testing-Tool")
+    // Default bots are already configured in prerender-node
 
     return middleware(req, res, next)
   }
