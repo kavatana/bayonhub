@@ -12,6 +12,7 @@ import {
   Home,
   LayoutGrid,
   LogIn,
+  LogOut,
   MapPin,
   MessageCircle,
   PawPrint,
@@ -112,11 +113,13 @@ export default function Navbar() {
   const [locationOpen, setLocationOpen] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [recentSearches, setRecentSearches] = useState(() => readRecentSearches())
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [activeSuggestion, setActiveSuggestion] = useState(0)
   const [bottomHidden, setBottomHidden] = useState(false)
   const navRef = useRef(null)
   const searchRef = useClickAway(() => setSearchOpen(false))
   const locationRef = useClickAway(() => setLocationOpen(false))
+  const userMenuRef = useClickAway(() => setUserMenuOpen(false))
   const mobileLocationRef = useClickAway(() => setLocationOpen(false))
   const megaRef = useRef(null)
   const closeTimerRef = useRef(null)
@@ -313,6 +316,18 @@ export default function Navbar() {
       return
     }
     navigate("/dashboard")
+    setUserMenuOpen(false)
+  }
+
+  const handleLogout = async () => {
+    try {
+      await useAuthStore.getState().logout()
+      setUserMenuOpen(false)
+      navigate("/")
+      toast.success(t("auth.logoutSuccess") || "Logged out successfully")
+    } catch {
+      toast.error("Logout failed")
+    }
   }
 
   const navTone = heroTop ? "text-white hover:text-white/80" : "text-neutral-700 hover:text-primary dark:text-neutral-300 dark:hover:text-white"
@@ -610,10 +625,46 @@ export default function Navbar() {
               <Plus className="h-4 w-4" aria-hidden="true" />
               {t("nav.postFreeAd")}
             </Button>
-            <Button className="hidden lg:inline-flex" onClick={openDashboard} variant="secondary">
-              <LogIn className="h-4 w-4" aria-hidden="true" />
-              {user?.name || t("nav.login")}
-            </Button>
+            <div ref={userMenuRef} className="relative hidden lg:block">
+              <Button
+                onClick={() => {
+                  if (!isAuthenticated) {
+                    toggleAuthModal(true)
+                  } else {
+                    setUserMenuOpen(!userMenuOpen)
+                  }
+                }}
+                variant="secondary"
+              >
+                {isAuthenticated ? (
+                  <User className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <LogIn className="h-4 w-4" aria-hidden="true" />
+                )}
+                {user?.name || t("nav.login")}
+                {isAuthenticated && <ChevronDown className={cn("h-4 w-4 transition-transform", userMenuOpen && "rotate-180")} />}
+              </Button>
+
+              {userMenuOpen && isAuthenticated && (
+                <div className="absolute right-0 z-50 mt-2 min-w-48 overflow-hidden rounded-2xl border border-neutral-100 bg-white p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-200 dark:bg-neutral-900 dark:border-neutral-800">
+                  <button
+                    onClick={openDashboard}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-neutral-700 transition hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                  >
+                    <User className="h-4 w-4 opacity-50" />
+                    {t("nav.profile")}
+                  </button>
+                  <div className="my-1 h-px bg-neutral-100 dark:bg-neutral-800" />
+                  <button
+                    onClick={handleLogout}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-50 dark:hover:bg-red-950/30"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    {t("nav.logout") || "Logout"}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
