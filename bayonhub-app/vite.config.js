@@ -33,6 +33,9 @@ export default defineConfig({
           if (id.includes("zustand") || id.includes("immer")) {
             return "vendor-state"
           }
+          if (id.includes("lucide-react")) {
+            return "vendor-ui"
+          }
           if (id.includes("node_modules")) {
             return "vendor-misc"
           }
@@ -80,32 +83,32 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
-            urlPattern: /^https?:\/\/.*\/api\//,
+            urlPattern: /\/api\/listings/,
             handler: "NetworkFirst",
             options: {
-              cacheName: "api-cache",
-              networkTimeoutSeconds: 10,
-              expiration: { maxEntries: 50, maxAgeSeconds: 5 * 60 },
-              cacheableResponse: { statuses: [200] },
+              cacheName: "listings-cache",
+              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 },
+              networkTimeoutSeconds: 5,
             },
           },
           {
-            urlPattern: /\.(?:js|css|woff2)$/,
+            urlPattern: /\.(png|jpg|jpeg|webp|avif)/,
             handler: "CacheFirst",
             options: {
-              cacheName: "static-cache",
-              expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 },
+              cacheName: "images-cache",
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
             },
           },
           {
-            urlPattern: /\.(?:png|jpg|jpeg|webp|svg|gif)$/,
+            urlPattern: /\/api\/search/,
             handler: "StaleWhileRevalidate",
             options: {
-              cacheName: "image-cache",
-              expiration: { maxEntries: 200, maxAgeSeconds: 7 * 24 * 60 * 60 },
+              cacheName: "search-cache",
+              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 6 },
             },
           },
         ],
+        importScripts: ["/push-handler.js"],
         globIgnores: ["**/vendor-three*", "**/vendor-maps*", "**/node_modules/**"],
       },
       devOptions: {

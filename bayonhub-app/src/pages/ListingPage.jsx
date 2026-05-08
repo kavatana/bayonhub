@@ -1,21 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Helmet } from "react-helmet-async"
 import { Link, useNavigate, useParams } from "react-router-dom"
-import { MessageCircle, SearchX } from "lucide-react"
+import { Bookmark, Flag, SearchX, Share2 } from "lucide-react"
 import ListingCard from "../components/listing/ListingCard"
 import ListingDetail from "../components/listing/ListingDetail"
 import PageTransition from "../components/ui/PageTransition"
 import Button from "../components/ui/Button"
-import PhoneReveal from "../components/ui/PhoneReveal"
 import ListingPageSkeleton from "../components/listing/ListingPageSkeleton"
 import { useTranslation } from "../hooks/useTranslation"
+import { trackEvent } from "../lib/analytics"
 import { CATEGORIES } from "../lib/categories"
 import { buildProductSchema, canonicalUrl } from "../lib/seo"
 import { formatPrice, getListingImage, listingUrl as getListingUrl } from "../lib/utils"
-import { buildLeadPayload } from "../lib/validation"
 import { useListingStore } from "../store/useListingStore"
 import { useAuthStore } from "../store/useAuthStore"
 import { useUIStore } from "../store/useUIStore"
+
+let _sessionId = null
+function getSessionId() {
+  if (!_sessionId) _sessionId = crypto.randomUUID()
+  return _sessionId
+}
 
 function categoryForListing(listing) {
   return CATEGORIES.find(
@@ -25,41 +30,66 @@ function categoryForListing(listing) {
   )
 }
 
+function extractListingId(...values) {
+  const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+  for (const value of values) {
+    if (!value) continue
+    const match = String(value).match(uuidPattern)
+    if (match) return match[0]
+  }
+  return values.find(Boolean)
+}
+
 export default function ListingPage() {
-  const { id, titleSlug } = useParams()
-  const listingId = id || titleSlug?.split("-").pop()
+  const { id, slugAndId, titleSlug } = useParams()
+  const listingId = extractListingId(id, slugAndId, titleSlug)
   const { t, language } = useTranslation()
   const navigate = useNavigate()
   const listing = useListingStore((state) => state.currentListing)
-  const listings = useListingStore((state) => state.listings)
+  const similarListings = useListingStore((state) => state.similarListings)
   const loading = useListingStore((state) => state.loading)
   const error = useListingStore((state) => state.error)
   const fetchListingById = useListingStore((state) => state.fetchListingById)
   const fetchListings = useListingStore((state) => state.fetchListings)
-  const createLead = useListingStore((state) => state.createLead)
   const addRecentlyViewed = useListingStore((state) => state.addRecentlyViewed)
+  const addToRecentlyViewed = useListingStore((state) => state.addToRecentlyViewed)
+  const fetchSimilarListings = useListingStore((state) => state.fetchSimilarListings)
   const incrementView = useListingStore((state) => state.incrementView)
+  const clearCurrentListing = useListingStore((state) => state.clearCurrentListing)
+  const savedIds = useListingStore((state) => state.savedIds)
+  const toggleSaved = useListingStore((state) => state.toggleSaved)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
+  const setOpenReportListingId = useUIStore((state) => state.setOpenReportListingId)
   const setHideBottomNav = useUIStore((state) => state.setHideBottomNav)
   const hideBottomNav = useUIStore((state) => state.hideBottomNav)
   const stickyVisible = useRef(false)
   const [showSticky, setShowSticky] = useState(false)
   const trackedListingRef = useRef(null)
+  const viewEventRef = useRef(null)
 
   useEffect(() => {
     fetchListingById(listingId)
+    fetchSimilarListings(listingId)
     fetchListings()
-  }, [fetchListingById, fetchListings, listingId])
+    return () => clearCurrentListing()
+  }, [fetchListingById, fetchListings, fetchSimilarListings, listingId, clearCurrentListing])
 
   useEffect(() => {
     if (!listingId) return
     if (trackedListingRef.current === listingId) return
     trackedListingRef.current = listingId
-    incrementView(listingId)
+    incrementView(listingId, getSessionId())
     addRecentlyViewed(listingId)
   }, [addRecentlyViewed, listingId, incrementView])
+
+  useEffect(() => {
+    if (!listing?.id || viewEventRef.current === listing.id) return
+    viewEventRef.current = listing.id
+    addToRecentlyViewed(listing)
+    trackEvent("listing_viewed", { listingId: listing.id, categoryId: listing.categorySlug || listing.category })
+  }, [addToRecentlyViewed, listing])
 
   useEffect(() => {
     if (listing && id && !titleSlug) {
@@ -70,22 +100,21 @@ export default function ListingPage() {
     }
   }, [id, listing, navigate, titleSlug])
 
-  const related = useMemo(
-    () =>
-      listings
-        .filter((item) => item.id !== listing?.id && item.subcategory === listing?.subcategory)
-        .slice(0, 4),
-    [listing, listings],
-  )
+  const related = useMemo(() => similarListings.slice(0, 6), [similarListings])
   const category = categoryForListing(listing)
   const listingPath = listing ? getListingUrl(listing) : ""
   const listingUrl = listing ? canonicalUrl(listingPath) : ""
   const description = listing?.description || listing?.title || ""
+  const listingTitle = listing ? t("seo.listingTitle", { title: listing.title, price: formatPrice(listing.price, listing.currency) }) : ""
+  const listingImage = listing ? getListingImage(listing) : ""
+  const rawListingImageUrl = typeof listingImage === "string" ? listingImage : listingImage?.url || listingImage?.thumbUrl || ""
+  const listingImageUrl = rawListingImageUrl.startsWith("/") ? canonicalUrl(rawListingImageUrl) : rawListingImageUrl
+  const descriptionPreview = description.slice(0, 160)
   const productJson = listing
     ? {
         ...buildProductSchema(listing),
         description,
-        image: getListingImage(listing),
+        image: listingImageUrl,
         url: listingUrl,
       }
     : null
@@ -117,14 +146,33 @@ export default function ListingPage() {
     return () => setHideBottomNav(false)
   }, [setHideBottomNav])
 
-  function chatFromSticky() {
+  const isSaved = listing ? savedIds.some((id) => String(id) === String(listing.id)) : false
+
+  function saveFromSticky() {
     if (!isAuthenticated) {
-      setPendingAction({ type: "message", listingId: listing.id })
+      setPendingAction({ type: "save", listingId: listing.id })
       toggleAuthModal(true)
       return
     }
-    createLead(listing.id, buildLeadPayload("CHAT", { message: t("listing.quickAskMessage") }))
-    navigate("/dashboard")
+    toggleSaved(listing.id, listing)
+  }
+
+  async function shareFromSticky() {
+    const url = window.location.href
+    if (navigator.share) {
+      await navigator.share({ title: listing.title, text: listing.description, url })
+      return
+    }
+    await navigator.clipboard?.writeText(url)
+  }
+
+  function reportFromSticky() {
+    if (!isAuthenticated) {
+      setPendingAction({ type: "report", listingId: listing.id })
+      toggleAuthModal(true)
+      return
+    }
+    setOpenReportListingId(listing.id)
   }
 
   if (loading && !listing) {
@@ -168,22 +216,26 @@ export default function ListingPage() {
     <PageTransition className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <Helmet>
         <meta charSet="UTF-8" />
-        <title>{t("seo.listingTitle", { title: listing.title, price: formatPrice(listing.price, listing.currency) })}</title>
-        <meta name="description" content={description.slice(0, 160)} />
-        <meta property="og:title" content={t("seo.listingTitle", { title: listing.title, price: formatPrice(listing.price, listing.currency) })} />
-        <meta property="og:description" content={description.slice(0, 160)} />
-        <meta property="og:image" content={getListingImage(listing)} />
+        <title>{listingTitle}</title>
+        <meta name="description" content={descriptionPreview} />
+        <meta property="og:title" content={listingTitle} />
+        <meta property="og:description" content={descriptionPreview} />
+        <meta property="og:image" content={listingImageUrl} />
         <meta property="og:url" content={listingUrl} />
         <meta property="og:type" content="product" />
         <meta property="og:site_name" content="BayonHub" />
         <meta property="og:locale" content={language === "km" ? "km_KH" : "en_US"} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={listingTitle} />
+        <meta name="twitter:description" content={descriptionPreview} />
+        <meta name="twitter:image" content={listingImageUrl} />
         <link rel="canonical" href={listingUrl} />
         {productJson ? <script type="application/ld+json">{JSON.stringify(productJson)}</script> : null}
       </Helmet>
       <ListingDetail listing={listing} />
       <section className="mt-10">
         <div className="flex items-center justify-between gap-4">
-          <h2 className="text-2xl font-black text-neutral-900">{t("listing.related")}</h2>
+          <h2 className="text-2xl font-black text-neutral-900">{t("listing.similar")}</h2>
           {category ? (
             <Link className="text-sm font-black text-primary" to={`/category/${category.slug}`}>
               {t("listing.seeMoreCategory", { category: t(`category.${category.id}`) })}
@@ -214,29 +266,17 @@ export default function ListingPage() {
         }`}
       >
         <div className="mx-auto grid max-w-md grid-cols-3 gap-2">
-          <PhoneReveal
-            phone={listing.phone}
-            onReveal={() => {
-              createLead(listing.id, buildLeadPayload("CALL", { phone: listing.phone }))
-            }}
-            className="!h-11 !text-xs"
-          />
-          <Button
-            disabled={!listing.phone}
-            onClick={() => {
-              if (!listing.phone) return
-              createLead(listing.id, buildLeadPayload("WHATSAPP", { phone: listing.phone }))
-              window.open(`https://wa.me/${listing.phone.replace(/\D/g, "")}`, "_blank")
-            }}
-            size="sm"
-            title={listing.phone ? undefined : t("auth.noPhone")}
-            variant="secondary"
-          >
-            {t("listing.whatsapp")}
+          <Button onClick={saveFromSticky} size="sm" variant="secondary">
+            <Bookmark className={isSaved ? "h-4 w-4 fill-primary" : "h-4 w-4"} aria-hidden="true" />
+            {isSaved ? t("listing.saved") : t("listing.save")}
           </Button>
-          <Button onClick={chatFromSticky} size="sm" variant="secondary">
-            <MessageCircle className="h-4 w-4" aria-hidden="true" />
-            {t("listing.chat")}
+          <Button onClick={shareFromSticky} size="sm" variant="secondary">
+            <Share2 className="h-4 w-4" aria-hidden="true" />
+            {t("listing.share")}
+          </Button>
+          <Button onClick={reportFromSticky} size="sm" variant="secondary">
+            <Flag className="h-4 w-4" aria-hidden="true" />
+            {t("listing.report")}
           </Button>
         </div>
       </div>

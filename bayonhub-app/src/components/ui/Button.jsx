@@ -4,17 +4,18 @@ import Spinner from "./Spinner"
 
 const variants = {
   primary:
-    "group relative overflow-hidden bg-primary text-white shadow-sm hover:shadow-md",
+    "group relative overflow-hidden bg-primary text-white shadow-sm hover:bg-primary-dark hover:shadow-md",
   secondary:
-    "border border-neutral-200 bg-white text-neutral-900 hover:border-primary hover:text-primary",
+    "border border-neutral-300 bg-white text-neutral-900 hover:bg-neutral-50 hover:border-primary hover:text-primary",
   ghost: "bg-transparent text-neutral-700 hover:bg-neutral-100",
   danger: "bg-red-600 text-white hover:bg-red-700",
+  destructive: "bg-red-600 text-white hover:bg-red-700",
 }
 
 const sizes = {
-  sm: "min-h-11 px-3 text-sm",
-  md: "min-h-11 px-4 text-sm",
-  lg: "min-h-12 px-5 text-base",
+  sm: "min-h-11 px-4 py-2.5 text-sm",
+  md: "min-h-11 px-4 py-2.5 text-sm",
+  lg: "min-h-12 px-5 py-3 text-base",
 }
 
 const Button = forwardRef(function Button(
@@ -73,7 +74,7 @@ const Button = forwardRef(function Button(
       disabled={disabled || loading}
       aria-disabled={disabled || loading || undefined}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition duration-200 disabled:cursor-not-allowed disabled:opacity-60",
+        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
         variants[variant],
         sizes[size],
         className,

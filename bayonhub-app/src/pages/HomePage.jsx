@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import { useGSAP } from "@gsap/react"
 import { Helmet } from "react-helmet-async"
 import { Link } from "react-router-dom"
@@ -55,11 +55,16 @@ const iconMap = {
 export default function HomePage() {
   const { t, language } = useTranslation()
   const listings = useListingStore((state) => state.listings)
+  const featuredListings = useListingStore((state) => state.featuredListings)
+  const recentListings = useListingStore((state) => state.recentListings)
+  const trendingCategories = useListingStore((state) => state.trendingCategories)
+  const newTodayCount = useListingStore((state) => state.newTodayCount)
+  const homepageLoading = useListingStore((state) => state.homepageLoading)
   const loading = useListingStore((state) => state.loading)
   const error = useListingStore((state) => state.error)
   const fetchListings = useListingStore((state) => state.fetchListings)
+  const fetchHomepage = useListingStore((state) => state.fetchHomepage)
   const recentlyViewed = useListingStore((state) => state.recentlyViewed)
-  const getRecentlyViewedListings = useListingStore((state) => state.getRecentlyViewedListings)
   const clearRecentlyViewed = useListingStore((state) => state.clearRecentlyViewed)
   const selectedProvince = useUIStore((state) => state.selectedProvince)
   const setSelectedProvince = useUIStore((state) => state.setSelectedProvince)
@@ -67,21 +72,25 @@ export default function HomePage() {
   const toggleLocationSelector = useUIStore((state) => state.toggleLocationSelector)
   const { canInstall, promptInstall, dismiss } = usePWAInstall()
   const categoriesRef = useRef(null)
-  const featured = useMemo(() => listings.filter((listing) => listing.premium), [listings])
   const categoryCounts = useMemo(() => {
-    const categoryByLabel = CATEGORIES.reduce((acc, category) => {
-      acc[category.label.en] = category.slug
-      return acc
-    }, {})
+    if (trendingCategories.length) {
+      return trendingCategories.reduce((acc, item) => {
+        acc[item.categoryId] = item.count
+        return acc
+      }, {})
+    }
     return listings.reduce((acc, listing) => {
-      const isActive = !listing.status || String(listing.status).toUpperCase() === "ACTIVE"
-      if (!isActive) return acc
-      const key = listing.categorySlug || categoryByLabel[listing.category]
+      const key = listing.categorySlug || listing.category
       if (key) acc[key] = (acc[key] || 0) + 1
       return acc
     }, {})
-  }, [listings])
-  const recentlyViewedListings = getRecentlyViewedListings().slice(0, 4)
+  }, [listings, trendingCategories])
+  const recentlyViewedListings = useMemo(
+    () => recentlyViewed
+      .filter((item) => typeof item === "object" && item?.id)
+      .slice(0, 5),
+    [recentlyViewed],
+  )
   const province = useMemo(
     () => PROVINCES.find((item) => item.label.en === selectedProvince),
     [selectedProvince],
@@ -98,7 +107,12 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchListings()
-  }, [fetchListings])
+    fetchHomepage(selectedProvince)
+  }, [fetchHomepage, fetchListings, selectedProvince])
+
+  const retryHomepage = useCallback(() => {
+    fetchHomepage(selectedProvince)
+  }, [fetchHomepage, selectedProvince])
 
   useGSAP(
     () => {
@@ -158,11 +172,15 @@ export default function HomePage() {
         <meta name="description" content={t("seo.homeDescription")} />
         <meta property="og:title" content={t("seo.homeTitle")} />
         <meta property="og:description" content={t("seo.homeDescription")} />
-        <meta property="og:image" content="/og-home.png" />
+        <meta property="og:image" content={canonicalUrl("/og-home.png")} />
         <meta property="og:url" content={canonicalUrl("/")} />
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="BayonHub" />
         <meta property="og:locale" content={language === "km" ? "km_KH" : "en_US"} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={t("seo.homeTitle")} />
+        <meta name="twitter:description" content={t("seo.homeDescription")} />
+        <meta name="twitter:image" content={canonicalUrl("/og-home.png")} />
         <link rel="canonical" href={canonicalUrl("/")} />
       </Helmet>
 
@@ -200,6 +218,14 @@ export default function HomePage() {
       )}
 
       <HeroSection />
+
+      <section className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
+        <div className="rounded-2xl border border-primary/10 bg-primary/5 px-5 py-4">
+          <p className="text-sm font-black text-primary">
+            {t("home.newToday", { count: newTodayCount.toLocaleString() })}
+          </p>
+        </div>
+      </section>
 
       {/* Category grid */}
       <section ref={categoriesRef} className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
@@ -245,16 +271,29 @@ export default function HomePage() {
 
       {/* Featured listings */}
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <h2 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">
-          {t("listing.featured")}
-        </h2>
-        <div className="mt-5">
-          <ListingGrid listings={featured.slice(0, 4)} loading={loading} error={error} onRetry={fetchListings} />
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">
+            {t("home.featured")}
+          </h2>
+          <Link className="text-sm font-black text-primary" to="/search?sort=most_viewed">
+            {t("home.viewAll")}
+          </Link>
         </div>
+        {featuredListings.length ? (
+          <div className="mt-5 grid auto-cols-[78%] grid-flow-col gap-4 overflow-x-auto pb-3 sm:auto-cols-[42%] lg:auto-cols-[24%]">
+            {featuredListings.slice(0, 6).map((listing) => (
+              <ListingCard key={listing.id} listing={listing} />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-5">
+            <ListingGrid listings={[]} loading={homepageLoading || loading} error={error} onRetry={retryHomepage} />
+          </div>
+        )}
       </section>
 
       {/* Recently viewed */}
-      {recentlyViewed.length > 0 ? (
+      {recentlyViewedListings.length > 0 ? (
         <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">
@@ -264,19 +303,49 @@ export default function HomePage() {
               {t("home.clearHistory")}
             </Button>
           </div>
-          {recentlyViewedListings.length ? (
-            <div className="mt-5 grid auto-cols-[78%] grid-flow-col gap-4 overflow-x-auto pb-3 sm:auto-cols-auto sm:grid-flow-row sm:grid-cols-2 lg:grid-cols-4">
-              {recentlyViewedListings.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} />
-              ))}
-            </div>
-          ) : (
-            <div className="mt-5">
-              <ListingGrid listings={[]} loading={loading} error={error} onRetry={fetchListings} emptyMessage={t("listing.empty")} />
-            </div>
-          )}
+          <div className="mt-5 grid auto-cols-[78%] grid-flow-col gap-4 overflow-x-auto pb-3 sm:auto-cols-[42%] lg:auto-cols-[24%]">
+            {recentlyViewedListings.map((listing) => (
+              <ListingCard key={listing.id} listing={listing} />
+            ))}
+          </div>
         </section>
       ) : null}
+
+      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">
+            {t("home.trending")}
+          </h2>
+          <Link className="text-sm font-black text-primary" to="/search">
+            {t("home.viewAll")}
+          </Link>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {trendingCategories.slice(0, 8).map((item) => {
+            const category = CATEGORIES.find((entry) => entry.slug === item.categoryId || entry.id === item.categoryId)
+            const Icon = iconMap[category?.icon] || Grid2X2
+            return (
+              <Link
+                className="flex min-h-24 items-center gap-3 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition hover:border-primary dark:border-neutral-700 dark:bg-neutral-800"
+                key={item.categoryId}
+                to={`/category/${category?.slug || item.categoryId}`}
+              >
+                <span className="grid h-10 w-10 place-items-center rounded-lg bg-primary/10 text-primary">
+                  <Icon className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-black text-neutral-900 dark:text-neutral-100">
+                    {category?.label?.[language] || t("category.other")}
+                  </span>
+                  <span className="mt-1 inline-flex rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-black text-neutral-500">
+                    {item.count.toLocaleString()}
+                  </span>
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+      </section>
 
       {/* Near you */}
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -376,10 +445,10 @@ export default function HomePage() {
       {/* Latest listings */}
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <h2 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">
-          {t("listing.latest")}
+          {t("home.recent")}
         </h2>
         <div className="mt-5">
-          <ListingGrid listings={listings} loading={loading} />
+          <ListingGrid listings={recentListings.length ? recentListings : listings.slice(0, 12)} loading={homepageLoading || loading} />
         </div>
       </section>
 

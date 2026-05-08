@@ -87,31 +87,15 @@ export function maskPhone(phone) {
   return `${part1} ${part2}X XXX`
 }
 
-const R2_BASE = import.meta.env.VITE_R2_PUBLIC_URL || ""
-
 export function getSrcSet(src) {
-  if (!src) return undefined
-  if (src.startsWith("data:")) return undefined
-  if (src.includes("unsplash.com")) {
-    return `${src}&w=400 400w, ${src}&w=800 800w`
-  }
-  if (src.includes("picsum.photos")) {
-    const base = src.split("?")[0]
-    const parts = base.split("/")
-    const seedIndex = parts.indexOf("seed")
-    const seed = seedIndex !== -1 ? parts[seedIndex + 1] : null
-    if (seed) {
-      return [
-        `https://picsum.photos/seed/${seed}/400/300 400w`,
-        `https://picsum.photos/seed/${seed}/800/600 800w`,
-      ].join(", ")
-    }
-    return undefined
-  }
-  if (R2_BASE && src.startsWith(R2_BASE)) {
-    return undefined
-  }
-  return undefined
+  if (!src) return ""
+  if (src.startsWith("data:")) return ""
+  const separator = src.includes("?") ? "&" : "?"
+  return `${src}${separator}w=200 200w, ${src}${separator}w=400 400w, ${src}${separator}w=600 600w`
+}
+
+export function getImageSizes() {
+  return "(max-width: 640px) 200px, (max-width: 1024px) 400px, 600px"
 }
 
 export function telegramShare(url, text) {

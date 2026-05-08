@@ -31,6 +31,17 @@ export const SAFE_USER_SELECT = {
   role: true,
   verificationTier: true,
   isActive: true,
+  isAdmin: true,
+  banReason: true,
+  bannedUntil: true,
+  phoneVerified: true,
+  isVerifiedSeller: true,
+  lastSeen: true,
+  responseRate: true,
+  telegramChatId: true,
+  referralCode: true,
+  plusUntil: true,
+  isLifetimePlus: true,
   phoneVerifiedAt: true,
   idVerifiedAt: true,
   createdAt: true,
@@ -92,18 +103,37 @@ export async function registerUser(
   password: string,
   name: string,
   language = "en",
+  referralCode?: string,
 ): Promise<{ user: SafeUser; accessToken: string }> {
   const existing = await prisma.user.findUnique({ where: { phone }, select: { id: true } })
   if (existing) throw createHttpError(409, "Phone already in use")
 
-  const user = await prisma.user.create({
-    data: {
-      phone,
-      passwordHash: await bcrypt.hash(password, 12),
-      name,
-      language,
-    },
-    select: SAFE_USER_SELECT,
+  const referrer = referralCode
+    ? await prisma.user.findUnique({
+        where: { referralCode },
+        select: { id: true },
+      })
+    : null
+
+  const user = await prisma.$transaction(async (tx) => {
+    const created = await tx.user.create({
+      data: {
+        phone,
+        passwordHash: await bcrypt.hash(password, 12),
+        name,
+        language,
+      },
+      select: SAFE_USER_SELECT,
+    })
+    if (referrer && referrer.id !== created.id) {
+      await tx.referral.create({
+        data: {
+          referrerId: referrer.id,
+          referredId: created.id,
+        },
+      })
+    }
+    return created
   })
 
   const slug = await generateUserSlug(name, user.id)
@@ -124,6 +154,63 @@ export async function sendOTP(phone: string): Promise<{ success: true }> {
   return { success: true }
 }
 
+export async function sendPhoneOTP(phone: string): Promise<{ success: true; code?: string }> {
+  const recentCount = await prisma.phoneOTP.count({
+    where: {
+      phone,
+      createdAt: { gte: new Date(Date.now() - 10 * 60 * 1000) },
+    },
+  })
+  if (recentCount >= 3) throw createHttpError(429, "Too many OTP requests")
+
+  const code = String(Math.floor(100000 + Math.random() * 900000))
+  await prisma.phoneOTP.create({
+    data: {
+      phone,
+      code,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    },
+  })
+  console.info(`[DEV OTP] ${phone}: ${code}`)
+
+  if (isProduction) {
+    throw createHttpError(501, "SMS provider required for production OTP")
+  }
+  return { success: true, code }
+}
+
+export async function verifyPhoneOTP(
+  userId: string | undefined,
+  phone: string,
+  code: string,
+): Promise<{ success: true; user?: SafeUser }> {
+  const otp = await prisma.phoneOTP.findFirst({
+    where: {
+      phone,
+      code,
+      used: false,
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { createdAt: "desc" },
+  })
+  if (!otp) throw createHttpError(400, "Invalid or expired OTP")
+
+  await prisma.phoneOTP.update({ where: { id: otp.id }, data: { used: true } })
+  if (!userId) return { success: true }
+
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      phone,
+      phoneVerified: true,
+      phoneVerifiedAt: new Date(),
+      verificationTier: VerificationTier.PHONE,
+    },
+    select: SAFE_USER_SELECT,
+  })
+  return { success: true, user }
+}
+
 export async function verifyOTP(phone: string, code: string): Promise<SafeUser> {
   const user = await prisma.user.findUnique({ where: { phone }, select: { id: true } })
   if (!user) throw createHttpError(404, "User not found")
@@ -135,6 +222,7 @@ export async function verifyOTP(phone: string, code: string): Promise<SafeUser> 
     where: { phone },
     data: {
       phoneVerifiedAt: new Date(),
+      phoneVerified: true,
       verificationTier: VerificationTier.PHONE,
     },
     select: SAFE_USER_SELECT,
@@ -159,6 +247,7 @@ export async function resetPassword(
     data: {
       passwordHash: hashedPassword,
       phoneVerifiedAt: new Date(),
+      phoneVerified: true,
       verificationTier: VerificationTier.PHONE,
     },
   })
@@ -176,6 +265,8 @@ export async function loginUser(
 ): Promise<{ user: SafeUser; accessToken: string }> {
   const user = await prisma.user.findUnique({ where: { phone } })
   if (!user) throw createHttpError(401, "Invalid credentials")
+  const banned = user.banReason && (!user.bannedUntil || user.bannedUntil > new Date())
+  if (banned) throw createHttpError(403, "Account suspended")
 
   const match = await bcrypt.compare(password, user.passwordHash)
   if (!match) throw createHttpError(401, "Invalid credentials")

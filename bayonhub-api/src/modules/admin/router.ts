@@ -5,17 +5,45 @@ import { KYCStatus, ListingStatus, ReportStatus, Role, VerificationTier } from "
 import { getLocalPrivateDocumentPath, getPrivateDocumentReadUrl } from "../../lib/s3"
 import { requireAdmin, requireAuth } from "../../middleware/auth"
 import {
+  addFeaturedListing,
+  approvePayment,
+  banUser,
+  bulkListingAction,
+  getAnalytics,
   getAdminListings,
+  getAdminListingsPage,
+  getAppeals,
+  getBannedUsers,
+  getDashboard,
+  getFeaturedListings,
+  getAdminPayments,
+  getGiftPlusLog,
   getPendingKycApplications,
   getReports,
+  getReportsPage,
   getStats,
+  getUserDetail,
   getUsers,
+  getUsersPage,
+  getVerificationRequests,
+  hardDeleteListing,
   importListings,
+  removeFeaturedListing,
+  revokePlus,
+  rejectPayment,
+  resolveAppeal,
+  resolveReport,
+  resolveVerificationRequest,
+  giftPlus,
+  searchGiftUsers,
+  unbanUser,
+  updateAdminListing,
   updateKycApplication,
   updateListingStatus,
   updateReport,
   updateUserRole,
   updateUserVerification,
+  warnUser,
 } from "./service"
 
 const router = Router()
@@ -37,10 +65,106 @@ function getQueryString(value: unknown): string | undefined {
 
 router.use(requireAuth, requireAdmin)
 
+router.get("/dashboard", async (_req, res, next) => {
+  try {
+    const result = await getDashboard()
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.get("/payments", async (req, res, next) => {
+  try {
+    const result = await getAdminPayments({
+      status: getQueryString(req.query.status),
+      page: Number(req.query.page || 1),
+      limit: Number(req.query.limit || 20),
+    })
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.post("/payments/:id/approve", async (req, res, next) => {
+  try {
+    const result = await approvePayment(getParam(req.params.id, "payment id"), req.user!.id)
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.post("/payments/:id/reject", async (req, res, next) => {
+  try {
+    const reviewNote = typeof req.body.reviewNote === "string" ? req.body.reviewNote : ""
+    if (!reviewNote.trim()) throw createHttpError(400, "reviewNote is required")
+    const result = await rejectPayment(getParam(req.params.id, "payment id"), req.user!.id, reviewNote)
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.post("/gift-plus", async (req, res, next) => {
+  try {
+    const result = await giftPlus(req.user!.id, {
+      userId: typeof req.body.userId === "string" ? req.body.userId : undefined,
+      giftType: typeof req.body.giftType === "string" ? req.body.giftType : undefined,
+      note: typeof req.body.note === "string" ? req.body.note : undefined,
+    })
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.get("/gift-plus/log", async (req, res, next) => {
+  try {
+    const result = await getGiftPlusLog({
+      page: Number(req.query.page || 1),
+      limit: Number(req.query.limit || 20),
+    })
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.post("/gift-plus/:userId/revoke", async (req, res, next) => {
+  try {
+    const note = typeof req.body.note === "string" ? req.body.note : undefined
+    const result = await revokePlus(getParam(req.params.userId, "user id"), note)
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
 router.get("/reports", async (req, res, next) => {
   try {
-    const result = await getReports(getQueryString(req.query.cursor), Number(req.query.limit || 20))
-    res.status(200).json(result)
+    if (req.query.cursor) {
+      const legacy = await getReports(getQueryString(req.query.cursor), Number(req.query.limit || 20))
+      res.status(200).json(legacy)
+      return
+    }
+    const result = await getReportsPage({
+      page: Number(req.query.page || 1),
+      limit: Number(req.query.limit || 20),
+      status: getQueryString(req.query.status),
+    })
+    res.status(200).json({ ...result, reports: result.data })
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.patch("/reports/:id", async (req, res, next) => {
+  try {
+    const action = typeof req.body.action === "string" ? req.body.action : ""
+    const report = await resolveReport(getParam(req.params.id, "report id"), action)
+    res.status(200).json(report)
   } catch (error) {
     next(error)
   }
@@ -125,10 +249,49 @@ router.put("/kyc/:id", async (req, res, next) => {
 
 router.get("/listings", async (req, res, next) => {
   try {
-    const result = await getAdminListings(
-      getQueryString(req.query.cursor),
-      Number(req.query.limit || 20),
-    )
+    if (req.query.cursor) {
+      const legacy = await getAdminListings(getQueryString(req.query.cursor), Number(req.query.limit || 20))
+      res.status(200).json(legacy)
+      return
+    }
+    const result = await getAdminListingsPage({
+      page: Number(req.query.page || 1),
+      limit: Number(req.query.limit || 20),
+      status: getQueryString(req.query.status),
+      category: getQueryString(req.query.category),
+      flagged: getQueryString(req.query.flagged),
+      search: getQueryString(req.query.search),
+    })
+    res.status(200).json({ ...result, listings: result.data })
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.patch("/listings/:id", async (req, res, next) => {
+  try {
+    const status = typeof req.body.status === "string" ? req.body.status : ""
+    const listing = await updateAdminListing(getParam(req.params.id, "listing id"), status)
+    res.status(200).json(listing)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.delete("/listings/:id", async (req, res, next) => {
+  try {
+    const result = await hardDeleteListing(getParam(req.params.id, "listing id"))
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.post("/listings/bulk", async (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((id: unknown): id is string => typeof id === "string") : []
+    const action = typeof req.body.action === "string" ? req.body.action : ""
+    const result = await bulkListingAction(ids, action)
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -159,7 +322,75 @@ router.post("/listings/import", async (req, res, next) => {
 
 router.get("/users", async (req, res, next) => {
   try {
-    const result = await getUsers(getQueryString(req.query.cursor), Number(req.query.limit || 20))
+    if (req.query.cursor) {
+      const legacy = await getUsers(getQueryString(req.query.cursor), Number(req.query.limit || 20))
+      res.status(200).json(legacy)
+      return
+    }
+    const result = await getUsersPage({
+      page: Number(req.query.page || 1),
+      limit: Number(req.query.limit || 20),
+      search: getQueryString(req.query.search),
+    })
+    res.status(200).json({ ...result, users: result.data })
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.get("/users/search", async (req, res, next) => {
+  try {
+    const result = await searchGiftUsers(getQueryString(req.query.q))
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.get("/users/banned", async (_req, res, next) => {
+  try {
+    const result = await getBannedUsers()
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.get("/users/:id", async (req, res, next) => {
+  try {
+    const result = await getUserDetail(getParam(req.params.id, "user id"))
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.patch("/users/:id/ban", async (req, res, next) => {
+  try {
+    const reason = typeof req.body.reason === "string" ? req.body.reason : ""
+    if (!reason.trim()) throw createHttpError(400, "reason is required")
+    const duration = req.body.duration === null || req.body.duration === undefined ? null : Number(req.body.duration)
+    const result = await banUser(getParam(req.params.id, "user id"), reason.trim(), duration)
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.patch("/users/:id/warn", async (req, res, next) => {
+  try {
+    const reason = typeof req.body.reason === "string" ? req.body.reason : ""
+    if (!reason.trim()) throw createHttpError(400, "reason is required")
+    const result = await warnUser(getParam(req.params.id, "user id"), reason.trim())
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.patch("/users/:id/unban", async (req, res, next) => {
+  try {
+    const result = await unbanUser(getParam(req.params.id, "user id"))
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -197,6 +428,91 @@ router.get("/stats", async (_req, res, next) => {
   try {
     const stats = await getStats()
     res.status(200).json(stats)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.get("/analytics", async (req, res, next) => {
+  try {
+    const result = await getAnalytics(getQueryString(req.query.period))
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.get("/featured", async (_req, res, next) => {
+  try {
+    const result = await getFeaturedListings()
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.post("/featured", async (req, res, next) => {
+  try {
+    if (!req.body.listingId || typeof req.body.listingId !== "string") {
+      throw createHttpError(400, "listingId is required")
+    }
+    const result = await addFeaturedListing(req.body.listingId, req.user!.id)
+    res.status(201).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.delete("/featured/:id", async (req, res, next) => {
+  try {
+    const result = await removeFeaturedListing(getParam(req.params.id, "featured id"))
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.get("/appeals", async (_req, res, next) => {
+  try {
+    const result = await getAppeals()
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.patch("/appeals/:id", async (req, res, next) => {
+  try {
+    const action = typeof req.body.action === "string" ? req.body.action : ""
+    const result = await resolveAppeal(
+      getParam(req.params.id, "appeal id"),
+      action,
+      typeof req.body.adminNote === "string" ? req.body.adminNote : undefined,
+    )
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.get("/verifications", async (_req, res, next) => {
+  try {
+    const result = await getVerificationRequests()
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.patch("/verifications/:id", async (req, res, next) => {
+  try {
+    const action = typeof req.body.action === "string" ? req.body.action : ""
+    const result = await resolveVerificationRequest(
+      getParam(req.params.id, "verification id"),
+      action,
+      typeof req.body.adminNote === "string" ? req.body.adminNote : undefined,
+    )
+    res.status(200).json(result)
   } catch (error) {
     next(error)
   }

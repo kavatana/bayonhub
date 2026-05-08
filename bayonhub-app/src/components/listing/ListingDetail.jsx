@@ -1,9 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import gsap from "gsap"
 import { formatDistanceToNow } from "date-fns"
-import { Link, useNavigate } from "react-router-dom"
+import { Link } from "react-router-dom"
 import {
   BadgeCheck,
+  Bookmark,
+  Camera,
   Calendar,
   ChevronLeft,
   ChevronRight,
@@ -25,14 +27,16 @@ import {
 } from "lucide-react"
 import toast from "react-hot-toast"
 import { useTranslation } from "../../hooks/useTranslation"
+import { trackEvent } from "../../lib/analytics"
 import { CATEGORIES } from "../../lib/categories"
 import { rateLimiter } from "../../lib/rateLimiter"
-import { cn, formatPrice, getListingImage, telegramShare, sellerUrl, timeAgo } from "../../lib/utils"
+import { cn, formatPrice, getImageSizes, getListingImage, getSrcSet, telegramShare, sellerUrl, timeAgo } from "../../lib/utils"
 import { sanitizeText } from "../../lib/sanitize"
 import { buildLeadPayload } from "../../lib/validation"
 import { useAuthStore } from "../../store/useAuthStore"
 import { useListingStore } from "../../store/useListingStore"
 import { useUIStore } from "../../store/useUIStore"
+import { useUserStore } from "../../store/useUserStore"
 import Badge from "../ui/Badge"
 import Breadcrumb from "../ui/Breadcrumb"
 import Button from "../ui/Button"
@@ -41,14 +45,16 @@ import Modal from "../ui/Modal"
 import SafetyWarning from "../ui/SafetyWarning"
 import StarRating from "../ui/StarRating"
 import PhoneReveal from "../ui/PhoneReveal"
+import ReviewModal from "../storefront/ReviewModal"
+import MessageModal from "../messaging/MessageModal"
 
 const MapView = lazy(() => import("../ui/MapView"))
 
 const reportReasons = [
   "SCAM",
   "WRONG_CATEGORY",
+  "DUPLICATE",
   "INAPPROPRIATE",
-  "SPAM",
   "OTHER",
 ]
 
@@ -73,9 +79,15 @@ function findCategoryForListing(listing) {
   )
 }
 
+function sellerLastSeenText(value, language, t) {
+  if (!value) return ""
+  const diffMs = Date.now() - new Date(value).getTime()
+  if (diffMs < 60 * 60 * 1000) return t("seller.lastSeenRecently")
+  return t("seller.lastSeenAgo", { time: timeAgo(value, language) })
+}
+
 export default function ListingDetail({ listing }) {
   const { t, language } = useTranslation()
-  const navigate = useNavigate()
   const images = useMemo(() => normalizeImages(listing), [listing])
   const [activeImage, setActiveImage] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -85,15 +97,32 @@ export default function ListingDetail({ listing }) {
   const [evidenceUrl, setEvidenceUrl] = useState("")
   const [contactEmail, setContactEmail] = useState("")
   const [offerOpen, setOfferOpen] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [messageModalOpen, setMessageModalOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [descriptionLanguage, setDescriptionLanguage] = useState(language)
   const [offer, setOffer] = useState({ price: "", message: "" })
+  const [brokenImages, setBrokenImages] = useState({})
   const [isSubmittingReport, setIsSubmittingReport] = useState(false)
   const [isSubmittingOffer, setIsSubmittingOffer] = useState(false)
   const mainImageRef = useRef(null)
   const createLead = useListingStore((state) => state.createLead)
   const reportListing = useListingStore((state) => state.reportListing)
+  const bumpListing = useListingStore((state) => state.bumpListing)
+  const favorites = useListingStore((state) => state.favorites)
+  const watchlist = useListingStore((state) => state.watchlist)
+  const toggleFavorite = useListingStore((state) => state.toggleFavorite)
+  const toggleWatchlist = useListingStore((state) => state.toggleWatchlist)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const following = useAuthStore((state) => state.following)
+  const followSellerLocal = useAuthStore((state) => state.followSeller)
+  const unfollowSellerLocal = useAuthStore((state) => state.unfollowSeller)
+  const user = useAuthStore((state) => state.user)
+  const followSeller = useUserStore((state) => state.followSeller)
+  const unfollowSeller = useUserStore((state) => state.unfollowSeller)
+  const fetchFollowers = useUserStore((state) => state.fetchFollowers)
+  const followerCounts = useUserStore((state) => state.followerCounts)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
   const openReportListingId = useUIStore((state) => state.openReportListingId)
@@ -108,6 +137,34 @@ export default function ListingDetail({ listing }) {
   }, [openReportListingId, listing.id, setOpenReportListingId])
   const phone = listing.phone || null
   const hasPhone = Boolean(phone)
+  const telegramUsername = listing.seller?.telegramUsername || listing.username
+  const whatsappNumber = listing.seller?.whatsappNumber || phone
+  const isSold = listing?.status === "sold" || listing?.status === "SOLD"
+  const sellerId = listing.sellerId || listing.seller?.id
+  const activeImageUrl = images[activeImage]
+
+  function markImageBroken(image) {
+    setBrokenImages((current) => ({ ...current, [image]: true }))
+  }
+
+  function trackLead(type) {
+    trackEvent("lead_created", { listingId: listing.id, type })
+  }
+  const isSeller = user?.id && sellerId && String(user.id) === String(sellerId)
+  const isFollowingSeller = sellerId ? following.includes(String(sellerId)) : false
+  const followersCount = sellerId
+    ? followerCounts[sellerId] ?? listing.seller?.followersCount ?? listing.followers ?? 0
+    : 0
+  const isFavorite = favorites.some((item) => String(item.listingId || item) === String(listing.id))
+  const isWatching = watchlist.some((item) => String(item.listingId || item) === String(listing.id))
+  const sellerReviewCount = Number(listing.sellerReviewCount || listing.seller?.reviewCount || listing.seller?.reviewsCount || 0)
+  const sellerRating = Number(listing.sellerRating || listing.seller?.rating || 0)
+  const sellerVerified = Boolean(listing.seller?.isVerifiedSeller || listing.isVerifiedSeller)
+  const sellerIsPlusMember = Boolean(listing.seller?.isPlusMember || listing.isPlusMember)
+  const isBumpedToday = listing.bumpedAt && new Date(listing.bumpedAt) >= new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()))
+  const sellerResponseRate = Number(listing.seller?.responseRate ?? listing.responseRate ?? 0)
+  const sellerConversationCount = Number(listing.seller?.totalSellerConversations || listing.totalSellerConversations || 0)
+  const sellerLastSeen = sellerLastSeenText(listing.seller?.lastSeen || listing.lastSeen, language, t)
   const category = findCategoryForListing(listing)
   const subcategory = category?.subcategories.find((item) => item.label.en === listing.subcategory)
   const isVehicleListing =
@@ -142,6 +199,10 @@ export default function ListingDetail({ listing }) {
       : null,
     { label: listing.title.length > 30 ? `${listing.title.slice(0, 30)}...` : listing.title },
   ].filter(Boolean)
+
+  useEffect(() => {
+    if (sellerId) fetchFollowers(sellerId)
+  }, [fetchFollowers, sellerId])
 
   useEffect(() => {
     if (!mainImageRef.current) return
@@ -200,13 +261,29 @@ export default function ListingDetail({ listing }) {
       await navigator.share({ title: listing.title, text: listing.description, url })
       return
     }
-    await navigator.clipboard?.writeText(url)
-    toast.success(t("listing.shareCopied"))
+    setShareOpen(true)
   }
 
   async function copyListingLink() {
     await navigator.clipboard?.writeText(window.location.href)
     toast.success(t("listing.linkCopied"))
+  }
+
+  function requireAuth(action) {
+    if (isAuthenticated) return true
+    setPendingAction(action)
+    toggleAuthModal(true)
+    return false
+  }
+
+  function handleFavorite() {
+    if (!requireAuth({ type: "favorite", listingId: listing.id })) return
+    toggleFavorite(listing.id)
+  }
+
+  function handleWatchlist() {
+    if (!requireAuth({ type: "watchlist", listingId: listing.id })) return
+    toggleWatchlist(listing.id)
   }
 
   function canPerformContact(type) {
@@ -224,21 +301,19 @@ export default function ListingDetail({ listing }) {
   function sendQuickAsk() {
     if (!canPerformContact("CHAT")) return
     createLead(listing.id, buildLeadPayload("CHAT", { message: t("listing.quickAskMessage") }))
+    trackLead("CHAT")
     recordContact("CHAT")
     toast.success(t("listing.quickAskSent"))
   }
 
   function sendMessage() {
-    if (!canPerformContact("CHAT")) return
     if (!isAuthenticated) {
       toast.info(t("auth.signInToMessage"), { duration: 3000 })
       setPendingAction({ type: "message", listingId: listing.id })
       toggleAuthModal(true)
       return
     }
-    createLead(listing.id, buildLeadPayload("CHAT", { message: t("listing.quickAskMessage") }))
-    recordContact("CHAT")
-    navigate("/dashboard")
+    setMessageModalOpen(true)
   }
 
   function handleOpenReport() {
@@ -251,10 +326,33 @@ export default function ListingDetail({ listing }) {
     setReportOpen(true)
   }
 
+  async function handleFollowSeller() {
+    if (!sellerId) return
+    if (!requireAuth({ type: "follow", sellerId })) return
+    if (isFollowingSeller) {
+      unfollowSellerLocal(sellerId)
+      await unfollowSeller(sellerId)
+    } else {
+      followSellerLocal(sellerId)
+      await followSeller(sellerId)
+    }
+  }
+
+  async function handleBumpListing() {
+    if (!requireAuth({ type: "bump", listingId: listing.id })) return
+    const result = await bumpListing(listing.id)
+    if (result.success) {
+      toast.success(t("bump.bumpedToday"))
+      return
+    }
+    toast.error(result.error === "BUMP_LIMIT" ? t("bump.limit") : t("plus.plusRequired"))
+  }
+
   function handleRevealPhone() {
     if (!hasPhone) return
     if (!canPerformContact("CALL")) return
     createLead(listing.id, buildLeadPayload("CALL", { phone }))
+    trackLead("CALL")
     recordContact("CALL")
   }
 
@@ -313,6 +411,7 @@ export default function ListingDetail({ listing }) {
     setIsSubmittingOffer(true)
     try {
       createLead(listing.id, buildLeadPayload("OFFER", { offerPrice: offer.price, message: offer.message }))
+      trackLead("OFFER")
       recordContact("OFFER")
       setOfferOpen(false)
       toast.success(t("ui.success"))
@@ -328,34 +427,73 @@ export default function ListingDetail({ listing }) {
       <section className="min-w-0 space-y-6">
         <Breadcrumb crumbs={crumbs} />
         <div className="relative overflow-hidden rounded-2xl bg-neutral-100">
+          {isSold && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10 rounded-xl pointer-events-none">
+              <span className="bg-red-500 text-white font-bold text-xl px-6 py-3 rounded-full rotate-[-12deg] shadow-lg select-none">
+                {t("listing.sold")}
+              </span>
+            </div>
+          )}
           <button className="block w-full" onClick={() => setLightboxOpen(true)} type="button">
-            <img
-              ref={mainImageRef}
-              alt={listing.title}
-              className="aspect-[4/3] w-full object-cover"
-              src={images[activeImage]}
-            />
+            {brokenImages[activeImageUrl] ? (
+              <div className="grid aspect-[4/3] w-full place-items-center bg-neutral-200 text-neutral-400">
+                <Camera className="h-12 w-12" aria-hidden="true" />
+              </div>
+            ) : (
+              <img
+                ref={mainImageRef}
+                alt={listing.title}
+                className="aspect-[4/3] w-full object-cover"
+                decoding="async"
+                height="600"
+                loading="lazy"
+                onError={() => markImageBroken(activeImageUrl)}
+                sizes={getImageSizes()}
+                src={activeImageUrl}
+                srcSet={getSrcSet(activeImageUrl)}
+                width="800"
+              />
+            )}
             <span className="sr-only">{t("listing.zoomImage")}</span>
           </button>
           <span className="absolute right-3 top-3 rounded-full bg-black/70 px-3 py-1 text-xs font-black text-white">
             {t("listing.imageCount", { current: activeImage + 1, total: images.length })}
           </span>
         </div>
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {images.map((image, index) => (
-            <button
-              className={cn(
-                "h-20 w-24 shrink-0 overflow-hidden rounded-xl border-2 bg-neutral-100",
-                activeImage === index ? "border-primary" : "border-transparent",
-              )}
-              key={`${image}-${index}`}
-              onClick={() => setActiveImage(index)}
-              type="button"
-            >
-              <img alt={listing.title} className="h-full w-full object-cover" loading="lazy" src={image} />
-            </button>
-          ))}
-        </div>
+        {images.length > 1 ? (
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {images.map((image, index) => (
+              <button
+                className={cn(
+                  "h-20 w-24 shrink-0 overflow-hidden rounded-xl border-2 bg-neutral-100",
+                  activeImage === index ? "border-primary" : "border-transparent",
+                )}
+                key={`${image}-${index}`}
+                onClick={() => setActiveImage(index)}
+                type="button"
+              >
+                {brokenImages[image] ? (
+                  <span className="grid h-full w-full place-items-center bg-neutral-200 text-neutral-400">
+                    <Camera className="h-6 w-6" aria-hidden="true" />
+                  </span>
+                ) : (
+                  <img
+                    alt={listing.title}
+                    className="h-full w-full object-cover"
+                    decoding="async"
+                    height="80"
+                    loading="lazy"
+                    onError={() => markImageBroken(image)}
+                    sizes="96px"
+                    src={image}
+                    srcSet={getSrcSet(image)}
+                    width="96"
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
           <div className="mb-3 flex flex-wrap gap-2">
@@ -372,6 +510,12 @@ export default function ListingDetail({ listing }) {
             </div>
           ) : null}
           <p className="mt-3 font-display text-3xl font-bold text-primary">{formatPrice(listing.price, listing.currency)}</p>
+          {isSold && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-2">
+              <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+              <span className="text-sm font-medium text-red-700">{t("listing.soldBanner")}</span>
+            </div>
+          )}
           <div className="mt-4 flex flex-wrap items-center gap-4 text-sm font-semibold text-neutral-500">
             <span>{t("listing.postedAgo", { time: postedText })}</span>
             <span className="flex items-center gap-1 text-xs text-neutral-400">
@@ -393,6 +537,14 @@ export default function ListingDetail({ listing }) {
             <button className="inline-flex items-center gap-1 text-primary" onClick={() => telegramShare(window.location.href, listing.title)} type="button">
               <Send className="h-4 w-4" aria-hidden="true" />
               {t("listing.telegramShare")}
+            </button>
+            <button aria-label={t("a11y.saveListing")} className="inline-flex items-center gap-1 text-primary" onClick={handleFavorite} type="button">
+              <Bookmark className={cn("h-4 w-4", isFavorite ? "fill-primary" : "")} aria-hidden="true" />
+              {isFavorite ? t("listing.saved") : t("dashboard.favorites")}
+            </button>
+            <button aria-label={t("dashboard.priceWatch")} className="inline-flex items-center gap-1 text-primary" onClick={handleWatchlist} type="button">
+              <Eye className={cn("h-4 w-4", isWatching ? "fill-primary" : "")} aria-hidden="true" />
+              {t("dashboard.priceWatch")}
             </button>
           </div>
         </section>
@@ -474,12 +626,33 @@ export default function ListingDetail({ listing }) {
       <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
         <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
           <div className="flex items-start gap-4">
-            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-primary/10 text-lg font-black text-primary">
-              {String(listing.sellerName || t("listing.seller")).slice(0, 2).toUpperCase()}
+            <div className="relative h-14 w-14 shrink-0">
+              <img
+                src={listing.sellerAvatar || listing.seller?.avatarUrl || "fallback"}
+                alt={`${t("a11y.sellerAvatar")} ${listing.sellerName || t("listing.seller")}`}
+                className="h-14 w-14 rounded-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none"
+                  e.currentTarget.nextElementSibling?.style.removeProperty("display")
+                }}
+              />
+              <div
+                className="hidden h-14 w-14 place-items-center rounded-full bg-primary/10 text-lg font-black text-primary flex justify-center items-center"
+                aria-hidden="true"
+              >
+                {String(listing.sellerName || t("listing.seller")).slice(0, 2).toUpperCase()}
+              </div>
             </div>
             <div className="min-w-0">
               <p className="text-xs font-black uppercase tracking-widest text-primary">{t("listing.seller")}</p>
-              <h2 className="truncate text-xl font-black text-neutral-900">{sanitizeText(listing.sellerName || t("listing.seller"))}</h2>
+              <div className="flex min-w-0 items-center gap-2">
+                <h2 className="truncate text-xl font-black text-neutral-900">{sanitizeText(listing.sellerName || t("listing.seller"))}</h2>
+                {sellerReviewCount > 0 ? (
+                  <span className="shrink-0 rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">
+                    {sellerRating.toFixed(1)}
+                  </span>
+                ) : null}
+              </div>
               {(listing.seller?.createdAt || listing.memberSince || listing.postedAt) ? (
                 <p className="mt-1 flex items-center gap-1 text-xs text-neutral-400">
                   <Calendar className="h-2.5 w-2.5" aria-hidden="true" />
@@ -489,22 +662,53 @@ export default function ListingDetail({ listing }) {
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
+            {sellerIsPlusMember ? <Badge type="plus" /> : null}
+            {sellerVerified ? <Badge type="verified" /> : null}
             {listing.phoneVerified ? <Badge type="phone-verified" /> : null}
             {listing.verified ? <Badge type="id-verified" /> : null}
+            {sellerVerified ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
+                <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                {t("seller.verified")}
+              </span>
+            ) : null}
             {listing.premium ? <Badge type="promoted" /> : null}
           </div>
           <div className="mt-4 grid gap-3 rounded-xl bg-neutral-50 p-3 text-sm font-semibold text-neutral-600">
             <Link className="inline-flex items-center gap-2 text-primary" to={sellerUrl(listing.seller || { id: listing.sellerId })}>
               <Store className="h-4 w-4" aria-hidden="true" />
-              {listing.totalListings || 1} {t("listing.activeListings")}
+              {listing.seller?.totalActiveListings || listing.totalListings || 1} {t("listing.activeListings")}
             </Link>
+            <span className="inline-flex items-center gap-2">
+              <Store className="h-4 w-4 text-primary" aria-hidden="true" />
+              {Number(followersCount).toLocaleString()} {t("social.followers")}
+            </span>
             <span className="inline-flex items-center gap-2">
               <BadgeCheck className="h-4 w-4 text-primary" aria-hidden="true" />
               {t("listing.responseTime")}: {listing.responseTime ? listing.responseTime : t("listing.responseTimeUnknown")}
             </span>
+            {sellerConversationCount >= 3 ? (
+              <span className="inline-flex items-center gap-2">
+                <Send className="h-4 w-4 text-primary" aria-hidden="true" />
+                {t("seller.respondsPct", { pct: Math.round(sellerResponseRate) })}
+              </span>
+            ) : null}
+            {sellerLastSeen ? (
+              <span className="inline-flex items-center gap-2">
+                <Eye className="h-4 w-4 text-primary" aria-hidden="true" />
+                {sellerLastSeen}
+              </span>
+            ) : null}
             <span className="inline-flex items-center gap-2">
               <Star className="h-4 w-4 fill-amber-400 text-amber-400" aria-hidden="true" />
-              <StarRating rating={listing.sellerRating || listing.seller?.rating || 4} />
+              {sellerReviewCount > 0 ? (
+                <>
+                  <StarRating rating={sellerRating} />
+                  {sellerReviewCount} {t("seller.reviews")}
+                </>
+              ) : (
+                t("review.noReviews")
+              )}
             </span>
           </div>
           <SafetyWarning className="mt-4" />
@@ -517,43 +721,67 @@ export default function ListingDetail({ listing }) {
             ) : (
               <span className="text-sm text-neutral-400">{t("listing.phoneNotProvided")}</span>
             )}
-            <Button
-              aria-label={hasPhone ? undefined : t("auth.noPhone")}
-              disabled={!hasPhone}
-              onClick={() => {
-                if (!hasPhone) return
-                if (!canPerformContact("WHATSAPP")) return
-                createLead(listing.id, buildLeadPayload("WHATSAPP", { phone }))
-                recordContact("WHATSAPP")
-                window.open(`https://wa.me/${phone.replace(/\D/g, "")}`, "_blank")
-              }}
-              title={hasPhone ? undefined : t("auth.noPhone")}
-              variant="secondary"
-            >
-              {t("listing.whatsapp")}
-            </Button>
-            <Button
-              onClick={() => {
-                if (!canPerformContact("TELEGRAM")) return
-                createLead(listing.id, buildLeadPayload("TELEGRAM", { message: listing.title }))
-                recordContact("TELEGRAM")
-                telegramShare(window.location.href, listing.title)
-              }}
-              variant="secondary"
-            >
-              <Send className="h-4 w-4" aria-hidden="true" />
-              {t("listing.telegram")}
-            </Button>
+            {sellerIsPlusMember ? (
+              <Button
+                aria-label={hasPhone ? undefined : t("auth.noPhone")}
+                disabled={!hasPhone || isSold}
+                onClick={() => {
+                  if (!hasPhone) return
+                  if (!canPerformContact("WHATSAPP")) return
+                  createLead(listing.id, buildLeadPayload("WHATSAPP", { phone: whatsappNumber }))
+                  trackLead("WHATSAPP")
+                  recordContact("WHATSAPP")
+                  window.open(`https://wa.me/${whatsappNumber.replace(/\D/g, "")}`, "_blank")
+                }}
+                title={hasPhone ? undefined : t("auth.noPhone")}
+                variant="secondary"
+              >
+                {t("listing.whatsapp")}
+              </Button>
+            ) : null}
+            {sellerIsPlusMember && telegramUsername ? (
+              <Button
+                disabled={isSold}
+                onClick={() => {
+                  if (!canPerformContact("TELEGRAM")) return
+                  createLead(listing.id, buildLeadPayload("TELEGRAM", { message: listing.title }))
+                  trackLead("TELEGRAM")
+                  recordContact("TELEGRAM")
+                  window.open(`https://t.me/${String(telegramUsername).replace(/^@/, "")}`, "_blank")
+                }}
+                variant="secondary"
+              >
+                <Send className="h-4 w-4" aria-hidden="true" />
+                {t("listing.telegram")}
+              </Button>
+            ) : null}
             {listing.facebookPage ? (
-              <Button onClick={() => window.open(`https://m.me/${listing.facebookPage}`, "_blank")} variant="secondary">
+              <Button disabled={isSold} onClick={() => window.open(`https://m.me/${listing.facebookPage}`, "_blank")} variant="secondary">
                 <MessageCircle className="h-4 w-4" aria-hidden="true" />
                 {t("listing.messenger")}
               </Button>
             ) : null}
-            <Button onClick={sendMessage} variant="secondary">
-              <MessageCircle className="h-4 w-4" aria-hidden="true" />
-              {t("listing.sendMessage")}
-            </Button>
+            {!isSeller ? (
+              <Button onClick={handleFollowSeller} variant={isFollowingSeller ? "secondary" : "primary"}>
+                {isFollowingSeller ? t("social.following") : t("social.follow")}
+              </Button>
+            ) : null}
+            {!isSeller ? (
+              <Button disabled={isSold} onClick={sendMessage} variant="secondary">
+                <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                {t("messaging.sendMessage")}
+              </Button>
+            ) : null}
+            {isSeller ? (
+              <Button
+                disabled={isSold || isBumpedToday || !sellerIsPlusMember}
+                onClick={handleBumpListing}
+                title={!sellerIsPlusMember ? t("plus.plusRequired") : undefined}
+                variant={sellerIsPlusMember ? "primary" : "secondary"}
+              >
+                {isBumpedToday ? t("bump.bumpedToday") : t("bump.bumpToTop")}
+              </Button>
+            ) : null}
 
             {/* Safety Messaging */}
             <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50/50 p-4">
@@ -570,13 +798,26 @@ export default function ListingDetail({ listing }) {
               </div>
             </div>
 
-            <Button onClick={sendQuickAsk} variant="ghost">
+            <Button disabled={isSold} onClick={sendQuickAsk} variant="ghost">
               <MessageCircle className="h-4 w-4" aria-hidden="true" />
               {t("listing.quickAsk")}
             </Button>
-            <Button onClick={() => setOfferOpen(true)} variant="secondary">
+            <Button disabled={isSold} onClick={() => setOfferOpen(true)} variant="secondary">
               {t("listing.makeOffer")}
             </Button>
+            {!isSeller ? (
+              <Button
+                disabled={isSold}
+                onClick={() => {
+                  if (!requireAuth({ type: "review", listingId: listing.id, sellerId })) return
+                  setReviewOpen(true)
+                }}
+                variant="secondary"
+              >
+                <Star className="h-4 w-4" aria-hidden="true" />
+                {t("seller.leaveReview")}
+              </Button>
+            ) : null}
             <div className="mt-2 border-t border-neutral-100 pt-3">
               <Button
                 onClick={handleOpenReport}
@@ -592,6 +833,37 @@ export default function ListingDetail({ listing }) {
         </section>
       </aside>
 
+      <Modal open={shareOpen} onClose={() => setShareOpen(false)} title={t("listing.share")} size="md">
+        <div className="grid gap-4">
+          <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+            <img alt={listing.title} className="aspect-video w-full object-cover" src={activeImageUrl} />
+            <div className="p-4">
+              <p className="text-xs font-black uppercase tracking-widest text-primary">{t("app.name")}</p>
+              <h3 className="mt-1 text-lg font-black text-neutral-900">{sanitizeText(listing.title)}</h3>
+              <p className="mt-2 text-xl font-black text-primary">{formatPrice(listing.price, listing.currency)}</p>
+            </div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Button onClick={copyListingLink} type="button" variant="secondary">
+              <Copy className="h-4 w-4" aria-hidden="true" />
+              {t("listing.copyLink")}
+            </Button>
+            <Button onClick={() => telegramShare(window.location.href, listing.title)} type="button" variant="secondary">
+              <Send className="h-4 w-4" aria-hidden="true" />
+              {t("listing.telegramShare")}
+            </Button>
+            <Button
+              onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`, "_blank", "noopener,noreferrer")}
+              type="button"
+              variant="secondary"
+            >
+              <Share2 className="h-4 w-4" aria-hidden="true" />
+              {t("listing.facebook")}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={lightboxOpen} onClose={() => setLightboxOpen(false)} title={listing.title} size="xl">
         <div 
           className="relative outline-none"
@@ -605,7 +877,24 @@ export default function ListingDetail({ listing }) {
             {activeImage + 1} / {images.length}
           </div>
 
-          <img alt={listing.title} className="max-h-[76vh] w-full rounded-2xl object-contain select-none pointer-events-none" src={images[activeImage]} />
+          {brokenImages[activeImageUrl] ? (
+            <div className="grid min-h-80 w-full place-items-center rounded-2xl bg-neutral-200 text-neutral-400">
+              <Camera className="h-12 w-12" aria-hidden="true" />
+            </div>
+          ) : (
+            <img
+              alt={listing.title}
+              className="max-h-[76vh] w-full rounded-2xl object-contain select-none pointer-events-none"
+              decoding="async"
+              height="900"
+              loading="lazy"
+              onError={() => markImageBroken(activeImageUrl)}
+              sizes="100vw"
+              src={activeImageUrl}
+              srcSet={getSrcSet(activeImageUrl)}
+              width="1200"
+            />
+          )}
           
           <button
             aria-label={t("listing.previousImage")}
@@ -650,8 +939,8 @@ export default function ListingDetail({ listing }) {
             const labels = {
               SCAM: t("report.scam"),
               WRONG_CATEGORY: t("report.wrongCategory"),
-              INAPPROPRIATE: t("report.inappropriate"),
-              SPAM: t("report.spam"),
+              DUPLICATE: t("report.duplicate"),
+              INAPPROPRIATE: t("report.offensive"),
               OTHER: t("report.other"),
             }
             return (
@@ -711,6 +1000,8 @@ export default function ListingDetail({ listing }) {
           <Button disabled={isSubmittingOffer} loading={isSubmittingOffer} type="submit">{t("listing.submitOffer")}</Button>
         </form>
       </Modal>
+      <ReviewModal listingId={listing.id} onClose={() => setReviewOpen(false)} open={reviewOpen} sellerId={sellerId} />
+      <MessageModal listing={listing} onClose={() => setMessageModalOpen(false)} open={messageModalOpen} />
     </article>
   )
 }

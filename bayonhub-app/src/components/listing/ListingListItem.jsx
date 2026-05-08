@@ -1,11 +1,12 @@
-import { memo } from "react"
+import { memo, useState } from "react"
 import { Link } from "react-router-dom"
-import { BadgeCheck, MapPin } from "lucide-react"
+import { BadgeCheck, Camera, MapPin } from "lucide-react"
 import { useTranslation } from "../../hooks/useTranslation"
-import { formatPrice, getListingImage, listingUrl, timeAgo } from "../../lib/utils"
+import { formatPrice, getImageSizes, getListingImage, getSrcSet, listingUrl, timeAgo } from "../../lib/utils"
 import { useListingStore } from "../../store/useListingStore"
 import { useAuthStore } from "../../store/useAuthStore"
 import { useUIStore } from "../../store/useUIStore"
+import Badge from "../ui/Badge"
 import HeartButton from "../ui/HeartButton"
 
 function Highlight({ text, query }) {
@@ -29,12 +30,32 @@ const ListingListItem = memo(function ListingListItem({ listing, highlightQuery 
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
   const image = getListingImage(listing)
+  const [imageBroken, setImageBroken] = useState(false)
+  const sellerIsPlusMember = Boolean(listing.isPlusMember || listing.seller?.isPlusMember)
+  const sellerVerified = Boolean(listing.isVerifiedSeller || listing.seller?.isVerifiedSeller || listing.verified)
 
   return (
     <article className="rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm transition hover:border-primary">
       <div className="flex gap-3">
         <Link className="shrink-0" to={listingUrl(listing)}>
-          <img alt={listing.title} className="h-[90px] w-[120px] rounded-xl object-cover" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.onerror = null }} src={image} />
+          {imageBroken ? (
+            <div className="grid h-[90px] w-[120px] place-items-center rounded-xl bg-neutral-200 text-neutral-400">
+              <Camera className="h-8 w-8" aria-hidden="true" />
+            </div>
+          ) : (
+            <img
+              alt={listing.title}
+              className="h-[90px] w-[120px] rounded-xl object-cover"
+              decoding="async"
+              height="90"
+              loading="lazy"
+              onError={() => setImageBroken(true)}
+              sizes={getImageSizes()}
+              src={image}
+              srcSet={getSrcSet(image)}
+              width="120"
+            />
+          )}
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex gap-3">
@@ -73,6 +94,8 @@ const ListingListItem = memo(function ListingListItem({ listing, highlightQuery 
                 {t("auth.verified")}
               </span>
             ) : null}
+            {sellerIsPlusMember ? <Badge className="origin-left scale-75" type="plus" /> : null}
+            {sellerVerified ? <Badge className="origin-left scale-75" type="verified" /> : null}
           </div>
         </div>
       </div>

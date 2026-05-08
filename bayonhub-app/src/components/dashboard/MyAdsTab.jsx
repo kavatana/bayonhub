@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import toast from "react-hot-toast"
 import { Link, useNavigate } from "react-router-dom"
 import { BarChart2, Check, Pencil, PlusCircle, Rocket, Trash2, TrendingUp, MoreVertical } from "lucide-react"
 import { useTranslation } from "../../hooks/useTranslation"
@@ -12,7 +13,7 @@ import Modal from "../ui/Modal"
 
 import { Tag } from "lucide-react"
 
-const statuses = ["active", "pending", "sold", "expired", "removed"]
+const statuses = ["active", "sold", "expired", "draft"]
 const perPage = 10
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 const weekAgoTimestamp = new Date(Date.now() - WEEK_MS).getTime()
@@ -21,7 +22,10 @@ export default function MyAdsTab() {
   const { t, language } = useTranslation()
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
-  const listings = useListingStore((state) => state.listings)
+  const storeMyListings = useListingStore((state) => state.myListings)
+  const myListingsLoading = useListingStore((state) => state.myListingsLoading)
+  const fetchMyListings = useListingStore((state) => state.fetchMyListings)
+  const markAsSold = useListingStore((state) => state.markAsSold)
   const updateListing = useListingStore((state) => state.updateListing)
   const deleteListing = useListingStore((state) => state.deleteListing)
   const togglePostModal = useUIStore((state) => state.togglePostModal)
@@ -31,16 +35,12 @@ export default function MyAdsTab() {
   const [deleteId, setDeleteId] = useState(null)
   const [actionSheetListing, setActionSheetListing] = useState(null)
   const [actionSheetConfirmDelete, setActionSheetConfirmDelete] = useState(false)
-  const userId = user?.id
 
-  const myAllListings = useMemo(
-    () =>
-      listings.filter(
-        (listing) =>
-          !userId || listing.sellerId === userId || listing.sellerId === "local-demo-seller",
-      ),
-    [listings, userId],
-  )
+  useEffect(() => {
+    fetchMyListings()
+  }, [fetchMyListings])
+
+  const myAllListings = storeMyListings
 
   const analytics = useMemo(() => {
     const totalViews = myAllListings.reduce((sum, l) => sum + Number(l.viewCount || l.views || 0), 0)
@@ -61,9 +61,19 @@ export default function MyAdsTab() {
   )
   const pageCount = Math.max(1, Math.ceil(myListings.length / perPage))
   const pageItems = myListings.slice((page - 1) * perPage, page * perPage)
+  const isPlusMember = Boolean(user?.plusUntil && new Date(user.plusUntil) > new Date())
 
   function bumpListing(id) {
     updateListing(id, { updatedAt: new Date().toISOString(), postedAt: new Date().toISOString() })
+  }
+
+  const handleMarkSold = async (id) => {
+    const result = await markAsSold(id)
+    if (result.success) {
+      toast.success(t("myAds.markedSold"))
+    } else {
+      toast.error(result.error || t("ui.error"))
+    }
   }
 
   return (
@@ -80,20 +90,32 @@ export default function MyAdsTab() {
               {t("dashboard.analytics")}
             </h2>
           </div>
-          <div className="grid grid-cols-2 divide-x divide-y divide-neutral-100 sm:grid-cols-4 sm:divide-y-0">
-            {[
-              { label: t("dashboard.totalViews"), value: analytics.totalViews.toLocaleString() },
-              { label: t("dashboard.totalLeads"), value: analytics.totalLeads.toLocaleString() },
-              { label: `${t("dashboard.totalViews")} · ${t("dashboard.thisWeek")}`, value: analytics.viewsThisWeek.toLocaleString() },
-              { label: t("listing.activeListings"), value: myAllListings.filter((l) => (l.status || "active") === "active").length.toString() },
-            ].map(({ label, value }) => (
-              <div className="flex flex-col items-center justify-center px-4 py-4 text-center" key={label}>
-                <strong className="text-2xl font-black text-neutral-900">{value}</strong>
-                <span className="mt-0.5 text-xs font-bold uppercase tracking-wide text-neutral-500">{label}</span>
-              </div>
-            ))}
+          <div className={`grid grid-cols-1 divide-y divide-neutral-100 ${isPlusMember ? "sm:grid-cols-4 sm:divide-x sm:divide-y-0" : ""}`}>
+            {(isPlusMember
+              ? [
+                { label: t("dashboard.totalViews"), value: analytics.totalViews.toLocaleString() },
+                { label: t("dashboard.totalLeads"), value: analytics.totalLeads.toLocaleString() },
+                { label: `${t("dashboard.totalViews")} · ${t("dashboard.thisWeek")}`, value: analytics.viewsThisWeek.toLocaleString() },
+                { label: t("listing.activeListings"), value: myAllListings.filter((l) => (l.status || "active") === "active").length.toString() },
+              ]
+              : [
+                { label: t("dashboard.totalViews"), value: analytics.totalViews.toLocaleString() },
+              ]).map(({ label, value }) => (
+                <div className="flex flex-col items-center justify-center px-4 py-4 text-center" key={label}>
+                  <strong className="text-2xl font-black text-neutral-900">{value}</strong>
+                  <span className="mt-0.5 text-xs font-bold uppercase tracking-wide text-neutral-500">{label}</span>
+                </div>
+              ))}
           </div>
-          {analytics.topListing && (
+          {!isPlusMember ? (
+            <div className="flex flex-col gap-3 border-t border-neutral-100 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-bold text-neutral-600">{t("plus.unlockWith")}</p>
+              <Button onClick={() => navigate("/pricing")} size="sm" variant="primary">
+                {t("plus.upgradeCta")}
+              </Button>
+            </div>
+          ) : null}
+          {isPlusMember && analytics.topListing && (
             <div className="flex items-center justify-between gap-3 border-t border-neutral-100 px-5 py-3">
               <div className="flex min-w-0 items-center gap-2">
                 <TrendingUp className="h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
@@ -137,12 +159,18 @@ export default function MyAdsTab() {
             }}
             type="button"
           >
-            {t(`dashboard.${status}`)}
+            {t(status === "draft" ? "tab.drafts" : `tab.${status}`)}
           </button>
         ))}
       </div>
 
-      {pageItems.length ? (
+      {myListingsLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-24 bg-neutral-100 rounded-xl animate-pulse" />
+          ))}
+        </div>
+      ) : pageItems.length ? (
         <>
           <div className="hidden overflow-hidden rounded-2xl border border-neutral-200 bg-white md:block">
             <table className="w-full text-left text-sm">
@@ -194,15 +222,15 @@ export default function MyAdsTab() {
                             <Pencil className="h-4 w-4" aria-hidden="true" />
                             <span className="hidden text-xs font-bold text-neutral-600 group-hover:inline-block">{t("ui.edit")}</span>
                           </button>
-                          <button title={t("dashboard.markSold")} className="group flex h-11 items-center gap-2 rounded-lg px-2 hover:bg-neutral-100" onClick={() => updateListing(listing.id, { status: "sold" })} type="button">
+                          <button title={t("listing.markSold")} className="group flex h-11 items-center gap-2 rounded-lg px-2 hover:bg-neutral-100" onClick={() => handleMarkSold(listing.id)} type="button">
                             <Check className="h-4 w-4" aria-hidden="true" />
-                            <span className="hidden text-xs font-bold text-neutral-600 group-hover:inline-block">{t("dashboard.markSold")}</span>
+                            <span className="hidden text-xs font-bold text-neutral-600 group-hover:inline-block">{t("listing.markSold")}</span>
                           </button>
                           <button title={t("dashboard.bump")} className="group flex h-11 items-center gap-2 rounded-lg px-2 hover:bg-neutral-100" onClick={() => bumpListing(listing.id)} type="button">
                             <Rocket className="h-4 w-4" aria-hidden="true" />
                             <span className="hidden text-xs font-bold text-neutral-600 group-hover:inline-block">{t("dashboard.bump")}</span>
                           </button>
-                          <button title={t("ui.delete")} className="group flex h-11 items-center gap-2 rounded-lg px-2 text-red-600 hover:bg-red-50" onClick={() => setDeleteId(listing.id)} type="button">
+                          <button aria-label={t("a11y.deleteListing")} title={t("ui.delete")} className="group flex h-11 items-center gap-2 rounded-lg px-2 text-red-600 hover:bg-red-50" onClick={() => setDeleteId(listing.id)} type="button">
                             <Trash2 className="h-4 w-4" aria-hidden="true" />
                             <span className="hidden text-xs font-bold text-red-600 group-hover:inline-block">{t("ui.delete")}</span>
                           </button>
@@ -309,7 +337,7 @@ export default function MyAdsTab() {
                   <Trash2 className="h-8 w-8" />
                 </div>
                 <h3 className="text-xl font-black text-neutral-900">{t("dashboard.confirmDelete")}</h3>
-                <p className="mt-2 text-sm text-neutral-500">Are you sure? This cannot be undone.</p>
+                <p className="mt-2 text-sm text-neutral-500">{t("listing.confirmDelete")}</p>
                 <div className="mt-8 flex gap-3">
                   <Button className="flex-1" onClick={() => setActionSheetConfirmDelete(false)} size="lg" variant="secondary">
                     {t("ui.cancel")}
@@ -337,17 +365,17 @@ export default function MyAdsTab() {
                   }}
                 >
                   <Pencil className="h-5 w-5 text-neutral-500" />
-                  <span className="flex-1 font-bold text-neutral-900">{t("ui.edit")} Ad</span>
+                  <span className="flex-1 font-bold text-neutral-900">{t("listing.edit")}</span>
                 </button>
                 <button 
                   className="flex h-14 items-center gap-4 px-6 text-left hover:bg-neutral-50"
                   onClick={() => {
-                    updateListing(actionSheetListing.id, { status: "sold" })
+                    handleMarkSold(actionSheetListing.id)
                     setActionSheetListing(null)
                   }}
                 >
                   <Check className="h-5 w-5 text-neutral-500" />
-                  <span className="flex-1 font-bold text-neutral-900">{t("dashboard.markSold")}</span>
+                  <span className="flex-1 font-bold text-neutral-900">{t("listing.markSold")}</span>
                 </button>
                 <button 
                   className="flex h-14 items-center gap-4 px-6 text-left hover:bg-neutral-50"
@@ -357,8 +385,8 @@ export default function MyAdsTab() {
                   }}
                 >
                   <Rocket className="h-5 w-5 text-neutral-500" />
-                  <span className="flex-1 font-bold text-neutral-900">{t("dashboard.bump")} Ad</span>
-                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700">Free</span>
+                  <span className="flex-1 font-bold text-neutral-900">{t("dashboard.bump")}</span>
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-black uppercase tracking-wider text-emerald-700">{t("ui.free")}</span>
                 </button>
                 <div className="mx-6 my-2 h-px bg-neutral-100" />
                 <button 
@@ -366,7 +394,7 @@ export default function MyAdsTab() {
                   onClick={() => setActionSheetConfirmDelete(true)}
                 >
                   <Trash2 className="h-5 w-5 text-red-600" />
-                  <span className="flex-1 font-bold text-red-600">{t("ui.delete")} Ad</span>
+                  <span className="flex-1 font-bold text-red-600">{t("ui.delete")}</span>
                 </button>
                 <div className="mt-4 px-6">
                   <Button className="w-full" onClick={() => setActionSheetListing(null)} size="lg" variant="secondary">

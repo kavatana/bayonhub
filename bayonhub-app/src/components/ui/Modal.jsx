@@ -50,7 +50,7 @@ export default function Modal({ open, onClose, title, children, size = "md" }) {
         <h2 id="modal-title" className="text-xl font-bold text-neutral-900 dark:text-white">{title}</h2>
         <button
           ref={closeButtonRef}
-          aria-label={t("ui.close")}
+          aria-label={t("a11y.closeModal")}
           className="grid h-10 w-10 place-items-center rounded-full border border-neutral-200 text-neutral-500 transition hover:border-primary hover:text-primary dark:border-neutral-700"
           onClick={onClose}
           type="button"

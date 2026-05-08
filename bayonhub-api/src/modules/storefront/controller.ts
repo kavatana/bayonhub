@@ -20,6 +20,10 @@ export const getStorefront = async (req: Request, res: Response) => {
 
     res.json(storefront)
   } catch (error) {
+    const err = error as Error & { status?: number; publicError?: string }
+    if (err.status === 403 && err.publicError) {
+      return res.status(403).json({ error: err.publicError, message: err.message })
+    }
     res.status(500).json({ message: "Error fetching storefront", error })
   }
 }

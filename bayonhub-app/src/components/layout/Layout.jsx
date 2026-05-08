@@ -6,11 +6,14 @@ const PostAdWizard = lazy(() => import("../posting/PostAdWizard"))
 const AuthModal = lazy(() => import("../auth/AuthModal"))
 const FeedbackTab = lazy(() => import("../ui/FeedbackTab"))
 import AuthListener from "../auth/AuthListener"
+import OfflineIndicator from "../ui/OfflineIndicator"
 import Spinner from "../ui/Spinner"
 import Footer from "./Footer"
 import Navbar from "./Navbar"
 import { useOnlineStatus } from "../../hooks/useOnlineStatus"
 import { useTranslation } from "../../hooks/useTranslation"
+import { useAuthStore } from "../../store/useAuthStore"
+import { useMessageStore } from "../../store/useMessageStore"
 
 export default function Layout({ children }) {
   const { t } = useTranslation()
@@ -71,6 +74,22 @@ export default function Layout({ children }) {
     }
   }, [searchParams, setSearchParams, t])
 
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const fetchUnreadCount = useMessageStore((state) => state.fetchUnreadCount)
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+
+    fetchUnreadCount()
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchUnreadCount()
+      }
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [isAuthenticated, fetchUnreadCount])
+
   return (
     <div className="relative min-h-screen bg-neutral-50 text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100 selection:bg-primary/20">
       {/* 
@@ -91,6 +110,7 @@ export default function Layout({ children }) {
 
       <div className="relative z-10 flex min-h-screen flex-col">
         <AuthListener />
+        <OfflineIndicator />
         
         {/* Connectivity Guard Banners */}
         {((!isFullyOnline || apiUnavailable) && !isBannerDismissed) && (
@@ -103,14 +123,14 @@ export default function Layout({ children }) {
               <WifiOff size={16} aria-hidden="true" />
               <span>
                 {apiUnavailable 
-                  ? "API is currently unreachable. Some content may not load correctly." 
-                  : "You're currently offline. Some content may not load correctly."}
+                  ? t("offline.apiUnavailable")
+                  : t("offline.banner")}
               </span>
             </div>
             <button 
               onClick={() => setIsBannerDismissed(true)}
               className="rounded-full p-1.5 hover:bg-white/20 transition-colors"
-              aria-label="Dismiss"
+              aria-label={t("a11y.closeModal")}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
@@ -119,7 +139,7 @@ export default function Layout({ children }) {
 
         <Navbar />
         
-        <main className="flex-grow focus:outline-none" id="main-content">
+        <main className="flex-grow pb-20 focus:outline-none lg:pb-0" id="main-content">
           {children}
         </main>
         

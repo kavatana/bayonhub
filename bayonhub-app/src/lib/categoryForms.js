@@ -49,7 +49,7 @@ const carBrands = [
   "Great Wall",
 ]
 
-const cars = [
+export const cars = [
   field("make", "select", "Make", "ម៉ាក", { required: true, options: carBrands }),
   field("model", "text", "Model", "ម៉ូដែល", { required: true }),
   field("year", "number", "Year", "ឆ្នាំ", { required: true, min: 1990, max: 2026 }),
@@ -81,7 +81,7 @@ const cars = [
   field("description", "textarea", "Description", "ពិពណ៌នា", { required: true }),
 ]
 
-const phones = [
+export const phones = [
   field("brand", "select", "Brand", "ម៉ាក", {
     required: true,
     options: ["Apple", "Samsung", "Huawei", "Oppo", "Vivo", "Xiaomi", "Realme", "OnePlus", "Google", "Honor"],
@@ -94,7 +94,7 @@ const phones = [
   field("description", "textarea", "Description", "ពិពណ៌នា", { required: true }),
 ]
 
-const property = [
+export const property = [
   field("type", "select", "Type", "ប្រភេទ", { required: true, options: ["Apartment", "Villa", "Land", "Shophouse", "Office", "Condo"] }),
   field("bedrooms", "select", "Bedrooms", "បន្ទប់គេង", { options: ["1", "2", "3", "4", "5+"] }),
   field("bathrooms", "select", "Bathrooms", "បន្ទប់ទឹក", { options: ["1", "2", "3", "4+"] }),
@@ -111,7 +111,7 @@ const property = [
   field("description", "textarea", "Description", "ពិពណ៌នា", { required: true }),
 ]
 
-const jobs = [
+export const jobs = [
   field("title", "text", "Title", "ចំណងជើង", { required: true }),
   field("company", "text", "Company", "ក្រុមហ៊ុន", { required: true }),
   field("type", "select", "Type", "ប្រភេទ", { options: ["Full-time", "Part-time", "Freelance", "Internship"] }),
@@ -121,26 +121,124 @@ const jobs = [
   field("description", "textarea", "Description", "ពិពណ៌នា", { required: true }),
 ]
 
-const defaultFields = [
+export const defaultFields = [
   field("title", "text", "Title", "ចំណងជើង", { required: true }),
   field("condition", "select", "Condition", "ស្ថានភាព", { options: conditionOptions }),
   field("description", "textarea", "Description", "ពិពណ៌នា", { required: true }),
 ]
 
 export const CATEGORY_FORMS = {
-  cars,
-  smartphones: phones,
-  rent: property,
-  sale: property,
-  commercial: property,
-  land: property,
-  "full-time": jobs,
-  "part-time": jobs,
-  freelance: jobs,
-  internship: jobs,
-  default: defaultFields,
+  cars: {
+    id: "cars",
+    label: { en: "Cars", km: "រថយន្ត" },
+    icon: "Car",
+    required: ["make", "model", "year", "price", "condition", "fuel", "transmission", "location"],
+    optional: ["mileage", "bodyType", "color"],
+    fields: {
+      make: { type: "select", label: { en: "Make", km: "ម៉ាក" }, options: carBrands },
+      model: { type: "text", label: { en: "Model", km: "ម៉ូដែល" } },
+      year: { type: "number", label: { en: "Year", km: "ឆ្នាំ" } },
+      mileage: { type: "number", label: { en: "Mileage", km: "ចម្ងាយ" } },
+      price: { type: "number", label: { en: "Price", km: "តម្លៃ" } },
+      fuel: { type: "select", label: { en: "Fuel", km: "ប្រេង" }, options: ["Petrol", "Diesel", "Electric", "Hybrid"] },
+      transmission: { type: "select", label: { en: "Transmission", km: "ប្រអប់លេខ" }, options: ["Auto", "Manual"] },
+      condition: { type: "select", label: { en: "Condition", km: "ស្ថានភាព" }, options: conditionOptions },
+      location: { type: "text", label: { en: "Location", km: "ទីតាំង" } },
+      bodyType: { type: "select", label: { en: "Body Type", km: "ប្រភេទតួរថយន្ត" }, options: [
+        { value: "sedan", label: { en: "Sedan", km: "សេដង់" } },
+        { value: "suv", label: { en: "SUV", km: "SUV" } },
+        { value: "pickup", label: { en: "Pickup", km: "ភីកអាប់" } },
+        { value: "van", label: { en: "Van", km: "វ៉ាន់" } },
+        { value: "hatchback", label: { en: "Hatchback", km: "ហាតប៊ែក" } },
+        { value: "minivan", label: { en: "Minivan", km: "មីនីវ៉ាន់" } },
+        { value: "coupe", label: { en: "Coupe", km: "គូប" } },
+        { value: "convertible", label: { en: "Convertible", km: "បើកដំបូល" } }
+      ] },
+      color: { type: "text", label: { en: "Color", km: "ពណ៌" } }
+    }
+  },
+  property_rent: {
+    id: "property_rent",
+    label: { en: "Property Rent", km: "ជួលអចលនទ្រព្យ" },
+    icon: "Home",
+    required: ["type", "pricePerMonth", "location"],
+    optional: ["bedrooms", "bathrooms", "furnishing", "availableDate"],
+    fields: {
+      type: { type: "select", label: { en: "Type", km: "ប្រភេទ" }, options: ["Apartment", "Villa", "Land", "Shophouse", "Office", "Condo"] },
+      bedrooms: { type: "select", label: { en: "Bedrooms", km: "បន្ទប់គេង" }, options: ["1", "2", "3", "4", "5+"] },
+      bathrooms: { type: "select", label: { en: "Bathrooms", km: "បន្ទប់ទឹក" }, options: ["1", "2", "3", "4+"] },
+      pricePerMonth: { type: "number", label: { en: "Price Per Month", km: "តម្លៃក្នុងមួយខែ" } },
+      furnishing: { type: "select", label: { en: "Furnishing", km: "គ្រឿងសម្ភារៈ" }, options: [
+        { value: "furnished", label: { en: "Furnished", km: "មានគ្រឿងសង្ហារិម" } },
+        { value: "semi-furnished", label: { en: "Semi-Furnished", km: "មានគ្រឿងសង្ហារិមខ្លះ" } },
+        { value: "unfurnished", label: { en: "Unfurnished", km: "គ្មានគ្រឿងសង្ហារិម" } }
+      ] },
+      location: { type: "text", label: { en: "Location", km: "ទីតាំង" } },
+      availableDate: { type: "date", label: { en: "Available Date", km: "ថ្ងៃអាចចូលនៅ" } }
+    }
+  },
+  property_sale: {
+    id: "property_sale",
+    label: { en: "Property Sale", km: "លក់អចលនទ្រព្យ" },
+    icon: "Home",
+    required: ["type", "price", "location"],
+    optional: ["bedrooms", "bathrooms", "landSize", "builtArea"],
+    fields: {
+      type: { type: "select", label: { en: "Type", km: "ប្រភេទ" }, options: ["Apartment", "Villa", "Land", "Shophouse", "Office", "Condo"] },
+      price: { type: "number", label: { en: "Price", km: "តម្លៃ" } },
+      location: { type: "text", label: { en: "Location", km: "ទីតាំង" } },
+      bedrooms: { type: "select", label: { en: "Bedrooms", km: "បន្ទប់គេង" }, options: ["1", "2", "3", "4", "5+"] },
+      bathrooms: { type: "select", label: { en: "Bathrooms", km: "បន្ទប់ទឹក" }, options: ["1", "2", "3", "4+"] },
+      landSize: { type: "number", label: { en: "Land Size (sqm)", km: "ទំហំដី" } },
+      builtArea: { type: "number", label: { en: "Built Area (sqm)", km: "ទំហំផ្ទះ" } }
+    }
+  },
+  phones: {
+    id: "phones",
+    label: { en: "Phones", km: "ទូរស័ព្ទ" },
+    icon: "Smartphone",
+    required: ["brand", "model", "condition", "price", "location"],
+    optional: ["storage", "ram"],
+    fields: {
+      brand: { type: "select", label: { en: "Brand", km: "ម៉ាក" }, options: ["Apple", "Samsung", "Huawei", "Oppo", "Vivo", "Xiaomi", "Realme", "OnePlus", "Google", "Honor"] },
+      model: { type: "text", label: { en: "Model", km: "ម៉ូដែល" } },
+      storage: { type: "select", label: { en: "Storage", km: "ទំហំផ្ទុក" }, options: ["32GB", "64GB", "128GB", "256GB", "512GB", "1TB"] },
+      ram: { type: "select", label: { en: "RAM", km: "RAM" }, options: ["3GB", "4GB", "6GB", "8GB", "12GB", "16GB"] },
+      condition: { type: "select", label: { en: "Condition", km: "ស្ថានភាព" }, options: conditionOptions },
+      price: { type: "number", label: { en: "Price", km: "តម្លៃ" } },
+      location: { type: "text", label: { en: "Location", km: "ទីតាំង" } }
+    }
+  },
+  jobs: {
+    id: "jobs",
+    label: { en: "Jobs", km: "ការងារ" },
+    icon: "BriefcaseBusiness",
+    required: ["jobType", "jobCategory", "location"],
+    optional: ["salaryMin", "salaryMax", "experience"],
+    fields: {
+      jobType: { type: "select", label: { en: "Job Type", km: "ប្រភេទការងារ" }, options: ["Full-time", "Part-time", "Freelance", "Internship"] },
+      jobCategory: { type: "text", label: { en: "Category", km: "ប្រភេទការងារ" } },
+      salaryMin: { type: "number", label: { en: "Salary Min", km: "ប្រាក់ខែអប្បបរមា" } },
+      salaryMax: { type: "number", label: { en: "Salary Max", km: "ប្រាក់ខែអតិបរមា" } },
+      experience: { type: "select", label: { en: "Experience", km: "បទពិសោធន៍" }, options: ["Entry", "Mid", "Senior"] },
+      location: { type: "text", label: { en: "Location", km: "ទីតាំង" } }
+    }
+  }
 }
 
+export function getFormSchema(categoryId) {
+  return CATEGORY_FORMS[categoryId] || null
+}
+
+export function getRequiredFields(categoryId) {
+  return CATEGORY_FORMS[categoryId]?.required || []
+}
+
+export function getOptionalFields(categoryId) {
+  return CATEGORY_FORMS[categoryId]?.optional || []
+}
+
+// eslint-disable-next-line no-unused-vars
 export function getCategoryForm(subcategoryId) {
-  return CATEGORY_FORMS[subcategoryId] || CATEGORY_FORMS.default
+  return defaultFields
 }

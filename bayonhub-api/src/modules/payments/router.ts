@@ -7,6 +7,8 @@ import { prisma } from "../../lib/prisma"
 import { redis } from "../../config/redis"
 import { sendTelegramMessage } from "../../lib/telegram"
 import { requireAuth } from "../../middleware/auth"
+import { upload } from "../../middleware/upload"
+import { getMyPayments, submitPlusPayment } from "./service"
 
 const router = Router()
 
@@ -44,6 +46,24 @@ function validatePlan(value: unknown): PromotionPlan {
   if (value === "BOOST" || value === "TOP_AD" || value === "VIP_30") return value
   throw createHttpError(400, "Invalid promotion plan")
 }
+
+router.post("/submit", requireAuth, upload.single("screenshot"), async (req, res, next) => {
+  try {
+    const result = await submitPlusPayment(req.user!.id, req.file, req.body.note)
+    res.status(201).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.get("/me", requireAuth, async (req, res, next) => {
+  try {
+    const payments = await getMyPayments(req.user!.id)
+    res.status(200).json(payments)
+  } catch (error) {
+    next(error)
+  }
+})
 
 type EscrowType = "Commercial" | "Public" | "Social" | "Individual" | "Financial"
 

@@ -2,6 +2,7 @@ import client, { hasApiBackend, STORAGE_KEYS } from "./client"
 import { CATEGORIES } from "../lib/categories"
 import { storage } from "../lib/storage"
 import { PROVINCES } from "../lib/locations"
+import { useAuthStore } from "../store/useAuthStore"
 
 const fallbackImage =
   "https://images.unsplash.com/photo-1607082349566-187342175e2f?auto=format&fit=crop&w=1200&q=80"
@@ -432,13 +433,16 @@ export function normalizeListing(listing) {
     ? listing.category.split(" / ")
     : [listing.category, listing.subcategory]
   const seller = listing.seller || {}
-  const sellerListingsCount = seller._count?.listings
+  const sellerListingsCount = seller.totalActiveListings || seller._count?.listings
+  const sellerFollowersCount = seller.followersCount || seller._count?.sellerFollowers || listing.followersCount
   const verificationTier = seller.verificationTier || listing.verificationTier || "NONE"
+  const isPlusMember = Boolean(listing.isPlusMember || seller.isPlusMember || seller.isLifetimePlus)
+  const isVerifiedSeller = Boolean(listing.isVerifiedSeller || seller.isVerifiedSeller || listing.verified)
   const views = Number(listing.viewCount ?? listing.views ?? 0)
   return {
     currency: "USD",
     username: null,
-    followers: Number(sellerListingsCount || listing.followers || 0),
+    followers: Number(sellerFollowersCount || listing.followers || 0),
     following: 0,
     sellerRating: listing.sellerRating || 4,
     phoneVerified: Boolean(listing.phoneVerified || seller.phoneVerifiedAt),
@@ -449,7 +453,17 @@ export function normalizeListing(listing) {
     seller: {
       verificationTier: listing.verified ? "IDENTITY" : listing.phoneVerified ? "PHONE" : verificationTier,
       createdAt: listing.memberSince || listing.postedAt || listing.createdAt || seller.createdAt || null,
+      phone: seller.phone || listing.phone || null,
+      phoneNumber: seller.phone || listing.phone || null,
+      avatar: seller.avatar || seller.avatarUrl || null,
+      memberSince: seller.memberSince || seller.createdAt || null,
+      totalActiveListings: sellerListingsCount || 0,
+      followersCount: Number(sellerFollowersCount || 0),
+      whatsappNumber: seller.whatsappNumber || seller.phone || listing.phone || null,
+      telegramUsername: seller.telegramUsername || listing.username || null,
       ...seller,
+      isPlusMember,
+      isVerifiedSeller,
     },
     lat: listing.lat || null,
     lng: listing.lng || null,
@@ -469,6 +483,12 @@ export function normalizeListing(listing) {
     province: provinceMatch?.slug || listing.province,
     sellerId: listing.sellerId || seller.id,
     sellerName: listing.sellerName || seller.name,
+    isPlusMember,
+    isVerifiedSeller,
+    verified: isVerifiedSeller || listing.verified,
+    phone: listing.phone || seller.phone || seller.whatsappNumber || null,
+    totalListings: listing.totalListings || sellerListingsCount || 0,
+    status: String(listing.status || "active").toLowerCase(),
     postedAt: listing.postedAt || listing.createdAt,
     images: imageUrls,
     imageUrl: imageUrls[0] || listing.imageUrl || fallbackImage,
@@ -529,6 +549,30 @@ function toBackendParams(params = {}) {
   Object.keys(next).forEach((key) => {
     if (next[key] === "" || next[key] === null || next[key] === undefined) delete next[key]
   })
+  return next
+}
+
+function toSearchParams(params = {}) {
+  const next = toBackendParams(params)
+  const sortValue = next.sortBy || next.sort
+  if (sortValue) {
+    const sortMap = {
+      priceLow: "price_asc",
+      priceHigh: "price_desc",
+      views: "most_viewed",
+      newest: "newest",
+    }
+    next.sortBy = sortMap[sortValue] || sortValue
+    delete next.sort
+  }
+  if (next.minPrice && !next.priceMin) {
+    next.priceMin = next.minPrice
+    delete next.minPrice
+  }
+  if (next.maxPrice && !next.priceMax) {
+    next.priceMax = next.maxPrice
+    delete next.maxPrice
+  }
   return next
 }
 
@@ -605,9 +649,10 @@ function applyFilters(listings, params = {}) {
     
     return matchesQ && matchesCategory && matchesLocation && matchesMin && matchesMax && matchesCondition
   }).sort((a, b) => {
-    if (params.sort === "priceLow") return Number(a.price || 0) - Number(b.price || 0)
-    if (params.sort === "priceHigh") return Number(b.price || 0) - Number(a.price || 0)
-    if (params.sort === "views") return Number(b.views || 0) - Number(a.views || 0)
+    const sortValue = params.sortBy || params.sort
+    if (sortValue === "priceLow" || sortValue === "price_asc") return Number(a.price || 0) - Number(b.price || 0)
+    if (sortValue === "priceHigh" || sortValue === "price_desc") return Number(b.price || 0) - Number(a.price || 0)
+    if (sortValue === "views" || sortValue === "most_viewed") return Number(b.views || 0) - Number(a.views || 0)
     return new Date(b.updatedAt || b.postedAt || 0) - new Date(a.updatedAt || a.postedAt || 0)
   })
 }
@@ -642,6 +687,10 @@ export async function getListings(params = {}) {
         listings: (response.data.listings || []).map(normalizeListing),
         total: response.data.total || 0,
         nextCursor: response.data.nextCursor || null,
+        featured: (response.data.featured || []).map(normalizeListing),
+        recent: (response.data.recent || []).map(normalizeListing),
+        newToday: response.data.newToday || 0,
+        trending: response.data.trending || [],
       }
     } catch {
       console.warn("[listings] GET failed, using localStorage fallback")
@@ -649,6 +698,82 @@ export async function getListings(params = {}) {
   }
   const filtered = applyFilters(getMockListings(), params)
   return paginate(filtered, params.page || 1, params.limit || 24)
+}
+
+export async function fetchHomepage(province) {
+  const params = province && province !== "all" ? { province, limit: 12 } : { limit: 12 }
+  const result = await getListings(params)
+  const listings = result.listings || result.data || []
+  return {
+    featured: result.featured?.length
+      ? result.featured
+      : [...listings].sort((a, b) => Number(b.views || 0) - Number(a.views || 0)).slice(0, 6),
+    recent: result.recent?.length
+      ? result.recent
+      : [...listings].sort((a, b) => new Date(b.createdAt || b.postedAt || 0) - new Date(a.createdAt || a.postedAt || 0)).slice(0, 12),
+    newToday: Number(result.newToday || 0),
+    trending: result.trending?.length
+      ? result.trending
+      : Object.entries(
+          listings.reduce((acc, listing) => {
+            const key = listing.categorySlug || listing.category
+            if (key) acc[key] = (acc[key] || 0) + 1
+            return acc
+          }, {}),
+        ).map(([categoryId, count]) => ({ categoryId, count })),
+  }
+}
+
+export async function searchListings(params = {}) {
+  if (hasApiBackend()) {
+    try {
+      const query = new URLSearchParams()
+      Object.entries(toSearchParams(params)).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          query.append(key, value)
+        }
+      })
+      const response = await client.get(`/api/listings/search?${query.toString()}`)
+      return {
+        data: (response.data.data || []).map(normalizeListing),
+        total: response.data.total || 0,
+        page: response.data.page || 1,
+        limit: response.data.limit || 20,
+        totalPages: response.data.totalPages || 1,
+      }
+    } catch {
+      console.warn("[listings] Search GET failed, using localStorage fallback")
+    }
+  }
+  const filtered = applyFilters(getMockListings(), params)
+  const page = Number(params.page || 1)
+  const limit = Number(params.limit || 20)
+  const result = paginate(filtered, page, limit)
+  return {
+    data: result.data,
+    total: result.pagination.total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(result.pagination.total / limit)),
+  }
+}
+
+export async function fetchLocations() {
+  if (hasApiBackend()) {
+    try {
+      const response = await client.get("/api/listings/locations")
+      return Array.isArray(response.data) ? response.data : []
+    } catch {
+      console.warn("[listings] Locations GET failed, using localStorage fallback")
+    }
+  }
+  return Array.from(
+    new Set(
+      getMockListings()
+        .map((listing) => listing.location || listing.province)
+        .filter(Boolean),
+    ),
+  ).sort()
 }
 
 export async function getListingById(id) {
@@ -666,6 +791,10 @@ export async function getListingById(id) {
   return listing || null
 }
 
+export async function fetchListingById(id) {
+  return getListingById(id)
+}
+
 export async function createListing(data) {
   if (hasApiBackend()) {
     try {
@@ -675,6 +804,9 @@ export async function createListing(data) {
       })
       return normalizeListing(response.data)
     } catch (error) {
+      if (error.response?.status === 403 && error.response?.data?.error === "Phone verification required to post listings") {
+        throw new Error("verify.phoneRequired", { cause: error })
+      }
       throw new Error(error.response?.data?.error || "post.error", { cause: error })
     }
   }
@@ -721,7 +853,7 @@ export async function createListing(data) {
 
 export async function updateListing(id, data) {
   if (hasApiBackend()) {
-    const response = await client.put(`/api/listings/${id}`, listingFormData(data), {
+    const response = await client.patch(`/api/listings/${id}`, listingFormData(data), {
       headers: { "Content-Type": "multipart/form-data" },
     })
     return normalizeListing(response.data)
@@ -734,6 +866,27 @@ export async function updateListing(id, data) {
   return updated.find((listing) => String(listing.id) === String(id))
 }
 
+export async function bumpListing(id) {
+  if (hasApiBackend()) {
+    try {
+      const response = await client.post(`/api/listings/${id}/bump`)
+      return {
+        ...response.data,
+        listing: response.data.listing ? normalizeListing(response.data.listing) : undefined,
+      }
+    } catch (error) {
+      throw new Error(error.response?.data?.error || error.response?.data?.message || "ui.error", { cause: error })
+    }
+  }
+  const listings = getMockListings()
+  const bumpedAt = new Date().toISOString()
+  const updated = listings.map((listing) =>
+    String(listing.id) === String(id) ? { ...listing, bumpedAt } : listing,
+  )
+  storage.set(STORAGE_KEYS.listings, updated)
+  return { bumpedAt, listing: normalizeListing(updated.find((listing) => String(listing.id) === String(id))) }
+}
+
 export async function deleteListing(id) {
   if (hasApiBackend()) {
     const response = await client.delete(`/api/listings/${id}`)
@@ -742,6 +895,53 @@ export async function deleteListing(id) {
   const updated = getMockListings().filter((listing) => String(listing.id) !== String(id))
   storage.set(STORAGE_KEYS.listings, updated)
   return { ok: true }
+}
+
+export async function markAsSold(id) {
+  return markListingAsSold(id)
+}
+
+export async function saveDraft(data) {
+  if (hasApiBackend()) {
+    const response = await client.post("/api/listings/draft", listingFormData(data), {
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+    return normalizeListing(response.data)
+  }
+  const payload = objectFromPayload(data)
+  const listings = getMockListings()
+  const existingId = payload.id || payload.draftId
+  const draft = {
+    ...(existingId ? listings.find((listing) => String(listing.id) === String(existingId)) : {}),
+    id: existingId || `draft-${Date.now()}`,
+    ...payload,
+    status: "draft",
+    updatedAt: new Date().toISOString(),
+    createdAt: payload.createdAt || new Date().toISOString(),
+  }
+  const next = [draft, ...listings.filter((listing) => String(listing.id) !== String(draft.id))]
+  storage.set(STORAGE_KEYS.listings, next)
+  return normalizeListing(draft)
+}
+
+export async function publishDraft(id) {
+  if (hasApiBackend()) {
+    const response = await client.patch(`/api/listings/${id}/publish`)
+    return normalizeListing(response.data)
+  }
+  return updateListing(id, { status: "active" })
+}
+
+export async function uploadImage(file) {
+  if (!hasApiBackend()) {
+    return { url: URL.createObjectURL(file) }
+  }
+  const body = new FormData()
+  body.append("file", file)
+  const response = await client.post("/api/listings/upload-image", body, {
+    headers: { "Content-Type": "multipart/form-data" },
+  })
+  return response.data
 }
 
 export async function reportListing(id, reason, detail = "", extra = {}) {
@@ -823,6 +1023,22 @@ export async function unsaveListing(id) {
   return { success: true }
 }
 
+export async function fetchSavedListings() {
+  if (hasApiBackend()) {
+    const response = await client.get("/api/listings/saved")
+    return (response.data.data || response.data.listings || []).map(normalizeListing)
+  }
+  const savedIds = storage.get(STORAGE_KEYS.saved, [])
+  const snapshots = storage.get(STORAGE_KEYS.savedSnapshots, {})
+  return getMockListings()
+    .filter((listing) => savedIds.some((id) => String(id) === String(listing.id)))
+    .map((listing) => normalizeListing({
+      ...listing,
+      savedAt: snapshots[listing.id]?.savedAt || null,
+      savedPrice: snapshots[listing.id]?.savedPrice,
+    }))
+}
+
 export async function getRelated(id, limit = 4) {
   if (hasApiBackend()) {
     try {
@@ -839,6 +1055,22 @@ export async function getRelated(id, limit = 4) {
     .slice(0, limit)
 }
 
+export async function fetchSimilarListings(id) {
+  if (hasApiBackend()) {
+    try {
+      const response = await client.get(`/api/listings/${id}/similar`)
+      return (response.data.data || []).map(normalizeListing)
+    } catch {
+      return []
+    }
+  }
+  const listing = getMockListings().find((item) => String(item.id) === String(id))
+  if (!listing) return []
+  return getMockListings()
+    .filter((item) => String(item.id) !== String(id) && item.categorySlug === listing.categorySlug)
+    .slice(0, 6)
+}
+
 export async function fetchStats() {
   if (hasApiBackend()) {
     try {
@@ -849,4 +1081,48 @@ export async function fetchStats() {
     }
   }
   return null
+}
+
+export const markListingAsSold = async (id) => {
+  if (!hasApiBackend()) {
+    return updateListing(id, { status: "sold" })
+  }
+  try {
+    const res = await client.patch(`/api/listings/${id}/sold`)
+    return res.data
+  } catch (err) {
+    throw err?.response?.data || err
+  }
+}
+
+export const fetchMyListings = async (status) => {
+  if (!hasApiBackend()) {
+    const user = useAuthStore.getState().user
+    const all = JSON.parse(localStorage.getItem("bayonhub:listings") || "[]")
+    return all.filter((l) =>
+      (l.userId === user?.id || l.sellerId === user?.id) &&
+      (!status || String(l.status || "active").toLowerCase() === String(status).toLowerCase()),
+    )
+  }
+  try {
+    const res = await client.get("/api/listings/mine", { params: status ? { status } : {} })
+    return res.data
+  } catch (err) {
+    throw err?.response?.data || err
+  }
+}
+
+export const incrementListingView = async (id) => {
+  return incrementView(id)
+}
+
+export async function incrementView(id, sessionId) {
+  if (!hasApiBackend()) return
+  try {
+    const response = await client.post(`/api/listings/${id}/view`, { sessionId })
+    return response.data
+  } catch {
+    // Silent — non-critical
+    return null
+  }
 }

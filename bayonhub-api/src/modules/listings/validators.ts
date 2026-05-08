@@ -24,7 +24,7 @@ export const listingSchema = z.object({
   district: z.string().transform(sanitize).optional().nullable(),
   addressDetail: z.string().transform(sanitize).optional().nullable(),
   condition: z.string().transform(sanitize).optional().nullable(),
-  negotiable: z.union([z.boolean(), z.string()]).transform((val: boolean | string) => val === true || val === "true"),
+  negotiable: z.union([z.boolean(), z.string()]).optional().default(false).transform((val: boolean | string) => val === true || val === "true"),
   lat: z.union([z.string(), z.number()]).optional().nullable().transform((val: string | number | null | undefined) => val ? Number(val) : null),
   lng: z.union([z.string(), z.number()]).optional().nullable().transform((val: string | number | null | undefined) => val ? Number(val) : null),
 })

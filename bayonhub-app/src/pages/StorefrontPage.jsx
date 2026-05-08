@@ -17,6 +17,7 @@ import ListingGrid from "../components/listing/ListingGrid"
 import StorefrontSkeleton from "../components/storefront/StorefrontSkeleton"
 import ReviewModal from "../components/storefront/ReviewModal"
 import Button from "../components/ui/Button"
+import Badge from "../components/ui/Badge"
 import StarRating from "../components/ui/StarRating"
 import { useTranslation } from "../hooks/useTranslation"
 import { maskPhone, sellerUrl, telegramShare, timeAgo } from "../lib/utils"
@@ -26,8 +27,29 @@ import { useListingStore } from "../store/useListingStore"
 import { useAuthStore } from "../store/useAuthStore"
 import { useUIStore } from "../store/useUIStore"
 import { useStorefrontStore } from "../store/useStorefrontStore"
+import { useUserStore } from "../store/useUserStore"
 import PageTransition from "../components/ui/PageTransition"
 import NotFoundPage from "./NotFoundPage"
+
+function maskReviewerName(name = "") {
+  const clean = sanitizeText(name || "")
+  if (!clean) return "***"
+  return `${clean.slice(0, 3)}***`
+}
+
+function hasReviewTag(review, tag) {
+  return (review.tags || []).includes(tag)
+}
+
+function getReviewTagLabelKey(tag) {
+  const labels = {
+    trustworthy: "rating.tags.trustworthy",
+    quickReply: "rating.tags.quickReply",
+    fairPrice: "rating.tags.fairPrice",
+    asDescribed: "rating.tags.asDescribed",
+  }
+  return labels[tag] || "rating.tags.trustworthy"
+}
 
 export default function StorefrontPage() {
   const { id, slug } = useParams()
@@ -46,6 +68,10 @@ export default function StorefrontPage() {
   const following = useAuthStore((state) => state.following)
   const followSeller = useAuthStore((state) => state.followSeller)
   const unfollowSeller = useAuthStore((state) => state.unfollowSeller)
+  const followSellerApi = useUserStore((state) => state.followSeller)
+  const unfollowSellerApi = useUserStore((state) => state.unfollowSeller)
+  const fetchFollowers = useUserStore((state) => state.fetchFollowers)
+  const followerCounts = useUserStore((state) => state.followerCounts)
   const user = useAuthStore((state) => state.user)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
@@ -60,6 +86,10 @@ export default function StorefrontPage() {
       fetchStorefront(identifier)
     }
   }, [identifier, fetchStorefront])
+
+  useEffect(() => {
+    if (seller?.id) fetchFollowers(seller.id)
+  }, [fetchFollowers, seller?.id])
 
   // Redirect if visiting by ID but slug is available
   useEffect(() => {
@@ -83,20 +113,40 @@ export default function StorefrontPage() {
 
   const averageRating = useMemo(() => {
     if (!seller?.reviewsReceived?.length) return 0
-    const sum = seller.reviewsReceived.reduce((acc, rev) => acc + rev.rating, 0)
+    const sum = seller.reviewsReceived.reduce((acc, rev) => acc + Number(rev.stars || rev.rating || 0), 0)
     return sum / seller.reviewsReceived.length
   }, [seller])
 
+  const sellerReviews = useMemo(() => seller?.reviewsReceived || [], [seller])
+  const quickReplyRatio = useMemo(() => {
+    if (!sellerReviews.length) return 0
+    return sellerReviews.filter((review) => hasReviewTag(review, "quickReply")).length / sellerReviews.length
+  }, [sellerReviews])
+  const sellerBadges = useMemo(
+    () =>
+      [
+        averageRating >= 4.5 && sellerReviews.length >= 5 ? ["topRated", "seller.topRated"] : null,
+        averageRating >= 4 && sellerReviews.length >= 10 ? ["trustedSeller", "seller.trustedSeller"] : null,
+        quickReplyRatio > 0.5 ? ["quickResponder", "seller.quickResponder"] : null,
+      ].filter(Boolean),
+    [averageRating, quickReplyRatio, sellerReviews.length],
+  )
+
   if (loading) return <StorefrontSkeleton />
   if (error) {
+    const plusRequired = error === "PLUS_REQUIRED"
     return (
       <div className="mx-auto max-w-7xl px-4 py-12 text-center">
         <div className="mx-auto inline-flex flex-col items-center gap-4 rounded-3xl border border-red-100 bg-red-50 p-10 text-red-700 shadow-sm sm:px-16">
-          <h2 className="text-2xl font-black">{t("ui.error")}</h2>
-          <p className="max-w-xl text-sm font-bold">{error}</p>
+          <h2 className="text-2xl font-black">{plusRequired ? t("plus.plusRequired") : t("ui.error")}</h2>
+          <p className="max-w-xl text-sm font-bold">{plusRequired ? t("plus.unlockWith") : error}</p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-            <Button onClick={() => fetchStorefront(identifier)} variant="secondary">{t("ui.retry")}</Button>
-            <Button onClick={() => navigate("/")}>{t("listing.browseAll")}</Button>
+            {plusRequired ? (
+              <Button onClick={() => navigate("/pricing")}>{t("plus.upgradeCta")}</Button>
+            ) : (
+              <Button onClick={() => fetchStorefront(identifier)} variant="secondary">{t("ui.retry")}</Button>
+            )}
+            <Button onClick={() => navigate("/")} variant={plusRequired ? "secondary" : "primary"}>{t("listing.browseAll")}</Button>
           </div>
         </div>
       </div>
@@ -106,9 +156,34 @@ export default function StorefrontPage() {
 
   const merchant = seller.merchantProfile || {}
   const isFollowing = following.includes(seller.id)
+  const followersCount = followerCounts[seller.id] ?? seller.followersCount ?? seller._count?.sellerFollowers ?? 0
   const banner = merchant.bannerKey || seller.bannerUrl || ""
   const logo = merchant.logoKey || seller.avatarUrl || ""
   const memberYear = new Date(seller.createdAt).getFullYear()
+  const sellerVerified = Boolean(seller.isVerifiedSeller || seller.verificationTier === "IDENTITY")
+  const sellerIsPlusMember = Boolean(seller.isPlusMember || seller.isLifetimePlus)
+  const responseRate = Number(seller.responseRate || 0)
+  const sellerConversationCount = Number(seller._count?.sellerConversations || seller.sellerConversations?.length || seller.conversationCount || 0)
+  const responseRateLabel = sellerConversationCount >= 3
+    ? `${Math.round(responseRate)}%`
+    : seller.responseTime || t("listing.underHour")
+  const lastSeenLabel = seller.lastSeen
+    ? t("seller.lastSeenAgo", { time: timeAgo(seller.lastSeen, language) })
+    : t("seller.lastSeenRecently")
+
+  async function toggleFollow() {
+    if (!isAuthenticated) {
+      toggleAuthModal(true)
+      return
+    }
+    if (isFollowing) {
+      unfollowSeller(seller.id)
+      await unfollowSellerApi(seller.id)
+    } else {
+      followSeller(seller.id)
+      await followSellerApi(seller.id)
+    }
+  }
 
   return (
     <PageTransition>
@@ -149,7 +224,7 @@ export default function StorefrontPage() {
                       </div>
                     )}
                   </div>
-                  {seller.verificationTier === "IDENTITY" && (
+                  {sellerVerified && (
                     <div className="absolute -bottom-1 -right-1 flex h-10 w-10 items-center justify-center rounded-full border-4 border-white bg-blue-500 shadow-lg">
                       <Shield className="h-5 w-5 text-white" />
                     </div>
@@ -167,6 +242,14 @@ export default function StorefrontPage() {
                         {t("auth.verified")}
                       </span>
                     )}
+                    {sellerVerified ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 border border-emerald-100 uppercase tracking-wider">
+                        <Shield className="h-3 w-3" />
+                        {t("seller.verified")}
+                      </span>
+                    ) : null}
+                    {sellerIsPlusMember ? <Badge type="plus" /> : null}
+                    {sellerVerified ? <Badge type="verified" /> : null}
                   </div>
                   <p className="text-lg font-bold text-neutral-500 max-w-xl">
                     {sanitizeText(merchant.tagline || t("app.tagline"))}
@@ -178,9 +261,18 @@ export default function StorefrontPage() {
                     </span>
                     <span className="flex items-center gap-1.5">
                       <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                      {averageRating.toFixed(1)} ({seller.reviewsReceived?.length || 0} {t("seller.rating")})
+                      {averageRating.toFixed(1)} ({sellerReviews.length} {t("seller.reviews")})
                     </span>
                   </div>
+                  {sellerBadges.length ? (
+                    <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
+                      {sellerBadges.map(([id, label]) => (
+                        <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-black text-primary" key={id}>
+                          {t(label)}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -188,18 +280,15 @@ export default function StorefrontPage() {
                 <Button 
                   size="lg"
                   variant={isFollowing ? "secondary" : "primary"}
-                  onClick={() => {
-                    if (!isAuthenticated) return toggleAuthModal(true)
-                    isFollowing ? unfollowSeller(seller.id) : followSeller(seller.id)
-                  }}
+                  onClick={toggleFollow}
                   className="px-8"
                 >
-                  {isFollowing ? t("seller.following") : t("seller.follow")}
+                  {isFollowing ? t("social.following") : t("social.follow")}
                 </Button>
                 {isAuthenticated && seller.id !== user?.id && (
                   <Button size="lg" variant="outline" onClick={() => setReviewModalOpen(true)}>
                     <Star className="h-5 w-5 mr-2" />
-                    {t("review.submit")}
+                    {t("seller.leaveReview")}
                   </Button>
                 )}
               </div>
@@ -212,20 +301,20 @@ export default function StorefrontPage() {
                 <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{t("seller.totalAds")}</span>
               </div>
               <div className="text-center p-2">
-                <span className="block text-2xl font-black text-neutral-900">{seller.followersCount || 0}</span>
-                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{t("seller.followers")}</span>
+                <span className="block text-2xl font-black text-neutral-900">{Number(followersCount).toLocaleString()}</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{t("social.followers")}</span>
               </div>
               <div className="text-center p-2">
                 <span className="block text-2xl font-black text-neutral-900">{seller.reviewsReceived?.length || 0}</span>
                 <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{t("seller.rating")}</span>
               </div>
               <div className="text-center p-2">
-                <span className="block text-2xl font-black text-neutral-900">{seller.responseTime || t("listing.underHour")}</span>
-                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{t("seller.avgResponse")}</span>
+                <span className="block text-2xl font-black text-neutral-900">{responseRateLabel}</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{t("seller.responseRate")}</span>
               </div>
               <div className="hidden lg:block text-center p-2">
-                <span className="block text-2xl font-black text-neutral-900">100%</span>
-                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{t("ui.success")}</span>
+                <span className="block text-sm font-black text-neutral-900">{lastSeenLabel}</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{t("seller.lastSeen")}</span>
               </div>
             </div>
           </div>
@@ -281,8 +370,8 @@ export default function StorefrontPage() {
             {activeTab === "reviews" && (
               <div className="grid gap-8 lg:grid-cols-[1fr_350px]">
                 <div className="space-y-6">
-                  {seller.reviewsReceived?.length > 0 ? (
-                    seller.reviewsReceived.map((review) => (
+                  {sellerReviews.length > 0 ? (
+                    sellerReviews.map((review) => (
                       <div key={review.id} className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-4">
@@ -296,12 +385,21 @@ export default function StorefrontPage() {
                               )}
                             </div>
                             <div>
-                              <h4 className="font-black text-neutral-900">{sanitizeText(review.reviewer?.name)}</h4>
+                              <h4 className="font-black text-neutral-900">{maskReviewerName(review.reviewer?.name)}</h4>
                               <p className="text-xs font-bold text-neutral-400">{timeAgo(review.createdAt, language)}</p>
                             </div>
                           </div>
-                          <StarRating rating={review.rating} size="sm" />
+                          <StarRating rating={review.stars || review.rating} size="sm" />
                         </div>
+                        {review.tags?.length ? (
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {review.tags.map((tag) => (
+                              <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-black text-neutral-600" key={tag}>
+                                {t(getReviewTagLabelKey(tag))}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
                         {review.comment && (
                           <div className="mt-4 p-4 rounded-2xl bg-neutral-50 text-neutral-700 font-semibold leading-relaxed">
                             {sanitizeText(review.comment)}
@@ -323,15 +421,15 @@ export default function StorefrontPage() {
                     <div className="text-6xl font-black text-amber-500 mb-2">{averageRating.toFixed(1)}</div>
                     <StarRating rating={averageRating} className="justify-center mb-4" size="lg" />
                     <p className="text-sm font-black text-amber-700 uppercase tracking-widest">
-                      {t("review.count", { count: seller.reviewsReceived?.length || 0 })}
+                      {t("review.count", { count: sellerReviews.length })}
                     </p>
                   </div>
                   
                   <div className="rounded-3xl border border-neutral-200 bg-white p-6 space-y-4 shadow-sm">
                     <h3 className="font-black text-neutral-900">{t("review.rating")}</h3>
                     {[5, 4, 3, 2, 1].map((s) => {
-                      const count = seller.reviewsReceived?.filter(r => r.rating === s).length || 0
-                      const percent = seller.reviewsReceived?.length ? (count / seller.reviewsReceived.length) * 100 : 0
+                      const count = sellerReviews.filter(r => Number(r.stars || r.rating || 0) === s).length
+                      const percent = sellerReviews.length ? (count / sellerReviews.length) * 100 : 0
                       return (
                         <div key={s} className="flex items-center gap-3">
                           <span className="w-3 text-xs font-black text-neutral-500">{s}</span>

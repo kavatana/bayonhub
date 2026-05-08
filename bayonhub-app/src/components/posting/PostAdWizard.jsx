@@ -3,10 +3,11 @@ import { useGSAP } from "@gsap/react"
 import gsap from "gsap"
 import toast from "react-hot-toast"
 import { useNavigate } from "react-router-dom"
-import { Check, ChevronLeft, X, Send, Share2 } from "lucide-react"
+import { BriefcaseBusiness, Building2, Car, Check, ChevronLeft, Home, Search, Send, Share2, Smartphone, X } from "lucide-react"
 import { useTranslation } from "../../hooks/useTranslation"
 import { CATEGORIES } from "../../lib/categories"
-import { getCategoryForm } from "../../lib/categoryForms"
+import { trackEvent } from "../../lib/analytics"
+import { CATEGORY_FORMS, getFormSchema } from "../../lib/categoryForms"
 import { getDistrictsForProvince, PROVINCES } from "../../lib/locations"
 import { cn, formatPrice, listingUrl, telegramShare } from "../../lib/utils"
 import { validatePhone } from "../../lib/validation"
@@ -17,9 +18,33 @@ import ABAPayModal from "../payments/ABAPayModal"
 import Button from "../ui/Button"
 import Overlay from "../ui/Overlay"
 import StepIndicator from "../ui/StepIndicator"
+import CategoryForm from "./CategoryForm"
 import MediaUploader from "./MediaUploader"
 
 const MapView = lazy(() => import("../ui/MapView"))
+
+const schemaCategoryMap = {
+  cars: { categoryId: "vehicles", subcategoryId: "cars" },
+  property_rent: { categoryId: "house-land", subcategoryId: "rent" },
+  property_sale: { categoryId: "house-land", subcategoryId: "sale" },
+  phones: { categoryId: "phones-tablets", subcategoryId: "smartphones" },
+  jobs: { categoryId: "jobs", subcategoryId: "full-time" },
+}
+
+const schemaIconMap = {
+  BriefcaseBusiness,
+  Building2,
+  Car,
+  Home,
+  Smartphone,
+}
+
+function getTaxonomySelection(categoryId) {
+  const mapped = schemaCategoryMap[categoryId] || { categoryId, subcategoryId: "" }
+  const category = CATEGORIES.find((item) => item.id === mapped.categoryId || item.subcategories.some((subcategory) => subcategory.id === mapped.subcategoryId))
+  const subcategory = category?.subcategories.find((item) => item.id === mapped.subcategoryId)
+  return { category, subcategory }
+}
 
 function getInitialData(listing = null, prefill = null) {
   if (!listing) {
@@ -31,6 +56,7 @@ function getInitialData(listing = null, prefill = null) {
       subcategoryId: prefill?.subcategoryId || "",
       detailCategoryId: "",
       fields: {},
+      categoryFields: {},
       images: [],
       phone: "",
       province: "Phnom Penh",
@@ -63,6 +89,7 @@ function getInitialData(listing = null, prefill = null) {
       condition: listing.condition || "",
       ...(listing.facets || {}),
     },
+    categoryFields: listing.categoryFields || listing.facets || {},
     images: listingImages.map((image, index) => ({
       id: `${listing.id || "listing"}-${index}`,
       preview: typeof image === "string" ? image : image.url,
@@ -96,6 +123,8 @@ export default function PostAdWizard({
   const pendingAction = useUIStore((state) => state.pendingAction)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
   const createListing = useListingStore((state) => state.createListing)
+  const saveDraft = useListingStore((state) => state.saveDraft)
+  const draftListing = useListingStore((state) => state.draftListing)
   const user = useAuthStore((state) => state.user)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
@@ -113,7 +142,9 @@ export default function PostAdWizard({
   const [touched, setTouched] = useState({})
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState("idle")
   const [khqrOpen, setKhqrOpen] = useState(false)
+  const [categorySearch, setCategorySearch] = useState("")
 
   const panelRef = useRef(null)
   const bodyRef = useRef(null)
@@ -163,17 +194,60 @@ export default function PostAdWizard({
     return () => window.clearTimeout(hideTimer)
   }, [data, step, open, initialListing, isSuccess])
 
-  const steps = [t("post.stepCategory"), t("post.stepDetails"), t("post.stepMedia"), t("post.stepLocation"), t("post.stepReview")]
-  const category = CATEGORIES.find((item) => item.id === data.categoryId)
-  const subcategory = category?.subcategories.find((item) => item.id === data.subcategoryId)
+  const steps = [t("wizard.selectCategory"), t("post.stepMedia"), t("wizard.fillForm"), t("wizard.preview"), t("post.postAd")]
+  const { category, subcategory } = useMemo(() => getTaxonomySelection(data.categoryId), [data.categoryId])
   const detailCategory = subcategory?.subcategories?.find((item) => item.id === data.detailCategoryId)
-  const detailCategories = subcategory?.subcategories || []
-  const formFields = useMemo(() => getCategoryForm(data.subcategoryId), [data.subcategoryId])
+  const categorySchema = useMemo(() => getFormSchema(data.categoryId), [data.categoryId])
+  const categoryOptions = useMemo(() => {
+    const query = categorySearch.trim().toLowerCase()
+    return Object.values(CATEGORY_FORMS).filter((item) => {
+      if (!query) return true
+      return item.id.toLowerCase().includes(query) || item.label.en.toLowerCase().includes(query) || item.label.km.includes(categorySearch.trim())
+    })
+  }, [categorySearch])
+  const categoryFieldEntries = useMemo(() => {
+    if (!categorySchema) return []
+    return [...categorySchema.required, ...categorySchema.optional]
+      .map((fieldName) => [fieldName, categorySchema.fields[fieldName]])
+      .filter(([, field]) => Boolean(field))
+  }, [categorySchema])
+  const hasEmptyCarOptionalFields = useMemo(() => {
+    if (data.categoryId !== "cars" || !categorySchema) return false
+    return categorySchema.optional.some((fieldName) => !data.categoryFields?.[fieldName])
+  }, [categorySchema, data.categoryFields, data.categoryId])
   const districts = useMemo(() => {
     const province = PROVINCES.find((item) => item.label.en === data.province)
     return getDistrictsForProvince(province?.slug)
   }, [data.province])
   const coverImage = data.images.find((image) => image.isPrimary) || data.images[0]
+
+  useEffect(() => {
+    if (!open || initialListing || isSuccess || !isAuthenticated) return undefined
+    if (!data.title.trim() || !data.categoryId) return undefined
+    const timer = window.setInterval(() => {
+      saveDraft({
+        id: draftListing?.id,
+        title: data.title.trim(),
+        description: data.fields.description || data.categoryFields.description || data.title,
+        price: Number(data.price || 0),
+        currency: data.currency,
+        category: category?.label.en,
+        categorySlug: category?.slug || category?.id || data.categoryId,
+        condition: data.fields.condition || "Used",
+        location: data.province,
+        province: data.province,
+        district: data.district,
+        metadata: data.categoryFields,
+        facets: Object.fromEntries(
+          Object.entries({ ...data.fields, ...data.categoryFields }).filter(([key]) => !["description", "condition"].includes(key)),
+        ),
+        images: data.images.map((image) => image.url).filter((url) => typeof url === "string" && !url.startsWith("data:")),
+      })
+      setShowDraftSaved(true)
+      window.setTimeout(() => setShowDraftSaved(false), 2000)
+    }, 30000)
+    return () => window.clearInterval(timer)
+  }, [category, data, draftListing?.id, initialListing, isAuthenticated, isSuccess, open, saveDraft])
 
   useGSAP(
     () => {
@@ -265,27 +339,49 @@ export default function PostAdWizard({
     setData((current) => ({ ...current, [name]: value }))
   }
 
-  function updateDynamicField(name, value) {
+  function selectSchemaCategory(categoryId) {
+    const mapped = schemaCategoryMap[categoryId] || { categoryId, subcategoryId: "" }
+    trackEvent("wizard_category_selected", { categoryId })
     setData((current) => ({
       ...current,
-      fields: { ...current.fields, [name]: value },
+      categoryId,
+      subcategoryId: mapped.subcategoryId,
+      detailCategoryId: "",
+      categoryFields: {},
+      fields: {},
     }))
+  }
+
+  function updateCategoryField(fieldName, value) {
+    setData((current) => {
+      const nextCategoryFields = { ...current.categoryFields, [fieldName]: value }
+      const nextFields = { ...current.fields, [fieldName]: value }
+      const nextData = {
+        ...current,
+        categoryFields: nextCategoryFields,
+        fields: nextFields,
+      }
+      if (fieldName === "title") nextData.title = value
+      if (fieldName === "price" || fieldName === "pricePerMonth") nextData.price = value
+      if (fieldName === "condition") nextData.fields.condition = value
+      return nextData
+    })
   }
 
   function validateStep(targetStep = step) {
     const nextErrors = {}
-    if (targetStep === 0 && !data.subcategoryId) nextErrors.category = t("post.validationCategory")
-    if (targetStep === 1) {
+    if (targetStep === 0 && !data.categoryId) nextErrors.category = t("validation.categoryRequired")
+    if (targetStep === 1 && !data.images.length) nextErrors.images = t("validation.minPhotos")
+    if (targetStep === 2) {
       if (!data.title.trim() || data.title.trim().length < 4) nextErrors.title = t("post.validationTitle")
-      if (!Number(data.price) || Number(data.price) < 1) nextErrors.price = t("post.validationPrice")
+      if (!Number(data.price) || Number(data.price) < 1) nextErrors.price = t("validation.invalidPriceNatural")
       const phoneResult = validatePhone(data.phone)
-      if (!phoneResult.valid) nextErrors.phone = t(`validation.${phoneResult.error}`)
-      formFields.forEach((field) => {
-        if (field.required && !data.fields[field.id]) nextErrors[field.id] = t("ui.required")
+      if (!phoneResult.valid) nextErrors.phone = t("validation.phoneFormat")
+      categorySchema?.required.forEach((fieldName) => {
+        if (!data.categoryFields?.[fieldName]) nextErrors[fieldName] = t("validation.requiredField")
       })
+      if (!data.province || !data.district) nextErrors.location = t("post.validationLocation")
     }
-    if (targetStep === 2 && !data.images.length) nextErrors.images = t("post.validationMedia")
-    if (targetStep === 3 && (!data.province || !data.district)) nextErrors.location = t("post.validationLocation")
     setErrors(nextErrors)
     return !Object.keys(nextErrors).length
   }
@@ -295,12 +391,15 @@ export default function PostAdWizard({
       toast.error(t("post.validationErrorToast"))
       return
     }
+    if (step === 2 && nextStep === 3) {
+      trackEvent("wizard_form_completed", { categoryId: data.categoryId })
+    }
     setDirection(nextStep > step ? 1 : -1)
     setStep(nextStep)
   }
 
   async function submit() {
-    const allValid = [0, 1, 2, 3].every((target) => validateStep(target))
+    const allValid = [0, 1, 2].every((target) => validateStep(target))
     if (!allValid) return
     if (!isAuthenticated) {
       setPendingAction({ type: "post", prefill: data })
@@ -309,6 +408,7 @@ export default function PostAdWizard({
     }
     setLoading(true)
     try {
+      setUploadProgress("publishing")
       const submitAction = onSubmitListing || createListing
       const phoneResult = validatePhone(data.phone)
       const listing = await submitAction({
@@ -329,9 +429,10 @@ export default function PostAdWizard({
         lng: data.lng,
         sellerName: user?.name || t("app.name"),
         phone: phoneResult.normalized,
-        description: data.fields.description || data.title,
+        description: data.fields.description || data.categoryFields.description || data.title,
+        categoryFields: data.categoryFields,
         facets: Object.fromEntries(
-          Object.entries(data.fields).filter(([key]) => !["description", "condition"].includes(key)),
+          Object.entries({ ...data.fields, ...data.categoryFields }).filter(([key]) => !["description", "condition"].includes(key)),
         ),
         images: data.images,
         imageUrl: coverImage?.preview || coverImage?.url,
@@ -341,12 +442,18 @@ export default function PostAdWizard({
         leads: 0,
       })
       if (listing) {
-        localStorage.removeItem(DRAFT_KEY)
+        trackEvent("listing_published", { categoryId: data.categoryId, listingId: listing.id })
+        discardDraft()
         setCreatedListing(listing)
         setIsSuccess(true)
         if (data.promotion !== "standard") {
           setKhqrOpen(true)
         }
+        toast.success(t("post.success"))
+        setTimeout(() => {
+          closeWizard()
+          navigate(`/listing/${listing.id}`)
+        }, 1500)
       } else {
         toast.error(t("post.error"))
       }
@@ -354,6 +461,7 @@ export default function PostAdWizard({
       toast.error(err?.message || t("post.error"))
     } finally {
       setLoading(false)
+      setUploadProgress("idle")
     }
   }
 
@@ -379,7 +487,7 @@ export default function PostAdWizard({
         <header className="shrink-0 border-b border-neutral-100 p-4">
           <div className="mb-4 flex items-center justify-between gap-4">
             <button
-              aria-label={t("ui.close")}
+              aria-label={t("a11y.closeModal")}
               className="grid h-10 w-10 place-items-center rounded-full border border-neutral-200 text-neutral-500"
               onClick={closeWizard}
               type="button"
@@ -415,61 +523,40 @@ export default function PostAdWizard({
           )}
           {step === 0 ? (
             <div className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="max-h-[52vh] overflow-auto rounded-xl border border-neutral-200 bg-white p-2">
-                  <p className="px-2 py-2 text-xs font-black uppercase tracking-widest text-neutral-400">{t("post.chooseCategory")}</p>
-                  {CATEGORIES.map((item) => (
+              <label className="relative block">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" aria-hidden="true" />
+                <input
+                  className="h-12 w-full rounded-2xl border border-neutral-200 bg-neutral-50 pl-11 pr-4 text-base font-semibold outline-none focus:border-primary focus:bg-white"
+                  onChange={(event) => setCategorySearch(event.target.value)}
+                  placeholder={t("filter.search")}
+                  value={categorySearch}
+                />
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {categoryOptions.map((item) => {
+                  const Icon = schemaIconMap[item.icon] || Building2
+                  const active = data.categoryId === item.id
+                  return (
                     <button
+                      aria-pressed={active}
                       className={cn(
-                        "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-bold transition",
-                        data.categoryId === item.id ? "bg-primary text-white" : "text-neutral-700 hover:bg-neutral-100",
+                        "flex min-h-24 items-center gap-4 rounded-2xl border p-4 text-left transition",
+                        active ? "border-primary bg-primary text-white shadow-lg shadow-primary/20" : "border-neutral-200 bg-white text-neutral-800 hover:border-primary/40 hover:bg-primary/5",
                       )}
                       key={item.id}
-                      onClick={() => setData((current) => ({ ...current, categoryId: item.id, subcategoryId: "", detailCategoryId: "" }))}
+                      onClick={() => selectSchemaCategory(item.id)}
                       type="button"
                     >
-                      {t(`category.${item.id}`)}
+                      <span className={cn("grid h-12 w-12 shrink-0 place-items-center rounded-2xl", active ? "bg-white/15" : "bg-primary/10 text-primary")}>
+                        <Icon className="h-6 w-6" aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-base font-black leading-8">{item.label.km}</span>
+                        <span className={cn("block text-xs font-bold", active ? "text-white/80" : "text-neutral-500")}>{item.label.en}</span>
+                      </span>
                     </button>
-                  ))}
-                </div>
-                <div className="max-h-[52vh] overflow-auto rounded-xl border border-neutral-200 bg-white p-2">
-                  <p className="px-2 py-2 text-xs font-black uppercase tracking-widest text-neutral-400">{t("post.chooseSubcategory")}</p>
-                  {category?.subcategories.map((item) => (
-                    <button
-                      className={cn(
-                        "w-full rounded-lg px-3 py-2 text-left text-sm font-bold transition",
-                        data.subcategoryId === item.id ? "bg-primary text-white" : "text-neutral-700 hover:bg-neutral-100",
-                      )}
-                      key={item.id}
-                      onClick={() => setData((current) => ({ ...current, subcategoryId: item.id, detailCategoryId: "" }))}
-                      type="button"
-                    >
-                      {t(`category.${item.id}`)}
-                    </button>
-                  )) || <p className="px-3 py-6 text-sm text-neutral-500">{t("ui.empty")}</p>}
-                </div>
-                {detailCategories.length ? (
-                  <div className="max-h-[52vh] overflow-auto rounded-xl border border-neutral-200 bg-white p-2">
-                    <p className="px-2 py-2 text-xs font-black uppercase tracking-widest text-neutral-400">{t("post.chooseDetailCategory")}</p>
-                    {detailCategories.map((item) => (
-                      <button
-                        className={cn(
-                          "w-full rounded-lg px-3 py-2 text-left text-sm font-bold transition",
-                          data.detailCategoryId === item.id ? "bg-primary text-white" : "text-neutral-700 hover:bg-neutral-100",
-                        )}
-                        key={item.id}
-                        onClick={() => updateField("detailCategoryId", item.id)}
-                        type="button"
-                      >
-                        {t(`category.${item.id}`)}
-                      </button>
-                    ))}
-                  </div>
-                ) : subcategory ? (
-                  <div className="grid place-items-center rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center text-sm font-black text-emerald-700">
-                    {t("post.categorySelected")}
-                  </div>
-                ) : null}
+                  )
+                })}
               </div>
               {selectionPath ? (
                 <p className="rounded-xl bg-neutral-50 p-3 text-sm font-bold text-neutral-700">
@@ -480,7 +567,7 @@ export default function PostAdWizard({
             </div>
           ) : null}
 
-          {step === 1 ? (
+          {step === 2 ? (
             <div className="grid gap-4">
               <label className="grid gap-2 text-sm font-bold text-neutral-700">
                 {t("post.listingTitle")}
@@ -548,66 +635,22 @@ export default function PostAdWizard({
                 />
                 {(touched.phone || errors.phone) && errors.phone ? <span className="text-xs text-red-600">{errors.phone}</span> : null}
               </label>
-              {formFields.map((field) => (
-                <label className="grid gap-2 text-sm font-bold text-neutral-700" key={field.id}>
-                  {field.label[language]}
-                  {field.type === "textarea" ? (
-                    <textarea
-                      className="min-h-28 rounded-xl border border-neutral-200 p-3 outline-none focus:border-primary"
-                      onBlur={() => setTouched((current) => ({ ...current, [field.id]: true }))}
-                      onChange={(event) => updateDynamicField(field.id, event.target.value)}
-                      value={data.fields[field.id] || ""}
-                    />
-                  ) : null}
-                  {field.type === "select" ? (
-                    <select
-                      className="h-11 rounded-xl border border-neutral-200 bg-white px-3 outline-none focus:border-primary"
-                      onBlur={() => setTouched((current) => ({ ...current, [field.id]: true }))}
-                      onChange={(event) => updateDynamicField(field.id, event.target.value)}
-                      value={data.fields[field.id] || ""}
-                    >
-                      <option value="">{t("ui.select")}</option>
-                      {(field.options || []).map((option) => {
-                        const value = typeof option === "string" ? option : option.value
-                        const label = typeof option === "string" ? option : option.label[language]
-                        return (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        )
-                      })}
-                    </select>
-                  ) : null}
-                  {field.type === "boolean" ? (
-                    <input
-                      checked={Boolean(data.fields[field.id])}
-                      className="h-5 w-5 rounded border-neutral-300 text-primary focus:ring-primary"
-                      onChange={(event) => updateDynamicField(field.id, event.target.checked)}
-                      type="checkbox"
-                    />
-                  ) : null}
-                  {["text", "number", "price"].includes(field.type) ? (
-                    <input
-                      className="h-11 rounded-xl border border-neutral-200 px-3 outline-none focus:border-primary"
-                      max={field.max}
-                      min={field.min}
-                      onBlur={() => setTouched((current) => ({ ...current, [field.id]: true }))}
-                      onChange={(event) => updateDynamicField(field.id, event.target.value)}
-                      type={field.type === "text" ? "text" : "number"}
-                      value={data.fields[field.id] || ""}
-                    />
-                  ) : null}
-                  {(touched[field.id] || errors[field.id]) && errors[field.id] ? <span className="text-xs text-red-600">{errors[field.id]}</span> : null}
-                </label>
-              ))}
+              <CategoryForm categoryId={data.categoryId} errors={errors} formData={data.categoryFields} onChange={updateCategoryField} />
             </div>
           ) : null}
 
-          {step === 2 ? (
-            <MediaUploader error={errors.images} onChange={(images) => updateField("images", images)} value={data.images} />
+          {step === 1 ? (
+            <MediaUploader
+              error={errors.images}
+              onChange={(images) => {
+                updateField("images", images)
+                trackEvent("wizard_photos_uploaded", { count: images.length })
+              }}
+              value={data.images}
+            />
           ) : null}
 
-          {step === 3 ? (
+          {step === 2 ? (
             <div className="grid gap-4">
               <label className="grid gap-2 text-sm font-bold text-neutral-700">
                 {t("post.province")}
@@ -682,7 +725,7 @@ export default function PostAdWizard({
             </div>
           ) : null}
 
-          {step === 4 ? (
+          {step === 3 ? (
             !isAuthenticated ? (
               <div className="flex h-full flex-col items-center justify-center rounded-3xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
                 <div className="mb-4 grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary">
@@ -724,6 +767,28 @@ export default function PostAdWizard({
                     </div>
                   </div>
                 </div>
+                {categoryFieldEntries.length ? (
+                  <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-black uppercase tracking-widest text-neutral-400">{t("wizard.fillForm")}</p>
+                    <dl className="mt-3 grid gap-2">
+                      {categoryFieldEntries.map(([fieldName, field]) => {
+                        const value = data.categoryFields?.[fieldName]
+                        if (!value) return null
+                        return (
+                          <div className="flex items-start justify-between gap-4 rounded-xl bg-neutral-50 px-3 py-2" key={fieldName}>
+                            <dt className="text-xs font-black text-neutral-500">{field.label?.[language] || fieldName}</dt>
+                            <dd className="text-right text-sm font-bold text-neutral-900">{String(value)}</dd>
+                          </div>
+                        )
+                      })}
+                    </dl>
+                    {hasEmptyCarOptionalFields ? (
+                      <p className="mt-3 rounded-xl bg-teal-50 px-3 py-2 text-sm font-bold text-teal-700">
+                        {t("wizard.visibilityHint")}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div>
                   <p className="mb-3 text-sm font-black text-neutral-900">{t("post.promotion")}</p>
                   <div className="grid gap-3 sm:grid-cols-3">
@@ -753,6 +818,23 @@ export default function PostAdWizard({
             )
           ) : null}
 
+          {step === 4 ? (
+            <div className="grid min-h-80 place-items-center rounded-3xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
+              <div>
+                <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary">
+                  <Check className="h-8 w-8" aria-hidden="true" />
+                </div>
+                <h3 className="text-2xl font-black text-neutral-900">{t("wizard.preview")}</h3>
+                <p className="mt-2 max-w-md text-sm font-semibold text-neutral-500">{t("post.reviewSummary")}</p>
+                <div className="mt-6 rounded-2xl bg-neutral-50 p-4 text-left">
+                  <p className="text-sm font-black text-neutral-900">{data.title}</p>
+                  <p className="mt-1 text-lg font-black text-primary">{formatPrice(data.price, data.currency)}</p>
+                  <p className="mt-1 text-xs font-bold text-neutral-500">{selectionPath}</p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {isSuccess && (
             <div className="flex h-full flex-col items-center justify-center py-10 text-center">
               <div className="mb-6 grid h-20 w-20 place-items-center rounded-full bg-emerald-100 text-emerald-600">
@@ -771,11 +853,11 @@ export default function PostAdWizard({
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <Button variant="ghost" size="sm" onClick={() => telegramShare(window.location.origin + listingUrl(createdListing), createdListing?.title)}>
                     <Send className="h-4 w-4 mr-2" />
-                    Telegram
+                    {t("listing.telegram")}
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.origin + listingUrl(createdListing))}`, "_blank")}>
                     <Share2 className="h-4 w-4 mr-2" />
-                    Facebook
+                    {t("listing.facebook")}
                   </Button>
                 </div>
               </div>
@@ -796,13 +878,25 @@ export default function PostAdWizard({
               </Button>
             ) : null}
             {step < steps.length - 1 ? (
-              <Button className="ml-auto" disabled={step === 0 && !data.subcategoryId} onClick={() => goTo(step + 1)}>
+              <Button className="ml-auto" disabled={step === 0 && !data.categoryId} onClick={() => goTo(step + 1)}>
                 {t("ui.continue")}
               </Button>
             ) : (
-              <Button className="ml-auto w-full sm:w-auto" loading={loading} onClick={submit}>
-                {submitLabelKey ? t(submitLabelKey) : t("post.postAd")}
-              </Button>
+              <div className="ml-auto flex w-full flex-col sm:w-auto">
+                <Button className="w-full sm:w-auto" loading={loading} onClick={submit}>
+                  {submitLabelKey ? t(submitLabelKey) : t("post.postAd")}
+                </Button>
+                {uploadProgress === "uploading" && (
+                  <p className="text-xs text-center text-neutral-500 animate-pulse mt-2">
+                    {t("post.uploading")}
+                  </p>
+                )}
+                {uploadProgress === "publishing" && (
+                  <p className="text-xs text-center text-neutral-500 animate-pulse mt-2">
+                    {t("post.publishing")}
+                  </p>
+                )}
+              </div>
             )}
           </footer>
         )}

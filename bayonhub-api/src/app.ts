@@ -13,7 +13,8 @@ import adminRouter from "./modules/admin/router"
 import authRouter from "./modules/auth/router"
 import listingsRouter from "./modules/listings/router"
 import kycRouter from "./modules/kyc/router"
-import messagesRouter from "./modules/messages/router"
+import conversationsRouter from "./modules/messages/router"
+import notificationsRouter from "./modules/messages/notifications.router"
 import searchRouter from "./modules/search/router"
 import sellersRouter from "./modules/sellers/router"
 import usersRouter from "./modules/users/router"
@@ -93,7 +94,8 @@ app.use("/api/kyc", kycRouter)
 app.use("/api/search", searchRouter)
 app.use("/api/users", usersRouter)
 app.use("/api/sellers", sellersRouter)
-app.use("/api/messages", messagesRouter)
+app.use("/api/conversations", conversationsRouter)
+app.use("/api/notifications", notificationsRouter)
 app.use("/api", sitemapRouter)
 app.use("/api/admin", adminRouter)
 app.use("/api/payments", paymentsRouter)
@@ -160,6 +162,10 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     env.nodeEnv === "production" && status === 500
       ? "Internal server error"
       : err.message
+  if (err.publicError) {
+    res.status(status).json({ error: err.publicError, message })
+    return
+  }
   res.status(status).json({ error: message, code: err.code })
 }
 

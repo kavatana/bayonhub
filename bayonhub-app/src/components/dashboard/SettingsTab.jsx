@@ -201,7 +201,7 @@ export default function SettingsTab() {
             onClick={() => {
               logout()
               navigate("/")
-              toast.success(t("auth.loggedOut") || "Logged out")
+              toast.success(t("auth.logoutSuccess"))
             }} 
             variant="secondary" 
             className="text-red-600 hover:bg-red-100"

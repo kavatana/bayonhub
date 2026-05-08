@@ -1,275 +1,350 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Helmet } from "react-helmet-async"
-import InfiniteScroll from "react-infinite-scroll-component"
 import { useSearchParams } from "react-router-dom"
-import { Search as SearchIcon, X, SlidersHorizontal, Star } from "lucide-react"
+import { SearchX, Star } from "lucide-react"
+import toast from "react-hot-toast"
 import ListingCard from "../components/listing/ListingCard"
 import ListingListItem from "../components/listing/ListingListItem"
+import SaveSearchModal from "../components/search/SaveSearchModal"
+import SearchFilters from "../components/search/SearchFilters"
 import Button from "../components/ui/Button"
 import PageTransition from "../components/ui/PageTransition"
 import SkeletonCard from "../components/ui/SkeletonCard"
 import ViewToggle from "../components/ui/ViewToggle"
 import { useTranslation } from "../hooks/useTranslation"
-import { PROVINCES } from "../lib/locations"
-import { useListingStore } from "../store/useListingStore"
+import { trackEvent } from "../lib/analytics"
+import { getFormSchema } from "../lib/categoryForms"
+import { canonicalUrl } from "../lib/seo"
 import { useAuthStore } from "../store/useAuthStore"
+import { useListingStore } from "../store/useListingStore"
 import { useUIStore } from "../store/useUIStore"
-import { cn } from "../lib/utils"
-import { CATEGORIES } from "../lib/categories"
-import toast from "react-hot-toast"
 
 const sortOptions = [
-  ["newest", "sort.newestFirst"],
-  ["priceLow", "sort.priceLow"],
-  ["priceHigh", "sort.priceHigh"],
-  ["views", "sort.views"],
+  ["newest", "sort.newest"],
+  ["price_asc", "sort.priceLow"],
+  ["price_desc", "sort.priceHigh"],
+  ["most_viewed", "sort.mostViewed"],
 ]
 
+const schemaRouteMap = {
+  cars: "cars",
+  vehicles: "cars",
+  "phones-tablets": "phones",
+  smartphones: "phones",
+  phones: "phones",
+  jobs: "jobs",
+  "house-land": "property_rent",
+  rent: "property_rent",
+  property_rent: "property_rent",
+  sale: "property_sale",
+  property_sale: "property_sale",
+}
+
+const filterKeys = [
+  "category",
+  "province",
+  "condition",
+  "minPrice",
+  "maxPrice",
+  "fuel",
+  "transmission",
+  "yearMin",
+  "yearMax",
+  "bedrooms",
+  "furnishing",
+  "brand",
+  "storage",
+  "jobType",
+  "experience",
+]
+
+function getSchemaId(category) {
+  return schemaRouteMap[category] || null
+}
+
+function buildSearchParams(params) {
+  const values = Object.fromEntries(params.entries())
+  return {
+    q: values.q || "",
+    category: values.category || "",
+    location: values.province || "",
+    priceMin: values.minPrice || "",
+    priceMax: values.maxPrice || "",
+    condition: values.condition || "",
+    sortBy: values.sort || "newest",
+    page: Number(values.page || 1),
+    limit: 20,
+  }
+}
+
 export default function SearchPage() {
-  const { t, language } = useTranslation()
+  const { t } = useTranslation()
   const [params, setParams] = useSearchParams()
-  
+  const [view, setView] = useState("grid")
+  const [saveModalOpen, setSaveModalOpen] = useState(false)
+  const lastSearchEventRef = useRef("")
   const query = params.get("q") || ""
-  const minPrice = params.get("minPrice") || ""
-  const maxPrice = params.get("maxPrice") || ""
-  const province = params.get("province") || ""
-  const condition = params.get("condition") || ""
   const category = params.get("category") || ""
   const sort = params.get("sort") || "newest"
+  const filters = useMemo(
+    () =>
+      filterKeys.reduce(
+        (current, key) => ({
+          ...current,
+          [key]: params.get(key) || "",
+        }),
+        {},
+      ),
+    [params],
+  )
+  const [priceDraft, setPriceDraft] = useState({
+    minPrice: filters.minPrice,
+    maxPrice: filters.maxPrice,
+  })
 
-  const listings = useListingStore((state) => state.listings)
-  const loading = useListingStore((state) => state.loading)
-  const fetchListings = useListingStore((state) => state.fetchListings)
-  const fetchMoreListings = useListingStore((state) => state.fetchMoreListings)
-  const hasMore = useListingStore((state) => state.hasMore)
+  const searchResults = useListingStore((state) => state.searchResults)
+  const searchTotal = useListingStore((state) => state.searchTotal)
+  const searchPage = useListingStore((state) => state.searchPage)
+  const searchTotalPages = useListingStore((state) => state.searchTotalPages)
+  const searchLoading = useListingStore((state) => state.searchLoading)
+  const locations = useListingStore((state) => state.locations)
+  const searchListings = useListingStore((state) => state.searchListings)
+  const fetchLocations = useListingStore((state) => state.fetchLocations)
+  const setSearchPage = useListingStore((state) => state.setSearchPage)
+  const clearSearchResults = useListingStore((state) => state.clearSearchResults)
   const error = useListingStore((state) => state.error)
-  const resetStoreFilters = useListingStore((state) => state.resetFilters)
-  const total = useListingStore((state) => state.total)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
-  const [view, setView] = useState("grid")
-  const [showMobileFilters, setShowMobileFilters] = useState(false)
+  const schemaId = getSchemaId(category)
+  const schema = getFormSchema(schemaId)
+  const activeCount = useMemo(
+    () => filterKeys.filter((key) => key !== "category" && key !== "minPrice" && key !== "maxPrice" && filters[key]).length +
+      (filters.category ? 1 : 0) +
+      (filters.minPrice || filters.maxPrice ? 1 : 0),
+    [filters],
+  )
+  const requestParams = useMemo(() => buildSearchParams(params), [params])
+  const searchSummary = query || schema?.label?.en || t("search.advanced")
+  const saveFilters = useMemo(() => Object.fromEntries(params.entries()), [params])
+  const searchTitle = query ? t("seo.searchTitle", { query }) : t("page.searchTitle")
+  const searchDescription = t("seo.searchDescription", { query: query || t("search.advanced"), count: searchTotal.toLocaleString() })
+  const canonicalSearchUrl = canonicalUrl(`/search${params.toString() ? `?${params.toString()}` : ""}`)
 
   useEffect(() => {
-    fetchListings({ 
-      q: query,
-      minPrice,
-      maxPrice,
-      province,
-      condition,
-      category,
-      sort
-    })
-  }, [fetchListings, query, minPrice, maxPrice, province, condition, category, sort])
+    fetchLocations()
+  }, [fetchLocations])
 
-  function updateParam(key, value) {
-    const next = new URLSearchParams(params)
-    if (value) next.set(key, value)
-    else next.delete(key)
-    setParams(next)
-  }
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      searchListings(requestParams)
+    }, 500)
+    return () => window.clearTimeout(timer)
+  }, [requestParams, searchListings])
 
-  function resetAll() {
+  useEffect(() => {
+    return () => clearSearchResults()
+  }, [clearSearchResults])
+
+  useEffect(() => {
+    const signature = JSON.stringify({ query, category, filters, sort })
+    if (lastSearchEventRef.current === signature) return
+    lastSearchEventRef.current = signature
+    trackEvent("search_executed", { query, categoryId: schemaId })
+  }, [category, filters, query, schemaId, sort])
+
+  const updateParam = useCallback(
+    (key, value) => {
+      const next = new URLSearchParams(params)
+      if (value) next.set(key, value)
+      else next.delete(key)
+      next.delete("page")
+      setParams(next)
+    },
+    [params, setParams],
+  )
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (priceDraft.minPrice === filters.minPrice && priceDraft.maxPrice === filters.maxPrice) return
+      const next = new URLSearchParams(params)
+      if (priceDraft.minPrice) next.set("minPrice", priceDraft.minPrice)
+      else next.delete("minPrice")
+      if (priceDraft.maxPrice) next.set("maxPrice", priceDraft.maxPrice)
+      else next.delete("maxPrice")
+      next.delete("page")
+      setParams(next)
+    }, 500)
+    return () => window.clearTimeout(timer)
+  }, [filters.maxPrice, filters.minPrice, params, priceDraft.maxPrice, priceDraft.minPrice, setParams])
+
+  const resetAll = useCallback(() => {
+    setPriceDraft({ minPrice: "", maxPrice: "" })
     setParams(new URLSearchParams())
-    resetStoreFilters()
-  }
-  
+  }, [setParams, setPriceDraft])
+
+  const handleFilterChange = useCallback(
+    (key, value) => {
+      trackEvent("filter_applied", { filterName: key, value })
+      updateParam(key, value)
+    },
+    [updateParam],
+  )
+
+  const handlePriceDraftChange = useCallback((key, value) => {
+    setPriceDraft((current) => ({ ...current, [key]: value }))
+  }, [setPriceDraft])
+
+  const goToPage = useCallback(
+    (page) => {
+      const nextPage = Math.min(Math.max(1, page), searchTotalPages)
+      const next = new URLSearchParams(params)
+      next.set("page", String(nextPage))
+      setParams(next)
+      setSearchPage(nextPage)
+      window.scrollTo({ top: 0, behavior: "smooth" })
+    },
+    [params, searchTotalPages, setParams, setSearchPage],
+  )
+
   function saveCurrentSearch() {
     if (!isAuthenticated) {
       toast.info(t("auth.signInToSaveSearch"), { duration: 3000 })
-      setPendingAction({ 
-        type: "saveSearch", 
-        params: Object.fromEntries(params.entries()) 
+      setPendingAction({
+        type: "saveSearch",
+        params: Object.fromEntries(params.entries()),
       })
       toggleAuthModal(true)
       return
     }
-    toast.success(t("search.saved"))
+    trackEvent("search_saved")
+    setSaveModalOpen(true)
   }
-
-  const displayedListings = useMemo(() => {
-    return listings.filter((listing) => !listing.status || String(listing.status).toUpperCase() === "ACTIVE").sort((a, b) => {
-      if (sort === "priceLow") return Number(a.price || 0) - Number(b.price || 0)
-      if (sort === "priceHigh") return Number(b.price || 0) - Number(a.price || 0)
-      if (sort === "views") return Number(b.viewCount || 0) - Number(a.viewCount || 0)
-      return new Date(b.postedAt || 0) - new Date(a.postedAt || 0)
-    })
-  }, [listings, sort])
 
   return (
     <PageTransition className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <Helmet>
-        <title>{query ? t("seo.searchTitle", { query }) : t("page.searchTitle")}</title>
+        <title>{searchTitle}</title>
+        <meta name="description" content={searchDescription} />
+        <meta property="og:title" content={searchTitle} />
+        <meta property="og:description" content={searchDescription} />
+        <meta property="og:image" content={canonicalUrl("/og-home.png")} />
+        <meta property="og:url" content={canonicalSearchUrl} />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="BayonHub" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={searchTitle} />
+        <meta name="twitter:description" content={searchDescription} />
+        <meta name="twitter:image" content={canonicalUrl("/og-home.png")} />
+        <link rel="canonical" href={canonicalSearchUrl} />
       </Helmet>
 
-      <div className="flex flex-col gap-8 lg:flex-row">
-        {/* Sidebar Filters - Desktop */}
-        <aside className="hidden w-64 shrink-0 lg:block">
-          <div className="sticky top-24 space-y-8">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-black text-neutral-900">{t("filter.title")}</h2>
-              <button onClick={resetAll} className="text-xs font-bold text-primary hover:underline">
-                {t("filter.clearAll")}
-              </button>
-            </div>
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-black text-neutral-900 sm:text-3xl">
+            {query ? t("search.resultsFor", { query }) : t("search.advanced")}
+          </h1>
+          <p className="mt-1 text-sm font-bold text-neutral-500">
+            {searchTotal.toLocaleString()} {t("search.found")}
+          </p>
+        </div>
 
-            {/* Price Filter */}
-            <div className="space-y-3">
-              <p className="text-sm font-black uppercase tracking-widest text-neutral-400">{t("filter.price")}</p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  placeholder={t("filter.minPrice")}
-                  className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-primary"
-                  value={minPrice}
-                  onChange={(e) => updateParam("minPrice", e.target.value)}
-                />
-                <span className="text-neutral-300">-</span>
-                <input
-                  type="number"
-                  placeholder={t("filter.maxPrice")}
-                  className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-primary"
-                  value={maxPrice}
-                  onChange={(e) => updateParam("maxPrice", e.target.value)}
-                />
-              </div>
-            </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={saveCurrentSearch} size="sm" variant="secondary">
+            <Star className="h-4 w-4" aria-hidden="true" />
+            {t("search.saveSearch")}
+          </Button>
+          <select
+            className="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary"
+            onChange={(event) => updateParam("sort", event.target.value)}
+            value={sort}
+          >
+            {sortOptions.map(([value, label]) => (
+              <option key={value} value={value}>
+                {t(label)}
+              </option>
+            ))}
+          </select>
+          <ViewToggle onChange={setView} view={view} />
+        </div>
+      </div>
 
-            {/* Province Filter */}
-            <div className="space-y-3">
-              <p className="text-sm font-black uppercase tracking-widest text-neutral-400">{t("filter.location")}</p>
-              <select
-                className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary"
-                value={province}
-                onChange={(e) => updateParam("province", e.target.value)}
-              >
-                <option value="">{t("nav.allCambodia")}</option>
-                {PROVINCES.map((p) => (
-                  <option key={p.id} value={p.label.en}>{p.label[language]}</option>
-                ))}
-              </select>
-            </div>
+      <div className="flex flex-col gap-6 lg:flex-row">
+        <SearchFilters
+          activeCount={activeCount}
+          filters={filters}
+          locations={locations}
+          onFilterChange={handleFilterChange}
+          onPriceDraftChange={handlePriceDraftChange}
+          onReset={resetAll}
+          priceDraft={priceDraft}
+          schema={schema}
+        />
 
-            {/* Condition Filter */}
-            <div className="space-y-3">
-              <p className="text-sm font-black uppercase tracking-widest text-neutral-400">{t("filter.condition")}</p>
-              <div className="flex flex-col gap-2">
-                {["New", "Used"].map((c) => (
-                  <label key={c} className="flex items-center gap-2 text-sm font-bold text-neutral-700 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="condition"
-                      className="accent-primary"
-                      checked={condition === c}
-                      onChange={() => updateParam("condition", c)}
-                    />
-                    {t(`filter.condition${c}`)}
-                  </label>
-                ))}
-                {condition && (
-                  <button onClick={() => updateParam("condition", "")} className="text-left text-xs font-bold text-primary">
-                    {t("ui.clear")}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        {/* Main Content */}
         <div className="min-w-0 flex-1">
-          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-black text-neutral-900 sm:text-3xl">
-                {query ? t("search.resultsFor", { query }) : t("page.searchTitle")}
-              </h1>
-              <p className="mt-1 text-sm font-bold text-neutral-500">
-                {(total || displayedListings.length).toLocaleString()} {t("listing.resultsFound")}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={saveCurrentSearch}
-                className="hidden sm:flex"
-              >
-                <Star className="mr-2 h-4 w-4" />
-                {t("search.saveSearch")}
-              </Button>
-
-              <Button
-                variant="secondary"
-                size="sm"
-                className="lg:hidden"
-                onClick={() => setShowMobileFilters(true)}
-              >
-                <SlidersHorizontal className="mr-2 h-4 w-4" />
-                {t("filter.title")}
-                {params.size > 0 && <span className="ml-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-white">{params.size}</span>}
-              </Button>
-              
-              <select
-                className="h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary"
-                onChange={(event) => updateParam("sort", event.target.value)}
-                value={sort}
-              >
-                {sortOptions.map(([value, label]) => (
-                  <option key={value} value={value}>{t(label)}</option>
-                ))}
-              </select>
-              <ViewToggle onChange={setView} view={view} />
-            </div>
-          </div>
-
-          {loading ? (
+          {searchLoading ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }, (_, i) => <SkeletonCard key={i} />)}
+              {Array.from({ length: 6 }, (_, index) => (
+                <SkeletonCard key={index} />
+              ))}
             </div>
           ) : error ? (
             <div className="grid min-h-64 place-items-center rounded-2xl border border-red-100 bg-red-50 p-8 text-center">
               <div>
                 <h3 className="text-lg font-black text-red-700">{t("ui.error")}</h3>
                 <p className="mt-1 text-sm font-semibold text-red-600">{error}</p>
-                <Button className="mt-5" onClick={() => fetchListings({ q: query, minPrice, maxPrice, province, condition, category, sort })} variant="secondary">
+                <Button className="mt-5" onClick={() => searchListings(requestParams)} variant="secondary">
                   {t("ui.retry")}
                 </Button>
               </div>
             </div>
-          ) : displayedListings.length ? (
-            <InfiniteScroll
-              dataLength={displayedListings.length}
-              hasMore={hasMore}
-              loader={<p className="py-6 text-center text-sm font-bold text-neutral-500">{t("filter.loadingMore")}</p>}
-              next={fetchMoreListings}
-              scrollThreshold={0.85}
-            >
+          ) : searchResults.length ? (
+            <>
               {view === "grid" ? (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {displayedListings.map((listing) => <ListingCard key={listing.id} listing={listing} />)}
+                  {searchResults.map((listing, index) => (
+                    <div
+                      key={listing.id}
+                      onClickCapture={() => trackEvent("search_listing_clicked", { listingId: listing.id, position: index + 1 })}
+                    >
+                      <ListingCard listing={listing} />
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="grid gap-3">
-                  {displayedListings.map((listing) => <ListingListItem highlightQuery={query} key={listing.id} listing={listing} />)}
+                  {searchResults.map((listing, index) => (
+                    <div
+                      key={listing.id}
+                      onClickCapture={() => trackEvent("search_listing_clicked", { listingId: listing.id, position: index + 1 })}
+                    >
+                      <ListingListItem highlightQuery={query} listing={listing} />
+                    </div>
+                  ))}
                 </div>
               )}
-            </InfiniteScroll>
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white p-3">
+                <Button disabled={searchPage <= 1} onClick={() => goToPage(searchPage - 1)} size="sm" variant="secondary">
+                  {t("pagination.previous")}
+                </Button>
+                <p className="text-sm font-black text-neutral-700">
+                  {t("pagination.pageOf")} {searchPage} {t("pagination.of")} {searchTotalPages}
+                </p>
+                <Button disabled={searchPage >= searchTotalPages} onClick={() => goToPage(searchPage + 1)} size="sm" variant="secondary">
+                  {t("pagination.next")}
+                </Button>
+              </div>
+            </>
           ) : (
             <div className="grid min-h-[400px] place-items-center rounded-3xl border-2 border-dashed border-neutral-200 bg-neutral-50/50 p-8 text-center">
               <div className="max-w-sm">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-neutral-100 text-neutral-400">
-                  <SearchIcon className="h-8 w-8" />
+                  <SearchX className="h-12 w-12" aria-hidden="true" />
                 </div>
-                <h3 className="text-xl font-black text-neutral-900">
-                  {query ? t("filter.noResultsFor", { query }) : t("filter.noAdsFound")}
-                </h3>
-                <p className="mt-2 text-sm font-bold text-neutral-500">
-                  {t("filter.tryAdjusting")}
-                </p>
+                <h3 className="text-lg font-semibold text-neutral-900">{t("search.noResults")}</h3>
+                <p className="mt-2 text-sm font-bold text-neutral-500">{t("search.tryAgain")}</p>
                 <Button className="mt-6" onClick={resetAll} variant="secondary">
-                  {t("filter.resetAll")}
+                  {t("filter.clearAll")}
                 </Button>
               </div>
             </div>
@@ -277,117 +352,7 @@ export default function SearchPage() {
         </div>
       </div>
 
-      {/* Mobile Filters Drawer */}
-      {showMobileFilters && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center lg:hidden">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowMobileFilters(false)} />
-          <div className="relative flex max-h-[85vh] w-full flex-col rounded-t-[2.5rem] bg-white p-6 shadow-2xl animate-in slide-in-from-bottom duration-300">
-            <header className="mb-6 flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-black text-neutral-900">{t("filter.title")}</h2>
-                <p className="text-xs font-bold text-neutral-500">{t("filter.refineResults")}</p>
-              </div>
-              <button onClick={() => setShowMobileFilters(false)} className="grid h-11 w-10 place-items-center rounded-full bg-neutral-100 text-neutral-500">
-                <X className="h-6 w-6" />
-              </button>
-            </header>
-
-            <div className="flex-1 overflow-y-auto space-y-8 pb-8">
-              {/* Price range */}
-              <div className="space-y-3">
-                <p className="text-sm font-black uppercase tracking-widest text-neutral-400">{t("filter.price")} (KHR)</p>
-                <div className="flex gap-3">
-                  <input
-                    type="number"
-                    placeholder={t("filter.minPrice")}
-                    className="h-12 w-full rounded-2xl border border-neutral-200 px-4 text-sm font-bold"
-                    value={minPrice}
-                    onChange={(e) => updateParam("minPrice", e.target.value)}
-                  />
-                  <input
-                    type="number"
-                    placeholder={t("filter.maxPrice")}
-                    className="h-12 w-full rounded-2xl border border-neutral-200 px-4 text-sm font-bold"
-                    value={maxPrice}
-                    onChange={(e) => updateParam("maxPrice", e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Category */}
-              <div className="space-y-3">
-                <p className="text-sm font-black uppercase tracking-widest text-neutral-400">{t("filter.category")}</p>
-                <select
-                  className="h-12 w-full rounded-2xl border border-neutral-200 bg-white px-4 text-sm font-bold"
-                  value={category}
-                  onChange={(e) => updateParam("category", e.target.value)}
-                >
-                  <option value="">{t("nav.allCategories")}</option>
-                  {CATEGORIES.map((c) => (
-                    <option key={c.id} value={c.slug}>{t(`category.${c.id}`)}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Condition */}
-              <div className="space-y-3">
-                <p className="text-sm font-black uppercase tracking-widest text-neutral-400">{t("filter.condition")}</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {["New", "Used", "For Parts"].map((c) => (
-                    <label key={c} className={cn(
-                      "flex h-12 items-center justify-center rounded-2xl border px-3 text-xs font-bold transition cursor-pointer",
-                      condition === c ? "border-primary bg-primary text-white" : "border-neutral-200 bg-white text-neutral-700"
-                    )}>
-                      <input
-                        type="radio"
-                        className="sr-only"
-                        checked={condition === c}
-                        onChange={() => updateParam("condition", c)}
-                      />
-                      {t(`filter.condition${c.replace(' ', '')}`)}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              
-              {/* Posted */}
-              <div className="space-y-3">
-                <p className="text-sm font-black uppercase tracking-widest text-neutral-400">{t("filter.posted")}</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    ["any", t("filter.postedAny")],
-                    ["24h", t("filter.posted24h")],
-                    ["7d", t("filter.posted7d")],
-                    ["30d", t("filter.posted30d")],
-                  ].map(([val, label]) => (
-                    <label key={val} className={cn(
-                      "flex h-12 items-center justify-center rounded-2xl border px-3 text-xs font-bold transition cursor-pointer",
-                      (params.get("posted") || "any") === val ? "border-primary bg-primary text-white" : "border-neutral-200 bg-white text-neutral-700"
-                    )}>
-                      <input
-                        type="radio"
-                        className="sr-only"
-                        checked={(params.get("posted") || "any") === val}
-                        onChange={() => updateParam("posted", val)}
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <footer className="mt-6 grid grid-cols-2 gap-3 pt-6 border-t">
-              <Button variant="secondary" onClick={resetAll} className="w-full rounded-2xl">
-                {t("filter.resetAll")}
-              </Button>
-              <Button onClick={() => setShowMobileFilters(false)} className="w-full rounded-2xl">
-                {t("ui.apply")}
-              </Button>
-            </footer>
-          </div>
-        </div>
-      )}
+      <SaveSearchModal defaultName={searchSummary} filters={saveFilters} onClose={() => setSaveModalOpen(false)} open={saveModalOpen} />
     </PageTransition>
   )
 }

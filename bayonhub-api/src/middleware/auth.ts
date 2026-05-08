@@ -9,6 +9,29 @@ interface JWTPayload {
   verificationTier: string
 }
 
+const AUTH_USER_SELECT = {
+  id: true,
+  role: true,
+  verificationTier: true,
+  isActive: true,
+  isAdmin: true,
+  banReason: true,
+  bannedUntil: true,
+  phoneVerified: true,
+  isVerifiedSeller: true,
+  lastSeen: true,
+  responseRate: true,
+  telegramChatId: true,
+  email: true,
+  name: true,
+  phone: true,
+  avatarUrl: true,
+} as const
+
+function touchLastSeen(userId: string) {
+  void prisma.user.update({ where: { id: userId }, data: { lastSeen: new Date() } }).catch(() => null)
+}
+
 export const requireAuth: RequestHandler = async (req, res, next) => {
   try {
     const authorization = typeof req.headers.authorization === "string" ? req.headers.authorization : undefined
@@ -19,16 +42,7 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
     const payload = jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { 
-        id: true, 
-        role: true, 
-        verificationTier: true, 
-        isActive: true,
-        email: true,
-        name: true,
-        phone: true,
-        avatarUrl: true
-      },
+      select: AUTH_USER_SELECT,
     })
 
     if (!user || !user.isActive) {
@@ -36,6 +50,7 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
     }
 
     req.user = user
+    touchLastSeen(user.id)
     next()
   } catch {
     res.status(401).json({ error: "Invalid or expired token" })
@@ -51,18 +66,12 @@ export const optionalAuth: RequestHandler = async (req, _res, next) => {
       const payload = jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload
       const user = await prisma.user.findUnique({
         where: { id: payload.userId },
-        select: { 
-          id: true, 
-          role: true, 
-          verificationTier: true, 
-          isActive: true,
-          email: true,
-          name: true,
-          phone: true,
-          avatarUrl: true
-        },
+        select: AUTH_USER_SELECT,
       })
-      if (user?.isActive) req.user = user
+      if (user?.isActive) {
+        req.user = user
+        touchLastSeen(user.id)
+      }
     }
   } catch {
     // Continue without auth.
@@ -71,6 +80,6 @@ export const optionalAuth: RequestHandler = async (req, _res, next) => {
 }
 
 export const requireAdmin: RequestHandler = (req, res, next) => {
-  if (req.user?.role !== "ADMIN") return res.status(403).json({ error: "Forbidden" })
+  if (!req.user?.isAdmin) return res.status(403).json({ error: "Forbidden" })
   next()
 }

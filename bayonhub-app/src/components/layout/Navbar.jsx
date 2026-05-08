@@ -3,8 +3,11 @@ import gsap from "gsap"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import {
   Settings,
+  Shield,
   HelpCircle,
   Bell,
+  CheckCheck,
+  Bookmark,
   BookmarkPlus,
   BookOpen,
   BriefcaseBusiness,
@@ -12,11 +15,9 @@ import {
   ChevronDown,
   Grid2X2,
   Home,
-  LayoutGrid,
   LogIn,
   LogOut,
   MapPin,
-  MessageCircle,
   PawPrint,
   Plus,
   Search,
@@ -37,10 +38,11 @@ import { useClickAway } from "../../hooks/useClickAway"
 import { useTranslation } from "../../hooks/useTranslation"
 import { CATEGORIES } from "../../lib/categories"
 import { PROVINCES } from "../../lib/locations"
-import { cn, listingUrl } from "../../lib/utils"
+import { cn, listingUrl, timeAgo } from "../../lib/utils"
 import { useAuthStore } from "../../store/useAuthStore"
 import { useListingStore } from "../../store/useListingStore"
 import { useUIStore } from "../../store/useUIStore"
+import { useNotificationStore } from "../../store/useNotificationStore"
 import Button from "../ui/Button"
 
 const iconMap = {
@@ -87,6 +89,13 @@ function hasActiveFilters(filters) {
   })
 }
 
+function notificationLabel(type, t) {
+  if (type === "message") return t("notif.newMessage")
+  if (type === "price_drop") return t("notif.priceDrop")
+  if (type === "expiry") return t("notif.expiry")
+  return t("notif.digest")
+}
+
 export default function Navbar() {
   const { t, language } = useTranslation()
   const navigate = useNavigate()
@@ -96,7 +105,6 @@ export default function Navbar() {
   const setLanguage = useUIStore((state) => state.setLanguage)
   const selectedProvince = useUIStore((state) => state.selectedProvince)
   const setSelectedProvince = useUIStore((state) => state.setSelectedProvince)
-  const notifications = useUIStore((state) => state.notifications)
   const togglePostModal = useUIStore((state) => state.togglePostModal)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
@@ -116,21 +124,24 @@ export default function Navbar() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [recentSearches, setRecentSearches] = useState(() => readRecentSearches())
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [notificationOpen, setNotificationOpen] = useState(false)
   const [activeSuggestion, setActiveSuggestion] = useState(0)
   const [bottomHidden, setBottomHidden] = useState(false)
   const navRef = useRef(null)
   const searchRef = useClickAway(() => setSearchOpen(false))
   const locationRef = useClickAway(() => setLocationOpen(false))
   const userMenuRef = useClickAway(() => setUserMenuOpen(false))
+  const notificationRef = useClickAway(() => setNotificationOpen(false))
   const mobileLocationRef = useClickAway(() => setLocationOpen(false))
   const megaRef = useRef(null)
   const closeTimerRef = useRef(null)
   const isHome = location.pathname === "/"
   const heroTop = false
-  const unreadNotifications = useMemo(
-    () => notifications.filter((notification) => !notification.read).length,
-    [notifications],
-  )
+  const notifications = useNotificationStore((state) => state.notifications)
+  const unreadCount = useNotificationStore((state) => state.unreadTotal)
+  const fetchNotifications = useNotificationStore((state) => state.fetchNotifications)
+  const markAllRead = useNotificationStore((state) => state.markAllRead)
+  const markRead = useNotificationStore((state) => state.markRead)
 
   const trending = useMemo(
     () => [
@@ -235,6 +246,13 @@ export default function Navbar() {
     return () => window.visualViewport.removeEventListener("resize", onResize)
   }, [])
 
+  useEffect(() => {
+    if (!isAuthenticated) return undefined
+    fetchNotifications({ page: 1, limit: 10 })
+    const timer = window.setInterval(() => fetchNotifications({ page: 1, limit: 10 }), 30000)
+    return () => window.clearInterval(timer)
+  }, [fetchNotifications, isAuthenticated])
+
   function saveRecentSearch(value) {
     const trimmed = value.trim()
     if (!trimmed) return
@@ -312,6 +330,12 @@ export default function Navbar() {
     togglePostModal(true)
   }
 
+  async function openNotification(notification) {
+    if (!notification.read) await markRead(notification.id)
+    setNotificationOpen(false)
+    if (notification.link) navigate(notification.link)
+  }
+
   function openDashboard() {
     if (!isAuthenticated) {
       setPendingAction({ type: "dashboard" })
@@ -322,14 +346,23 @@ export default function Navbar() {
     setUserMenuOpen(false)
   }
 
+  function openSaved() {
+    if (!isAuthenticated) {
+      setPendingAction({ type: "dashboard" })
+      toggleAuthModal(true)
+      return
+    }
+    navigate("/dashboard?tab=saved")
+  }
+
   const handleLogout = async () => {
     try {
       await useAuthStore.getState().logout()
       setUserMenuOpen(false)
       navigate("/")
-      toast.success(t("auth.logoutSuccess") || "Logged out successfully")
+      toast.success(t("auth.logoutSuccess"))
     } catch {
-      toast.error("Logout failed")
+      toast.error(t("auth.logoutError"))
     }
   }
 
@@ -590,19 +623,82 @@ export default function Navbar() {
             >
               <Search className="h-4 w-4" aria-hidden="true" />
             </button>
-            <div className="relative hidden sm:block">
+            <div ref={notificationRef} className="relative hidden sm:block">
               <button
                 aria-label={t("nav.notifications")}
                 className={cn(
                   "relative grid h-10 w-10 place-items-center rounded-full border transition",
                   heroTop ? "border-white/30 text-white" : "border-neutral-200 bg-white text-neutral-700",
                 )}
-                onClick={() => navigate("/dashboard?tab=notifications")}
+                onClick={() => {
+                  if (!isAuthenticated) {
+                    toggleAuthModal(true)
+                    return
+                  }
+                  setNotificationOpen((current) => !current)
+                }}
                 type="button"
               >
                 <Bell className="h-4 w-4" aria-hidden="true" />
-                {unreadNotifications > 0 ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-600" /> : null}
+                {unreadCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-black text-white">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                ) : null}
               </button>
+              {notificationOpen ? (
+                <div className="absolute right-0 z-50 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-neutral-200 bg-white text-neutral-900 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 dark:text-white">
+                  <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
+                    <p className="text-sm font-black">{t("nav.notifications")}</p>
+                    <button className="inline-flex items-center gap-1 text-xs font-black text-primary" onClick={markAllRead} type="button">
+                      <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                      {t("notif.markAllRead")}
+                    </button>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto p-2">
+                    {notifications.length ? notifications.slice(0, 10).map((notification) => (
+                      <button
+                        className={cn(
+                          "flex w-full gap-3 rounded-xl p-3 text-left transition hover:bg-neutral-50 dark:hover:bg-neutral-800",
+                          !notification.read && "bg-primary/5",
+                        )}
+                        key={notification.id}
+                        onClick={() => openNotification(notification)}
+                        type="button"
+                      >
+                        <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                          <Bell className="h-4 w-4" aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-xs font-black uppercase tracking-widest text-primary">
+                            {notificationLabel(notification.type, t)}
+                          </span>
+                          <span className="mt-1 block truncate text-sm font-black text-neutral-900 dark:text-white">
+                            {notification.title}
+                          </span>
+                          <span className="mt-1 block line-clamp-2 text-xs font-semibold leading-5 text-neutral-500">
+                            {notification.body}
+                          </span>
+                          <span className="mt-1 block text-[11px] font-bold text-neutral-400">
+                            {timeAgo(notification.createdAt, language)}
+                          </span>
+                        </span>
+                      </button>
+                    )) : (
+                      <div className="px-4 py-8 text-center text-sm font-bold text-neutral-500">
+                        {t("notif.empty")}
+                      </div>
+                    )}
+                  </div>
+                  <Link
+                    className="block border-t border-neutral-100 px-4 py-3 text-center text-sm font-black text-primary dark:border-neutral-800"
+                    onClick={() => setNotificationOpen(false)}
+                    to="/notifications"
+                  >
+                    {t("notif.viewAll")}
+                  </Link>
+                </div>
+              ) : null}
             </div>
             <button
               className={cn(
@@ -668,6 +764,15 @@ export default function Navbar() {
                       <Settings className="h-4 w-4 opacity-50" />
                       {t("dashboard.settings")}
                     </button>
+                    {user?.isAdmin === true ? (
+                      <button
+                        onClick={() => { navigate("/admin"); setUserMenuOpen(false); }}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-neutral-700 transition hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                      >
+                        <Shield className="h-4 w-4 opacity-50" />
+                        {t("admin.dashboard")}
+                      </button>
+                    ) : null}
                     <button
                       onClick={() => { navigate("/help"); setUserMenuOpen(false); }}
                       className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-neutral-700 transition hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800"
@@ -769,7 +874,7 @@ export default function Navbar() {
                 onClick={saveCurrentSearch}
                 type="button"
               >
-                <BookmarkPlus className="h-5 w-5" aria-label="Save search" />
+                <BookmarkPlus className="h-5 w-5" aria-hidden="true" />
               </button>
             ) : null}
             {query ? (
@@ -789,6 +894,7 @@ export default function Navbar() {
 
       {!hideBottomNav ? (
         <nav
+          aria-label={t("nav.mobileNavigation")}
           className={cn(
             "fixed inset-x-0 bottom-0 z-50 border-t border-neutral-200 bg-white px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] transition-transform lg:hidden",
             bottomHidden && "translate-y-full",
@@ -797,24 +903,31 @@ export default function Navbar() {
         <div className="grid grid-cols-5 items-end gap-1">
           {[
             { label: t("nav.home"), icon: Home, path: "/", col: "col-start-1" },
-            { label: t("nav.categories"), icon: LayoutGrid, path: "/category/vehicles", col: "col-start-2" },
-            { label: t("nav.messages"), icon: MessageCircle, path: "/dashboard", col: "col-start-4" },
-            { label: t("nav.profile"), icon: User, path: "/dashboard", col: "col-start-5" },
+            { label: t("ui.search"), icon: Search, path: "/search", col: "col-start-2" },
+            { label: t("dashboard.saved"), icon: Bookmark, path: "/dashboard?tab=saved", col: "col-start-4", action: openSaved },
+            { label: t("nav.profile"), icon: User, path: "/dashboard", col: "col-start-5", action: openDashboard },
           ].map((item) => {
             const Icon = item.icon
-            const active = location.pathname === item.path || (item.path === "/dashboard" && location.pathname.startsWith("/dashboard"))
+            const active =
+              item.path === "/"
+                ? location.pathname === "/"
+                : item.path.includes("?tab=saved")
+                  ? location.pathname === "/dashboard" && location.search.includes("tab=saved")
+                  : location.pathname.startsWith(item.path)
             return (
               <button
+                aria-label={item.label}
                 key={item.label}
                 className={cn(
-                  "flex h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-black transition-all",
+                  "relative flex h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-black transition-all",
                   item.col,
-                  active ? "text-primary" : "text-neutral-500 hover:text-neutral-900",
+                  active ? "text-teal-600" : "text-neutral-500 hover:text-neutral-900",
                 )}
-                onClick={() => (item.path === "/dashboard" ? openDashboard() : navigate(item.path))}
+                onClick={() => (item.action ? item.action() : navigate(item.path))}
                 type="button"
               >
-                <div className={cn("grid h-8 w-14 place-items-center rounded-full transition-colors", active && "bg-primary/10")}>
+                {active ? <span className="absolute top-1 h-1 w-6 rounded-full bg-teal-600" aria-hidden="true" /> : null}
+                <div className={cn("grid h-8 w-14 place-items-center rounded-full transition-colors", active && "bg-teal-50")}>
                   <Icon className="h-5 w-5" aria-hidden="true" />
                 </div>
                 <span className={cn("transition-opacity", active ? "opacity-100" : "opacity-80")}>{item.label}</span>
@@ -822,12 +935,13 @@ export default function Navbar() {
             )
           })}
           <button
-            className="col-start-3 row-start-1 mx-auto -mt-6 grid h-16 w-16 place-items-center rounded-full bg-primary text-white shadow-xl shadow-primary/30"
-            onClick={openPostFlow}
+            aria-label={t("a11y.postFAB")}
+            className="col-start-3 row-start-1 mx-auto -mt-7 grid h-[4.5rem] w-[4.5rem] place-items-center rounded-full bg-teal-600 text-white shadow-2xl shadow-teal-600/30 transition active:scale-95"
+            onClick={() => navigate("/post")}
             type="button"
           >
             <span className="sr-only">{t("nav.postFreeAd")}</span>
-            <Plus className="h-7 w-7" aria-hidden="true" />
+            <Plus className="h-8 w-8" aria-hidden="true" />
           </button>
         </div>
       </nav>

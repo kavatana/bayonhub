@@ -10,14 +10,13 @@ ALTER TYPE "ListingStatus" ADD VALUE 'PENDING';
 ALTER TYPE "ListingStatus" ADD VALUE 'REJECTED';
 
 -- DropIndex
-DROP INDEX "listing_search_idx";
+DROP INDEX IF EXISTS "listing_search_idx";
 
 -- AlterTable
 ALTER TABLE "Listing" ADD COLUMN     "archivedAt" TIMESTAMP(3),
 ADD COLUMN     "deletedAt" TIMESTAMP(3),
 ADD COLUMN     "expiresAt" TIMESTAMP(3),
-ADD COLUMN     "isActive" BOOLEAN NOT NULL DEFAULT true,
-ALTER COLUMN "search_vector" DROP DEFAULT;
+ADD COLUMN     "isActive" BOOLEAN NOT NULL DEFAULT true;
 
 -- AlterTable
 ALTER TABLE "Report" ADD COLUMN     "contactEmail" TEXT,
@@ -31,4 +30,3 @@ ALTER TABLE "User" ADD COLUMN     "slug" TEXT;
 
 -- CreateIndex
 CREATE UNIQUE INDEX "User_slug_key" ON "User"("slug");
-

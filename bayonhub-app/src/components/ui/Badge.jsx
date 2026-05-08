@@ -28,6 +28,16 @@ const config = {
     className: "bg-red-50 text-primary ring-red-200",
     labelKey: "trust.promoted",
   },
+  plus: {
+    icon: Star,
+    className: "bg-amber-50 text-amber-700 ring-amber-200",
+    labelKey: "badge.plus",
+  },
+  verified: {
+    icon: ShieldCheck,
+    className: "bg-blue-50 text-blue-700 ring-blue-200",
+    labelKey: "badge.verified",
+  },
   new: {
     icon: Star,
     className: "bg-neutral-100 text-neutral-700 ring-neutral-200",

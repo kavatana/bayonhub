@@ -9,6 +9,7 @@ export const validateRegister = [
   body("password").isLength({ min: 8 }).withMessage("Password must be at least 8 characters"),
   body("name").trim().notEmpty().withMessage("Name is required").isLength({ max: 100 }),
   body("language").optional().isIn(["en", "km"]),
+  body("ref").optional().trim().isLength({ max: 32 }),
   validate,
 ]
 

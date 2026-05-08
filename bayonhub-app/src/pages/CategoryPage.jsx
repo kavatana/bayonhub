@@ -2,8 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { createPortal } from "react-dom"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { Helmet } from "react-helmet-async"
-import InfiniteScroll from "react-infinite-scroll-component"
-import { Building2, ChevronDown, Home, Map as MapIcon, PlusCircle, SlidersHorizontal, Store, X } from "lucide-react"
+import { BriefcaseBusiness, Building2, Car, ChevronDown, Home, Map as MapIcon, PlusCircle, ShieldCheck, SlidersHorizontal, Smartphone, Store, X } from "lucide-react"
 import BodyTypeFilter from "../components/filters/BodyTypeFilter"
 import BrandLogoFilter from "../components/filters/BrandLogoFilter"
 import FacetedFilter from "../components/filters/FacetedFilter"
@@ -20,9 +19,11 @@ import Breadcrumb from "../components/ui/Breadcrumb"
 import { useClickAway } from "../hooks/useClickAway"
 import { useTranslation } from "../hooks/useTranslation"
 import { CAR_BODY_TYPES, CAR_BRANDS, findCategory, findSubcategory } from "../lib/categories"
+import { getFormSchema } from "../lib/categoryForms"
 import { getDistrictsForProvince, PROVINCES } from "../lib/locations"
 import { canonicalUrl } from "../lib/seo"
 import { cn, formatPrice, getListingImage, listingUrl } from "../lib/utils"
+import { translate } from "../lib/translations"
 import { useListingStore } from "../store/useListingStore"
 import { useUIStore } from "../store/useUIStore"
 
@@ -50,6 +51,63 @@ const propertyIconMap = {
   land: MapIcon,
   office: Building2,
   condo: Building2,
+}
+
+const categoryHeroIcons = {
+  vehicles: Car,
+  "house-land": Home,
+  "phones-tablets": Smartphone,
+  jobs: BriefcaseBusiness,
+}
+
+const schemaIdByRoute = {
+  vehicles: "cars",
+  "phones-tablets": "phones",
+  jobs: "jobs",
+}
+
+const subcategoryPresets = {
+  cars: [
+    ["discover.subcategorySuvs", "bodyType", "suv"],
+    ["discover.subcategorySedans", "bodyType", "sedan"],
+    ["discover.subcategoryPickup", "bodyType", "pickup"],
+    ["discover.subcategoryVans", "bodyType", "van"],
+    ["discover.subcategoryTrucks", "bodyType", "truck"],
+  ],
+  property_rent: [
+    ["discover.subcategoryApartment", "type", "apartment"],
+    ["discover.subcategoryVilla", "type", "villa"],
+    ["discover.subcategoryLand", "type", "land"],
+    ["discover.subcategoryOffice", "type", "office"],
+    ["discover.subcategoryShop", "type", "shop"],
+  ],
+  property_sale: [
+    ["discover.subcategoryApartment", "type", "apartment"],
+    ["discover.subcategoryVilla", "type", "villa"],
+    ["discover.subcategoryLand", "type", "land"],
+    ["discover.subcategoryOffice", "type", "office"],
+    ["discover.subcategoryShop", "type", "shop"],
+  ],
+  phones: [
+    ["discover.subcategorySamsung", "brand", "Samsung"],
+    ["discover.subcategoryIphone", "brand", "Apple"],
+    ["discover.subcategoryHuawei", "brand", "Huawei"],
+    ["discover.subcategoryOppo", "brand", "Oppo"],
+    ["discover.subcategoryOther", "brand", "Other"],
+  ],
+  jobs: [
+    ["discover.subcategoryFullTime", "jobType", "Full-time"],
+    ["discover.subcategoryPartTime", "jobType", "Part-time"],
+    ["discover.subcategoryFreelance", "jobType", "Freelance"],
+    ["discover.subcategoryInternship", "jobType", "Internship"],
+  ],
+}
+
+function getSchemaId(categorySlug, subcategorySlug) {
+  if (categorySlug === "house-land") {
+    return subcategorySlug === "sale" ? "property_sale" : "property_rent"
+  }
+  return schemaIdByRoute[categorySlug] || null
 }
 
 function getPriceMax(categorySlug) {
@@ -89,13 +147,6 @@ function getOptionLabel(option, language) {
 
 function getFacetValue(listing, key) {
   return listing.facets?.[key] ?? listing[key]
-}
-
-function matchesNumericOption(value, option) {
-  const numericValue = Number(value || 0)
-  if (!option) return true
-  if (String(option).endsWith("+")) return numericValue >= Number(String(option).replace("+", ""))
-  return String(value) === String(option)
 }
 
 function getBrandIds(value) {
@@ -221,11 +272,14 @@ export default function CategoryPage() {
   const { t, language } = useTranslation()
   const category = findCategory(slug)
   const activeSubcategory = subcategory ? findSubcategory(slug, subcategory) : null
-  const listings = useListingStore((state) => state.listings)
+  const listings = useListingStore((state) => state.searchResults)
+  const searchTotal = useListingStore((state) => state.searchTotal)
+  const searchPage = useListingStore((state) => state.searchPage)
+  const searchTotalPages = useListingStore((state) => state.searchTotalPages)
+  const searchListings = useListingStore((state) => state.searchListings)
+  const setSearchPage = useListingStore((state) => state.setSearchPage)
   const togglePostModal = useUIStore((state) => state.togglePostModal)
-  const fetchListings = useListingStore((state) => state.fetchListings)
-  const fetchMoreListings = useListingStore((state) => state.fetchMoreListings)
-  const hasMore = useListingStore((state) => state.hasMore)
+  const loading = useListingStore((state) => state.searchLoading)
   const error = useListingStore((state) => state.error)
   const selectedProvince = useUIStore((state) => state.selectedProvince)
   const setSelectedProvince = useUIStore((state) => state.setSelectedProvince)
@@ -272,6 +326,10 @@ export default function CategoryPage() {
   const activeCategory = category?.slug || slug
   const isVehicleCategory = activeCategory === "vehicles"
   const isHouseLandCategory = activeCategory === "house-land"
+  const schemaId = useMemo(() => getSchemaId(activeCategory, activeSubcategory?.slug), [activeCategory, activeSubcategory?.slug])
+  const categorySchema = useMemo(() => getFormSchema(schemaId), [schemaId])
+  const categoryLabelKey = schemaId ? `category.${schemaId}` : activeSubcategory ? `category.${activeSubcategory.id}` : category ? `category.${category.id}` : "page.notFound"
+  const CategoryIcon = categoryHeroIcons[activeCategory] || Building2
   const priceMax = useMemo(() => getPriceMax(activeCategory), [activeCategory])
   const priceValue = useMemo(() => [price[0], price[1] ?? priceMax], [price, priceMax])
   const visibleFacets = useMemo(() => {
@@ -340,6 +398,20 @@ export default function CategoryPage() {
     ],
     [t],
   )
+  const fuelOptions = useMemo(
+    () => (categorySchema?.fields.fuel?.options || []).map((option) => ({ value: getOptionValue(option), label: getOptionLabel(option, language) })),
+    [categorySchema, language],
+  )
+  const transmissionOptions = useMemo(
+    () => (categorySchema?.fields.transmission?.options || []).map((option) => ({ value: getOptionValue(option), label: getOptionLabel(option, language) })),
+    [categorySchema, language],
+  )
+  const furnishingOptions = useMemo(
+    () => (categorySchema?.fields.furnishing?.options || []).map((option) => ({ value: getOptionValue(option), label: getOptionLabel(option, language) })),
+    [categorySchema, language],
+  )
+  const hasCarFilters = Boolean(categorySchema?.fields.fuel && categorySchema?.fields.transmission)
+  const hasPropertyFilters = Boolean(categorySchema?.fields.bedrooms || categorySchema?.fields.furnishing)
   const hiddenFacetIds = useMemo(
     () => [
       ...(isVehicleCategory ? vehicleFacetIds : []),
@@ -370,75 +442,34 @@ export default function CategoryPage() {
     if (sizeRange[1] < 2000) next.set("maxSize", String(sizeRange[1])); else next.delete("maxSize")
     if (floorNumber) next.set("floor", floorNumber); else next.delete("floor")
 
+    const filtersChanged = next.toString() !== searchParams.toString()
+    if (filtersChanged) next.delete("page")
+
     // Avoid redundant updates
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true })
     }
   }, [view, sort, price, conditions, districts, facetFilters, verifiedOnly, withPhotos, negotiableOnly, yearRange, quickCondition, bedrooms, bathrooms, sizeRange, floorNumber, setSearchParams, searchParams])
 
-  useEffect(() => {
-    fetchListings({
-      category: activeSubcategory?.label.en || category?.label.en || "",
-    })
-  }, [activeSubcategory, category, fetchListings])
+  const searchRequestParams = useMemo(() => ({
+    category: activeSubcategory?.slug || activeCategory,
+    location: selectedProvince === "all" ? "" : selectedProvince,
+    priceMin: price[0] > 0 ? price[0] : "",
+    priceMax: price[1] ?? "",
+    condition: quickCondition || conditions[0] || "",
+    sortBy: sort,
+    page: Number(searchParams.get("page") || 1),
+    limit: 20,
+  }), [activeCategory, activeSubcategory?.slug, conditions, price, quickCondition, searchParams, selectedProvince, sort])
 
-  const displayedListings = useMemo(() => {
-    const scoped = listings.filter((listing) => {
-      const matchesStatus = !listing.status || String(listing.status).toUpperCase() === "ACTIVE"
-      const matchesCategory = !category || listing.category === category.label.en || listing.subcategory === activeSubcategory?.label.en
-      const matchesPrice = Number(listing.price || 0) >= priceValue[0] && Number(listing.price || 0) <= priceValue[1]
-      const matchesCondition = !conditions.length || conditions.includes(listing.condition)
-      const matchesQuickCondition = !quickCondition || listing.condition === quickCondition
-      const matchesDistrict = !districts.length || districts.includes(listing.district)
-      const listingYear = Number(getFacetValue(listing, "year") || 0)
-      const matchesYear =
-        !yearRange ||
-        (yearRange === "2024-2026" && listingYear >= 2024 && listingYear <= 2026) ||
-        (yearRange === "2020-2023" && listingYear >= 2020 && listingYear <= 2023) ||
-        (yearRange === "2015-2019" && listingYear >= 2015 && listingYear <= 2019) ||
-        (yearRange === "2010-2014" && listingYear >= 2010 && listingYear <= 2014) ||
-        (yearRange === "before-2010" && listingYear > 0 && listingYear < 2010)
-      const matchesBedrooms = !bedrooms || matchesNumericOption(getFacetValue(listing, "bedrooms"), bedrooms)
-      const matchesBathrooms = !bathrooms || matchesNumericOption(getFacetValue(listing, "bathrooms"), bathrooms)
-      const matchesFloor = !floorNumber || Number(getFacetValue(listing, "floor") || 0) === Number(floorNumber)
-      const listingSize = Number(getFacetValue(listing, "size_sqm") || 0)
-      const matchesSize =
-        !isHouseLandCategory ||
-        (listingSize >= sizeRange[0] && listingSize <= sizeRange[1])
-      const matchesVerified =
-        !verifiedOnly ||
-        (listing.seller?.verificationTier && listing.seller.verificationTier !== "NONE") ||
-        listing.seller?.phoneVerified === true ||
-        listing.phoneVerified === true ||
-        listing.verified === true
-      const matchesPhotos = !withPhotos || listing.images?.length > 0
-      const matchesNegotiable = !negotiableOnly || listing.negotiable === true
-      const matchesFacets = Object.entries(facetFilters).every(([key, value]) => {
-        if (!value || (Array.isArray(value) && !value.length)) return true
-        if (key === "size_sqmMin" || key === "size_sqmMax") return true
-        if (key.endsWith("Min")) {
-          const facetId = key.slice(0, -3)
-          return Number(getFacetValue(listing, facetId) || 0) >= Number(value)
-        }
-        if (key.endsWith("Max")) {
-          const facetId = key.slice(0, -3)
-          return Number(getFacetValue(listing, facetId) || 0) <= Number(value)
-        }
-        const listingValue = getFacetValue(listing, key)
-        if (Array.isArray(value)) {
-          return value.some((item) => String(listingValue).toLowerCase() === String(item).toLowerCase())
-        }
-        return String(listingValue).toLowerCase() === String(value).toLowerCase()
-      })
-      return matchesStatus && matchesCategory && matchesPrice && matchesCondition && matchesQuickCondition && matchesDistrict && matchesYear && matchesBedrooms && matchesBathrooms && matchesFloor && matchesSize && matchesVerified && matchesPhotos && matchesNegotiable && matchesFacets
-    })
-    return [...scoped].sort((a, b) => {
-      if (sort === "priceLow") return Number(a.price || 0) - Number(b.price || 0)
-      if (sort === "priceHigh") return Number(b.price || 0) - Number(a.price || 0)
-      if (sort === "views") return Number(b.views || 0) - Number(a.views || 0)
-      return new Date(b.updatedAt || b.postedAt || 0) - new Date(a.updatedAt || a.postedAt || 0)
-    })
-  }, [activeSubcategory, bathrooms, bedrooms, category, conditions, districts, facetFilters, floorNumber, isHouseLandCategory, listings, negotiableOnly, priceValue, quickCondition, sizeRange, sort, verifiedOnly, withPhotos, yearRange])
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      searchListings(searchRequestParams)
+    }, 500)
+    return () => window.clearTimeout(timer)
+  }, [searchListings, searchRequestParams])
+
+  const displayedListings = listings
 
   const clearFacetFilter = useCallback((key) => {
     setFacetFilters((current) => {
@@ -504,6 +535,29 @@ export default function CategoryPage() {
     })
     return filters
   }, [bathrooms, bedrooms, clearFacetFilter, conditions.length, districts.length, facetFilters, floorNumber, isHouseLandCategory, language, negotiableOnly, price, priceValue, quickCondition, quickConditionOptions, selectedProvince, setSelectedProvince, sizeRange, t, verifiedOnly, visibleFacets, withPhotos, yearOptions, yearRange])
+
+  const subcategoryChips = useMemo(() => {
+    const presets = subcategoryPresets[schemaId] || []
+    return presets.map(([labelKey, filterKey, value]) => {
+      const nextFacets = { ...facetFilters, [filterKey]: value }
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.set("facets", JSON.stringify(nextFacets))
+      const count = listings.filter((listing) => {
+        const matchesStatus = !listing.status || String(listing.status).toUpperCase() === "ACTIVE"
+        const matchesCategory = !category || listing.category === category.label.en || listing.subcategory === activeSubcategory?.label.en
+        const listingValue = getFacetValue(listing, filterKey)
+        const matchesValue = String(listingValue || "").toLowerCase() === String(value).toLowerCase()
+        return matchesStatus && matchesCategory && matchesValue
+      }).length
+      return {
+        count,
+        filterKey,
+        label: t(labelKey),
+        search: `?${nextParams.toString()}`,
+        value,
+      }
+    })
+  }, [activeSubcategory, category, facetFilters, listings, schemaId, searchParams, t])
 
   const mapMarkers = useMemo(
     () =>
@@ -633,6 +687,23 @@ export default function CategoryPage() {
     </div>
   )
 
+  const activeFilterChips = activeFilters.length ? (
+    <div className="sticky top-16 z-30 mb-4 flex flex-wrap items-center gap-2 border-b border-neutral-100 bg-neutral-50/95 px-4 py-3 backdrop-blur sm:px-6">
+      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-2">
+        {activeFilters.map((filter) => (
+          <button className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-black text-primary" key={filter.id} onClick={filter.onClear} type="button">
+            {filter.label}
+            <X className="h-3 w-3" aria-hidden="true" />
+          </button>
+        ))}
+        <button className="px-2 py-1.5 text-xs font-black text-neutral-500 transition hover:text-neutral-900" onClick={resetFilters} type="button">
+          {t("filter.clearAll")}
+        </button>
+      </div>
+    </div>
+  ) : null
+  const categoryPath = activeSubcategory ? `/category/${slug}/${subcategory}` : `/category/${slug}`
+
   return (
     <PageTransition>
       <Helmet>
@@ -640,18 +711,140 @@ export default function CategoryPage() {
         <meta name="description" content={t("seo.categoryDescription", { count: displayedListings.length, category: title, province: provinceLabel })} />
         <link rel="canonical" href={canonicalUrl(`/category/${slug}`)} />
       </Helmet>
-      <div className="noise-overlay relative border-b border-neutral-100 bg-white px-4 py-6 sm:px-6">
-        <div className="mx-auto max-w-7xl">
+      <section className="relative border-b border-neutral-100 bg-white px-4 py-6 sm:px-6">
+        <div className="mx-auto grid max-w-7xl gap-5">
           <Breadcrumb crumbs={[{ label: t("breadcrumb.home"), href: "/" }, { label: title }]} />
-          <h1 className="mt-3 text-3xl font-black text-neutral-900">{title}</h1>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex items-center gap-4">
+              <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
+                <CategoryIcon className="h-8 w-8" aria-hidden="true" />
+              </span>
+              <div>
+                <h1 className={cn("text-3xl font-black leading-10 text-neutral-900 sm:text-4xl", language === "km" && "font-khmer leading-[2]")}>
+                  {translate("km", categoryLabelKey)}
+                </h1>
+                <p className="text-sm font-bold text-neutral-500">{translate("en", categoryLabelKey)}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="rounded-full bg-neutral-100 px-4 py-2 text-sm font-black text-neutral-700">
+                {searchTotal.toLocaleString()} {t("listing.resultsFound")}
+              </span>
+              <Link className="inline-flex h-11 items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 text-sm font-black text-neutral-700 transition hover:border-primary hover:text-primary" to="/help">
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                {t("discover.safetyTips")}
+              </Link>
+            </div>
+          </div>
+          <div className="lg:hidden">
+            <button ref={filterTriggerRef} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-neutral-200 px-3 text-sm font-black" onClick={() => setFilterOpen(true)} type="button">
+              <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+              {t("filter.allFilters")}
+              {activeFilters.length ? <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-white">{activeFilters.length}</span> : null}
+            </button>
+          </div>
+          <div className="hidden rounded-2xl border border-neutral-200 bg-neutral-50 p-3 shadow-sm lg:grid lg:grid-cols-6 lg:items-end lg:gap-3">
+            <label className="grid gap-1 text-xs font-black text-neutral-500">
+              {t("filter.location")}
+              <select className="h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-bold text-neutral-800 outline-none focus:border-primary" onChange={(event) => setSelectedProvince(event.target.value)} value={selectedProvince}>
+                <option value="all">{t("nav.allCambodia")}</option>
+                {PROVINCES.map((province) => (
+                  <option key={province.id} value={province.label.en}>{province.label[language]}</option>
+                ))}
+              </select>
+            </label>
+            <div className="grid gap-1 text-xs font-black text-neutral-500">
+              {t("filter.priceRange")}
+              <div className="grid grid-cols-2 gap-2">
+                <input aria-label={t("filter.minPrice")} className="h-11 min-w-0 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary" min="0" onChange={(event) => setPrice([Number(event.target.value || 0), price[1]])} type="number" value={price[0]} />
+                <input aria-label={t("filter.maxPrice")} className="h-11 min-w-0 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary" min="0" onChange={(event) => setPrice([price[0], event.target.value ? Number(event.target.value) : null])} type="number" value={price[1] ?? ""} />
+              </div>
+            </div>
+            <div className="grid gap-1 text-xs font-black text-neutral-500">
+              {t("filter.condition")}
+              <div className="grid h-11 grid-cols-2 overflow-hidden rounded-xl border border-neutral-200 bg-white" role="radiogroup" aria-label={t("filter.condition")}>
+                {["New", "Used"].map((condition) => (
+                  <button
+                    aria-checked={quickCondition === condition}
+                    className={cn("text-sm font-black transition", quickCondition === condition ? "bg-primary text-white" : "text-neutral-600 hover:bg-neutral-100")}
+                    key={condition}
+                    onClick={() => setQuickCondition(quickCondition === condition ? "" : condition)}
+                    role="radio"
+                    type="button"
+                  >
+                    {t(condition === "New" ? "condition.new" : "condition.used")}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {hasCarFilters ? (
+              <>
+                <label className="grid gap-1 text-xs font-black text-neutral-500">
+                  {t("facet.fuel")}
+                  <select className="h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary" onChange={(event) => setFacetValue("fuel", event.target.value)} value={facetFilters.fuel || ""}>
+                    <option value="">{t("filter.any")}</option>
+                    {fuelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-xs font-black text-neutral-500">
+                  {t("facet.transmission")}
+                  <select className="h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary" onChange={(event) => setFacetValue("transmission", event.target.value)} value={facetFilters.transmission || ""}>
+                    <option value="">{t("filter.any")}</option>
+                    {transmissionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+              </>
+            ) : null}
+            {hasPropertyFilters ? (
+              <>
+                <label className="grid gap-1 text-xs font-black text-neutral-500">
+                  {t("filter.bedrooms")}
+                  <select className="h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary" onChange={(event) => setBedrooms(event.target.value)} value={bedrooms}>
+                    {roomOptions.map((option) => <option key={option.value || "any"} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-xs font-black text-neutral-500">
+                  {t("facet.furnishing")}
+                  <select className="h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary" onChange={(event) => setFacetValue("furnishing", event.target.value)} value={facetFilters.furnishing || ""}>
+                    <option value="">{t("filter.any")}</option>
+                    {furnishingOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+              </>
+            ) : null}
+            <div className="flex gap-2">
+              <Button className="h-11" onClick={() => setFilterOpen(false)}>{t("filter.apply")}</Button>
+              <Button className="h-11" onClick={resetFilters} variant="secondary">{t("filter.clear")}</Button>
+            </div>
+          </div>
         </div>
-      </div>
-      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="hidden rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm lg:block">{filterPanel}</aside>
+      </section>
+      {activeFilterChips}
+      {subcategoryChips.length ? (
+        <section className="border-b border-neutral-100 bg-white px-4 py-4 sm:px-6">
+          <div className="mx-auto grid max-w-7xl gap-3">
+            <h2 className="text-sm font-black text-neutral-700">{t("discover.subcategories")}</h2>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {subcategoryChips.map((chip) => (
+                <Link
+                  className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 text-sm font-black text-neutral-700 transition hover:border-primary hover:text-primary"
+                  key={`${chip.filterKey}-${chip.value}`}
+                  onClick={() => setFacetValue(chip.filterKey, chip.value)}
+                  to={`${categoryPath}${chip.search}`}
+                >
+                  {chip.label}
+                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-500">{chip.count}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6">
         <main className="min-w-0">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
             <p className="text-sm font-black text-neutral-700">
-              {displayedListings.length.toLocaleString()} {t("listing.resultsFound")}
+              {searchTotal.toLocaleString()} {t("listing.resultsFound")}
             </p>
             <div className="flex max-w-full flex-wrap items-center gap-2">
               {isVehicleCategory ? (
@@ -714,25 +907,18 @@ export default function CategoryPage() {
               <BodyTypeFilter onChange={(value) => setFacetValue("bodyType", value)} selected={facetFilters.bodyType || ""} types={CAR_BODY_TYPES} />
             </div>
           ) : null}
-          {activeFilters.length ? (
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              {activeFilters.map((filter) => (
-                <button className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-black text-primary" key={filter.id} onClick={filter.onClear} type="button">
-                  {filter.label}
-                  <X className="h-3 w-3" aria-hidden="true" />
-                </button>
+          {loading ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }, (_, index) => (
+                <SkeletonCard key={index} />
               ))}
-              <button className="px-2 py-1.5 text-xs font-black text-neutral-500 transition hover:text-neutral-900" onClick={resetFilters} type="button">
-                {t("filter.clearAll")}
-              </button>
             </div>
-          ) : null}
-          {error ? (
+          ) : error ? (
             <div className="grid min-h-64 place-items-center rounded-2xl border border-red-100 bg-red-50 p-8 text-center">
               <div>
                 <h3 className="text-lg font-black text-red-700">{t("ui.error")}</h3>
                 <p className="mt-1 text-sm font-semibold text-red-600">{error}</p>
-                <Button className="mt-5" onClick={() => fetchListings({ category: activeSubcategory?.label.en || category?.label.en || "" })} variant="secondary">
+                <Button className="mt-5" onClick={() => searchListings(searchRequestParams)} variant="secondary">
                   {t("ui.retry")}
                 </Button>
               </div>
@@ -750,13 +936,7 @@ export default function CategoryPage() {
                 />
               </Suspense>
             ) : (
-              <InfiniteScroll
-                dataLength={displayedListings.length}
-                hasMore={hasMore}
-                loader={<div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 3 }, (_, index) => <SkeletonCard key={index} />)}</div>}
-                next={fetchMoreListings}
-                scrollThreshold={0.85}
-              >
+              <>
                 {view === "grid" ? (
                   <ListingGrid listings={displayedListings} showSellCTA={true} />
                 ) : (
@@ -764,7 +944,38 @@ export default function CategoryPage() {
                     {displayedListings.map((listing) => <ListingListItem key={listing.id} listing={listing} />)}
                   </div>
                 )}
-              </InfiniteScroll>
+                <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white p-3">
+                  <Button
+                    disabled={searchPage <= 1}
+                    onClick={() => {
+                      const next = new URLSearchParams(searchParams)
+                      next.set("page", String(searchPage - 1))
+                      setSearchParams(next)
+                      setSearchPage(searchPage - 1)
+                    }}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    {t("pagination.previous")}
+                  </Button>
+                  <p className="text-sm font-black text-neutral-700">
+                    {t("pagination.pageOf")} {searchPage} {t("pagination.of")} {searchTotalPages}
+                  </p>
+                  <Button
+                    disabled={searchPage >= searchTotalPages}
+                    onClick={() => {
+                      const next = new URLSearchParams(searchParams)
+                      next.set("page", String(searchPage + 1))
+                      setSearchParams(next)
+                      setSearchPage(searchPage + 1)
+                    }}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    {t("pagination.next")}
+                  </Button>
+                </div>
+              </>
             )
           ) : (
             <div className="grid min-h-80 place-items-center rounded-2xl border border-dashed border-neutral-300 bg-white p-8 text-center">

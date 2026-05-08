@@ -1,7 +1,8 @@
 import client, { hasApiBackend, readStorage, STORAGE_KEYS, writeStorage } from "./client"
 
 function mockRegister(data) {
-  const user = { id: Date.now(), verified: false, ...data }
+  const params = new URLSearchParams(window.location.search)
+  const user = { id: Date.now(), verified: false, referralSource: data.ref || params.get("ref") || null, ...data }
   const token = `local-${btoa(`${data.phone}:reg:${Date.now()}`)}`
   writeStorage(STORAGE_KEYS.authToken, token)
   writeStorage(STORAGE_KEYS.authUser, user)
@@ -74,6 +75,7 @@ export async function register(data) {
         password: data.password,
         name: data.name,
         language: data.language || "en",
+        ref: data.ref || new URLSearchParams(window.location.search).get("ref") || undefined,
       },
       { skipAuthExpired: true },
     )

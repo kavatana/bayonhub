@@ -6,7 +6,7 @@ function SkeletonBlock({ className = "" }) {
   return (
     <span
       className={cn(
-        "block rounded-lg bg-gradient-to-r from-neutral-100 via-neutral-200 to-neutral-100 bg-[length:200%_100%] animate-shimmer",
+        "block rounded-lg bg-gray-200 motion-safe:animate-pulse motion-safe:bg-gradient-to-r motion-safe:from-gray-200 motion-safe:via-gray-100 motion-safe:to-gray-200 motion-safe:bg-[length:200%_100%]",
         className,
       )}
     />

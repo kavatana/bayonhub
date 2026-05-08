@@ -1,6 +1,7 @@
 import { LeadType, ListingStatus } from "@prisma/client"
 
 import { prisma } from "../../lib/prisma"
+import { isUserPlus } from "../users/service"
 
 function createHttpError(status: number, message: string): Error & { status: number } {
   const error = new Error(message) as Error & { status: number }
@@ -10,6 +11,20 @@ function createHttpError(status: number, message: string): Error & { status: num
 
 export async function getSellerAnalytics(userId: string) {
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  const plus = await isUserPlus(userId)
+
+  if (!plus) {
+    const totalViews = await prisma.listingView.count({
+      where: {
+        createdAt: { gte: weekAgo },
+        listing: { sellerId: userId },
+      },
+    })
+    return {
+      total_views: totalViews,
+      plusRequired: true,
+    }
+  }
 
   const [totalListings, activeListings, allListings, leadsThisWeek, leadsByTypeRaw] = await Promise.all([
     prisma.listing.count({ where: { sellerId: userId } }),

@@ -8,7 +8,9 @@ import {
   refreshAuthTokens,
   registerUser,
   resetPassword as resetPasswordService,
+  sendPhoneOTP,
   sendOTP,
+  verifyPhoneOTP,
   verifyOTP,
 } from "./service"
 
@@ -20,6 +22,7 @@ export const register: RequestHandler = async (req, res, next) => {
       req.body.password,
       req.body.name,
       req.body.language,
+      req.body.ref || req.query.ref,
     )
     res.status(201).json({ user })
   } catch (error) {
@@ -40,6 +43,24 @@ export const verifyOtp: RequestHandler = async (req, res, next) => {
   try {
     const user = await verifyOTP(req.body.phone, req.body.code)
     res.status(200).json({ user })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const sendPhoneOtp: RequestHandler = async (req, res, next) => {
+  try {
+    const result = await sendPhoneOTP(req.body.phone)
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const verifyPhoneOtp: RequestHandler = async (req, res, next) => {
+  try {
+    const result = await verifyPhoneOTP(req.user?.id, req.body.phone, req.body.code)
+    res.status(200).json(result)
   } catch (error) {
     next(error)
   }

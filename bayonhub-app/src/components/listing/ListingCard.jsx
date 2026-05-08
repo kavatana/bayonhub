@@ -1,11 +1,11 @@
-import { memo, useRef } from "react"
+import { memo, useRef, useState } from "react"
 import { useGSAP } from "@gsap/react"
 import { Link } from "react-router-dom"
 import { Camera, Heart, MapPin, Share2, TrendingDown } from "lucide-react"
 import { useTranslation } from "../../hooks/useTranslation"
 import { cardHover } from "../../lib/animations"
 import { getPromotionState, isPromotedListing, PROMOTION_LABELS } from "../../lib/promotionStates"
-import { cn, formatPrice, getListingImage, getSrcSet, listingUrl, timeAgo } from "../../lib/utils"
+import { cn, formatPrice, getImageSizes, getListingImage, getSrcSet, listingUrl, timeAgo } from "../../lib/utils"
 import { sanitizeText } from "../../lib/sanitize"
 import { useListingStore } from "../../store/useListingStore"
 import { useAuthStore } from "../../store/useAuthStore"
@@ -15,6 +15,7 @@ import StarRating from "../ui/StarRating"
 
 function ListingCard({ listing }) {
   const cardRef = useRef(null)
+  const [imageBroken, setImageBroken] = useState(false)
   const { t, language } = useTranslation()
   const saved = useListingStore((state) => state.savedIds.includes(listing?.id || ""))
   const toggleSaved = useListingStore((state) => state.toggleSaved)
@@ -34,6 +35,10 @@ function ListingCard({ listing }) {
   const promotionState = getPromotionState(listing)
   const promotionLabel = PROMOTION_LABELS[promotionState]?.[language]
   const promoted = isPromotedListing(listing)
+  const sellerReviewCount = Number(listing.sellerReviewCount || listing.seller?.reviewCount || listing.seller?.reviewsCount || 0)
+  const sellerRating = Number(listing.sellerRating || listing.seller?.rating || 0)
+  const sellerIsPlusMember = Boolean(listing.isPlusMember || listing.seller?.isPlusMember)
+  const sellerVerified = Boolean(listing.isVerifiedSeller || listing.seller?.isVerifiedSeller || listing.verified)
 
   async function shareListing(event) {
     event.preventDefault()
@@ -66,14 +71,24 @@ function ListingCard({ listing }) {
       <Link to={listingUrl(listing)} className="block">
         {/* Image */}
         <div className="relative aspect-[4/3] overflow-hidden bg-neutral-100 dark:bg-neutral-700">
-          <img
-            alt={sanitizeText(listing.title)}
-            className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
-            loading="lazy"
-            onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.onerror = null }}
-            src={image}
-            srcSet={getSrcSet(image)}
-          />
+          {imageBroken ? (
+            <div className="grid h-full w-full place-items-center bg-neutral-200 text-neutral-400">
+              <Camera className="h-10 w-10" aria-hidden="true" />
+            </div>
+          ) : (
+            <img
+              alt={sanitizeText(listing.title)}
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+              decoding="async"
+              height="450"
+              loading="lazy"
+              onError={() => setImageBroken(true)}
+              sizes={getImageSizes()}
+              src={image}
+              srcSet={getSrcSet(image)}
+              width="600"
+            />
+          )}
           {/* Price pill — top right */}
           <span className="absolute right-3 top-3 rounded-full bg-white/95 px-3 py-1 text-sm font-black text-primary shadow-md backdrop-blur-sm dark:bg-neutral-900/90 dark:text-primary">
             {formatPrice(listing.price, listing.currency, language)}
@@ -112,7 +127,7 @@ function ListingCard({ listing }) {
             </h3>
             {/* Save / heart button */}
             <button
-              aria-label={saved ? t("listing.saved") : t("listing.save")}
+              aria-label={t("a11y.saveListing")}
               className={cn(
                 "grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-all duration-200",
                 saved
@@ -165,8 +180,18 @@ function ListingCard({ listing }) {
                 type={listing.seller?.verificationTier === "IDENTITY" ? "id-verified" : "phone-verified"}
               />
             ) : null}
+            {sellerIsPlusMember ? <Badge className="origin-left scale-75" type="plus" /> : null}
+            {sellerVerified ? <Badge className="origin-left scale-75" type="verified" /> : null}
             {listing.topSeller ? <Badge className="origin-left scale-75" type="top-seller" /> : null}
           </div>
+          {sellerReviewCount > 0 ? (
+            <div className="flex items-center gap-2 text-xs font-bold text-neutral-500">
+              <StarRating rating={sellerRating} />
+              <span>
+                {sellerReviewCount} {t("seller.reviews")}
+              </span>
+            </div>
+          ) : null}
 
           {/* Location */}
           <div className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-300">
@@ -195,7 +220,6 @@ function ListingCard({ listing }) {
               {t("listing.share")}
             </button>
           </div>
-          <StarRating rating={listing.sellerRating} />
         </div>
       </Link>
     </article>

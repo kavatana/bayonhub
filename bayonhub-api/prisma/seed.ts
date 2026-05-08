@@ -115,10 +115,14 @@ async function main() {
   await prisma.user.create({
     data: {
       phone: "+85512345678",
+      email: "admin@bayonhub.com",
       passwordHash: await bcrypt.hash("admin1234", 12),
       name: "BayonHub Admin",
       role: Role.ADMIN,
+      isAdmin: true,
       verificationTier: VerificationTier.IDENTITY,
+      phoneVerified: true,
+      isVerifiedSeller: true,
       phoneVerifiedAt: new Date(),
       idVerifiedAt: new Date(),
     },
@@ -140,6 +144,7 @@ async function main() {
           name,
           role: Role.SELLER,
           verificationTier: VerificationTier.PHONE,
+          phoneVerified: true,
           phoneVerifiedAt: new Date(Date.now() - index * 30 * 24 * 60 * 60 * 1000),
         },
       }),

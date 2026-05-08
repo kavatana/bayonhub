@@ -5,14 +5,24 @@ import { LeadType, ReportReason } from "@prisma/client"
 import { getPresignedUploadUrl, processAndUpload } from "../../lib/s3"
 import { validateMagicBytes } from "../../middleware/upload"
 import {
+  bumpListing as bumpListingService,
   createLead as createLeadService,
   createListing as createListingService,
   deleteListing as deleteListingService,
   getListing as getListingService,
+  getListingLocations as getListingLocationsService,
   getListings as getListingsService,
+  getListingsByUser as getListingsByUserService,
+  getSavedListings as getSavedListingsService,
   getRelated as getRelatedService,
+  getSimilarListings as getSimilarListingsService,
+  incrementView as incrementViewService,
+  markSold as markSoldService,
+  publishDraft as publishDraftService,
   reportListing as reportListingService,
+  saveDraft as saveDraftService,
   saveListing as saveListingService,
+  searchListings as searchListingsService,
   unsaveListing as unsaveListingService,
   updateListing as updateListingService,
 } from "./service"
@@ -59,6 +69,34 @@ export const getListings: RequestHandler = async (req, res, next) => {
       limit: parseNumber(req.query.limit),
     })
     res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const searchListings: RequestHandler = async (req, res, next) => {
+  try {
+    const result = await searchListingsService({
+      q: req.query.q as string | undefined,
+      category: req.query.category as string | undefined,
+      location: (req.query.location || req.query.province) as string | undefined,
+      priceMin: parseNumber(req.query.priceMin ?? req.query.minPrice),
+      priceMax: parseNumber(req.query.priceMax ?? req.query.maxPrice),
+      condition: req.query.condition as string | undefined,
+      sortBy: (req.query.sortBy || req.query.sort) as string | undefined,
+      page: parseNumber(req.query.page),
+      limit: parseNumber(req.query.limit),
+    })
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const getListingLocations: RequestHandler = async (_req, res, next) => {
+  try {
+    const locations = await getListingLocationsService()
+    res.status(200).json(locations)
   } catch (error) {
     next(error)
   }
@@ -111,6 +149,32 @@ export const updateListing: RequestHandler = async (req, res, next) => {
   }
 }
 
+export const saveDraft: RequestHandler = async (req, res, next) => {
+  try {
+    if (!req.user) throw createHttpError(401, "Unauthorized")
+    const files = getFiles(req)
+    for (const file of files) {
+      if (!(await validateMagicBytes(file.buffer, file.mimetype))) {
+        throw createHttpError(400, `Invalid image format for file: ${file.originalname}`)
+      }
+    }
+    const listing = await saveDraftService(req.user.id, req.user.role, req.body, files)
+    res.status(200).json(listing)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const publishDraft: RequestHandler = async (req, res, next) => {
+  try {
+    if (!req.user) throw createHttpError(401, "Unauthorized")
+    const listing = await publishDraftService(req.user.id, req.user.role, getParamId(req.params.id))
+    res.status(200).json(listing)
+  } catch (error) {
+    next(error)
+  }
+}
+
 export const deleteListing: RequestHandler = async (req, res, next) => {
   try {
     if (!req.user) throw createHttpError(401, "Unauthorized")
@@ -123,18 +187,19 @@ export const deleteListing: RequestHandler = async (req, res, next) => {
 
 export const reportListing: RequestHandler = async (req, res, next) => {
   try {
-    if (!req.user) throw createHttpError(401, "Unauthorized")
+    const reporterId = req.user?.id || (req.body.userId as string | undefined)
+    if (!reporterId) throw createHttpError(400, "Reporter user id is required")
     const reason = req.body.reason as ReportReason
     if (!Object.values(ReportReason).includes(reason)) {
       throw createHttpError(400, "Invalid report reason")
     }
     const report = await reportListingService(
-      req.user.id,
+      reporterId,
       getParamId(req.params.id),
       reason,
       req.body,
     )
-    res.status(201).json(report)
+    res.status(201).json({ success: true, report })
   } catch (error) {
     next(error)
   }
@@ -177,6 +242,16 @@ export const unsaveListing: RequestHandler = async (req, res, next) => {
   }
 }
 
+export const getSavedListings: RequestHandler = async (req, res, next) => {
+  try {
+    if (!req.user) throw createHttpError(401, "Unauthorized")
+    const listings = await getSavedListingsService(req.user.id)
+    res.status(200).json({ data: listings })
+  } catch (error) {
+    next(error)
+  }
+}
+
 export const getRelated: RequestHandler = async (req, res, next) => {
   try {
     const listings = await getRelatedService(
@@ -184,6 +259,15 @@ export const getRelated: RequestHandler = async (req, res, next) => {
       parseNumber(req.query.limit) || 4,
     )
     res.status(200).json({ listings })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const getSimilarListings: RequestHandler = async (req, res, next) => {
+  try {
+    const listings = await getSimilarListingsService(getParamId(req.params.id))
+    res.status(200).json({ data: listings })
   } catch (error) {
     next(error)
   }
@@ -218,5 +302,58 @@ export const uploadLocal: RequestHandler = async (req, res, next) => {
     res.status(201).json(result)
   } catch (error) {
     next(error)
+  }
+}
+
+export const uploadImage: RequestHandler = async (req, res, next) => {
+  try {
+    if (!req.user) throw createHttpError(401, "Unauthorized")
+    if (!req.file) throw createHttpError(400, "File is required")
+    if (!(await validateMagicBytes(req.file.buffer, req.file.mimetype))) {
+      throw createHttpError(400, "Invalid image format")
+    }
+    const result = await processAndUpload(req.file.buffer, `listings/${req.user.id}/${randomUUID()}.webp`)
+    res.status(201).json({ url: result.url })
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const getMyListings: RequestHandler = async (req, res, next) => {
+  try {
+    if (!req.user) throw createHttpError(401, "Unauthorized")
+    const listings = await getListingsByUserService(req.user.id, req.query.status as string | undefined)
+    res.status(200).json(listings)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const markAsSold: RequestHandler = async (req, res, next) => {
+  try {
+    if (!req.user) throw createHttpError(401, "Unauthorized")
+    const listing = await markSoldService(req.user.id, req.user.role, getParamId(req.params.id))
+    res.status(200).json(listing)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const bumpListing: RequestHandler = async (req, res, next) => {
+  try {
+    if (!req.user) throw createHttpError(401, "Unauthorized")
+    const result = await bumpListingService(req.user.id, req.user.role, getParamId(req.params.id))
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const incrementView: RequestHandler = async (req, res, next) => {
+  try {
+    const views = await incrementViewService(getParamId(req.params.id), req.body.sessionId)
+    res.status(200).json({ views })
+  } catch {
+    res.status(200).json({ views: 0 }) // Always succeed — non-critical
   }
 }

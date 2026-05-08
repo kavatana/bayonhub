@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react"
-import { Bell, Bookmark, Search, Trash2 } from "lucide-react"
+import { Bell, Mail, MessageSquare, Search, Trash2 } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "../../hooks/useTranslation"
 import { CATEGORIES } from "../../lib/categories"
@@ -37,10 +37,11 @@ function getFilterPills(search, language, t) {
   const filters = search.filters || {}
   const pills = []
   if (filters.category) pills.push(`${t("filter.category")}: ${getCategoryLabel(filters.category, language)}`)
-  if (filters.location) pills.push(`${t("filter.location")}: ${getProvinceLabel(filters.location, language)}`)
+  if (filters.location || filters.province) pills.push(`${t("filter.location")}: ${getProvinceLabel(filters.location || filters.province, language)}`)
   if (filters.minPrice || filters.maxPrice) {
     pills.push(`${t("filter.price")}: ${formatPrice(filters.minPrice || 0)} - ${formatPrice(filters.maxPrice || 0)}`)
   }
+  if (filters.condition) pills.push(`${t("filter.condition")}: ${filters.condition}`)
   return pills
 }
 
@@ -48,7 +49,7 @@ function SavedSearchesTab() {
   const { t, language } = useTranslation()
   const navigate = useNavigate()
   const savedSearches = useListingStore((state) => state.savedSearches)
-  const deleteSavedSearch = useListingStore((state) => state.deleteSavedSearch)
+  const deleteSearchAction = useListingStore((state) => state.deleteSearch)
   const toggleSearchAlert = useListingStore((state) => state.toggleSearchAlert)
   const sortedSearches = useMemo(
     () => [...savedSearches].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
@@ -56,21 +57,21 @@ function SavedSearchesTab() {
   )
 
   function deleteSearch(id) {
-    if (window.confirm(t("search.confirmDelete"))) deleteSavedSearch(id)
+    if (window.confirm(t("search.confirmDelete"))) deleteSearchAction(id)
   }
 
   if (!sortedSearches.length) {
     return (
       <div className="grid min-h-64 place-items-center gap-4 rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 p-8 text-center">
         <div className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-primary">
-          <Bookmark className="h-8 w-8" />
+          <Search className="h-8 w-8" aria-hidden="true" />
         </div>
         <div>
           <h3 className="text-lg font-black text-neutral-900">{t("search.noSavedSearches")}</h3>
-          <p className="mt-1 text-sm font-semibold text-neutral-500">{t("search.noSavedSearchesDesc")}</p>
+          <p className="mt-1 text-sm font-semibold text-neutral-500">{t("search.savedSearchesEmpty")}</p>
         </div>
-        <Button onClick={() => navigate("/")} variant="secondary">
-          {t("nav.home")}
+        <Button onClick={() => navigate("/search")} variant="secondary">
+          {t("empty.searchNow")}
         </Button>
       </div>
     )
@@ -86,7 +87,7 @@ function SavedSearchesTab() {
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase tracking-widest text-primary">{t("dashboard.savedSearches")}</p>
                 <h2 className="mt-1 truncate text-xl font-black text-neutral-900">
-                  {search.query || t("search.savedSearches")}
+                  {search.name || search.query || t("search.savedSearches")}
                 </h2>
                 <p className="mt-1 text-xs font-bold text-neutral-400">{timeAgo(search.createdAt, language)}</p>
               </div>
@@ -109,6 +110,18 @@ function SavedSearchesTab() {
               </div>
             ) : null}
             <div className="mt-4 flex min-w-0 flex-wrap items-center gap-3">
+              {search.notifyEmail ? (
+                <span className="inline-flex min-h-9 items-center gap-2 rounded-xl bg-primary/10 px-3 text-xs font-black text-primary">
+                  <Mail className="h-4 w-4" aria-hidden="true" />
+                  {t("search.notifyEmail")}
+                </span>
+              ) : null}
+              {search.notifySMS ? (
+                <span className="inline-flex min-h-9 items-center gap-2 rounded-xl bg-neutral-100 px-3 text-xs font-black text-neutral-700">
+                  <MessageSquare className="h-4 w-4" aria-hidden="true" />
+                  {t("search.notifySMS")}
+                </span>
+              ) : null}
               <label className="inline-flex min-w-0 items-center gap-2 rounded-xl bg-neutral-50 px-3 py-2 text-sm font-bold text-neutral-700">
                 <input checked={search.alertEnabled} onChange={() => toggleSearchAlert(search.id)} type="checkbox" />
                 <Bell className="h-4 w-4 text-primary" aria-hidden="true" />

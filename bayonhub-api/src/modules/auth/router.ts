@@ -9,7 +9,9 @@ import {
   refreshTokens,
   register,
   resetPassword,
+  sendPhoneOtp,
   sendOtp,
+  verifyPhoneOtp,
   verifyOtp,
 } from "./controller"
 import {
@@ -29,6 +31,8 @@ router.post("/telegram-webhook", telegramWebhookHandler)
 router.post("/register", registerLimiter, validateRegister, register)
 router.post("/send-otp", forgotPasswordLimiter, otpLimiter, validateSendOtp, sendOtp)
 router.post("/verify-otp", validateVerifyOtp, verifyOtp)
+router.post("/otp/send", forgotPasswordLimiter, otpLimiter, validateSendOtp, sendPhoneOtp)
+router.post("/otp/verify", validateVerifyOtp, requireAuth, verifyPhoneOtp)
 router.put("/reset-password", authLimiter, validateResetPassword, resetPassword)
 router.post("/login", authLimiter, validateLogin, login)
 router.post("/refresh", refreshTokens)

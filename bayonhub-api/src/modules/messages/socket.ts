@@ -25,7 +25,7 @@ export function registerSocketHandlers(io: Server): void {
     socket.join(`user:${userId}`)
     console.info(`[Socket] User ${userId} connected`)
 
-    socket.on("message:send", async ({ receiverId, listingId, body }) => {
+    socket.on("message:send", async ({ conversationId, body }) => {
       if (!body || body.length > 1000) return
       const rateLimitKey = `msg:rate:${userId}`
       const count = await redis.incr(rateLimitKey)
@@ -34,27 +34,47 @@ export function registerSocketHandlers(io: Server): void {
         socket.emit("error", { message: "Rate limit exceeded" })
         return
       }
+
+      // Verify user is participant
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+      })
+      if (!conversation || (conversation.buyerId !== userId && conversation.sellerId !== userId)) {
+        socket.emit("error", { message: "Not a participant" })
+        return
+      }
+
       const message = await prisma.message.create({
-        data: { senderId: userId, receiverId, listingId, body },
+        data: { conversationId, senderId: userId, body },
         include: {
           sender: { select: { id: true, name: true, avatarUrl: true } },
         },
       })
+
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { updatedAt: new Date() },
+      })
+
+      const receiverId = conversation.buyerId === userId ? conversation.sellerId : conversation.buyerId
       io.to(`user:${receiverId}`).emit("message:receive", message)
       socket.emit("message:sent", message)
     })
 
-    socket.on("message:read", async ({ messageId }) => {
+    socket.on("message:read", async ({ conversationId }) => {
       await prisma.message.updateMany({
-        where: { id: messageId, receiverId: userId },
-        data: { readAt: new Date() },
+        where: { conversationId, senderId: { not: userId }, read: false },
+        data: { read: true },
       })
-      const message = await prisma.message.findUnique({ where: { id: messageId } })
-      if (message) io.to(`user:${message.senderId}`).emit("message:read_receipt", { messageId })
     })
 
-    socket.on("message:typing", ({ receiverId }) => {
-      io.to(`user:${receiverId}`).emit("message:typing", { senderId: userId })
+    socket.on("message:typing", ({ conversationId }) => {
+      // Find the other participant and notify them
+      prisma.conversation.findUnique({ where: { id: conversationId } }).then((conv) => {
+        if (!conv) return
+        const receiverId = conv.buyerId === userId ? conv.sellerId : conv.buyerId
+        io.to(`user:${receiverId}`).emit("message:typing", { senderId: userId, conversationId })
+      })
     })
 
     socket.on("disconnect", () => {

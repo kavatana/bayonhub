@@ -58,5 +58,12 @@ export const env = {
   abaApiKey: optionalEnv("ABA_API_KEY"),
   abaWebhookSecret: optionalEnv("ABA_WEBHOOK_SECRET"),
   telegramBotToken: optionalEnv("TELEGRAM_BOT_TOKEN"),
+  adminEmail: optionalEnv("ADMIN_EMAIL"),
+  adminTelegramChatId: optionalEnv("ADMIN_TELEGRAM_CHAT_ID"),
+  adminPanelUrl: process.env.ADMIN_PANEL_URL || `${process.env.FRONTEND_URL || "http://localhost:5173"}/admin/payments`,
+  resendApiKey: optionalEnv("RESEND_API_KEY"),
+  vapidPublicKey: optionalEnv("VAPID_PUBLIC_KEY"),
+  vapidPrivateKey: optionalEnv("VAPID_PRIVATE_KEY"),
+  vapidSubject: process.env.VAPID_SUBJECT || "mailto:admin@bayonhub.com",
   merchantApiKeys: merchantApiKeysRaw ? merchantApiKeysRaw.split(",").map((key) => key.trim()).filter(Boolean) : [],
 }

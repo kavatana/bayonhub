@@ -11,6 +11,14 @@ declare global {
       phone: string | null
       avatarUrl: string | null
       isActive: boolean
+      isAdmin: boolean
+      banReason: string | null
+      bannedUntil: Date | null
+      phoneVerified: boolean
+      isVerifiedSeller: boolean
+      lastSeen: Date | null
+      responseRate: number | null
+      telegramChatId: string | null
     }
     interface Request {
       user?: User

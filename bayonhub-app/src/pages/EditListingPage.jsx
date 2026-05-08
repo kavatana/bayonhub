@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect } from "react"
+import toast from "react-hot-toast"
 import { Helmet } from "react-helmet-async"
 import { useNavigate, useParams } from "react-router-dom"
 import { PostAdWizardSkeleton } from "../components/ui/Skeletons"
@@ -15,6 +16,7 @@ export default function EditListingPage() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const user = useAuthStore((state) => state.user)
   const listing = useListingStore((state) => state.currentListing)
   const loading = useListingStore((state) => state.loading)
   const fetchListingById = useListingStore((state) => state.fetchListingById)
@@ -31,6 +33,15 @@ export default function EditListingPage() {
     setPendingAction({ type: "dashboard" })
     toggleAuthModal(true)
   }, [isAuthenticated, setPendingAction, toggleAuthModal])
+
+  useEffect(() => {
+    if (!listing || !user) return
+    const ownerId = listing.userId || listing.sellerId
+    if (ownerId && ownerId !== user.id && ownerId !== "local-demo-seller") {
+      toast.error(t("errors.notOwner"))
+      navigate("/", { replace: true })
+    }
+  }, [listing, user, navigate, t])
 
   if (!isAuthenticated) {
     return (

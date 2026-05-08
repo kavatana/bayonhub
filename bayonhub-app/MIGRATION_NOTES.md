@@ -1,5 +1,30 @@
 # BayonHub Migration Notes
 
+## Sprint A Execution — May 5, 2026
+
+### Store Updates
+- `src/store/useListingStore.js` — Added `fetchMyListings`, `markAsSold`, and `clearCurrentListing` actions. Migrated `incrementView` to use the API backend. Added `myListings` and `myListingsLoading` state.
+
+### Listing Page & Detail
+- `src/pages/ListingPage.jsx` — Updated to call `clearCurrentListing` on unmount to prevent stale data flash.
+- `src/components/listing/ListingDetail.jsx` — Added `SOLD` badge overlay on main image and red text banner below the price for sold listings. Disabled all contact/offer buttons when listing is sold. Updated seller avatar to use `<img>` with an `onError` initials fallback.
+
+### Dashboard My Ads
+- `src/components/dashboard/MyAdsTab.jsx` — Now uses `fetchMyListings` on mount and stores data in `myListings` instead of locally filtering global listings. Migrated the local "mark sold" workaround to the backend-backed `markAsSold` store action with toast feedback. Added loading skeleton states. Fixed unused `userId` variable causing lint error.
+
+### Ownership Guard
+- `src/pages/EditListingPage.jsx` — Added ownership guard via `useEffect` comparing `listing.sellerId` and `user.id`. Redirects to homepage with error toast if a non-owner tries to access.
+
+### Posting Wizard
+- `src/components/posting/PostAdWizard.jsx` — Added `uploadProgress` state ('publishing' or 'idle') displaying progress text under the submit button. Added 1500ms `setTimeout` to auto-navigate to the new listing's page on success and automatically discard draft.
+
+### Translations
+- `src/lib/translations.js` — Added 9 missing UI keys for posting progress, listing status, "sold" flags, edit success, and form validation for BOTH English (`en`) and Khmer (`km`).
+
+### Build Integrity
+- Lint: **PASS** (0 errors, 0 warnings)
+- Build: **PASS** — Verified all new hooks and state changes passed Vite build without bloating chunk sizes.
+
 ## Forensic Audit Fix Sprint — May 5, 2026
 
 ### Security
@@ -122,6 +147,38 @@
 - src/lib/rateLimiter.js — client-side contact action rate limiting with configurable windows (5 calls/hour for CALL, 3 offers/day for OFFER)
 - src/store/useUIStore.js — idempotent addMessage action prevents duplicate socket messages
 - src/lib/socket.js — event deduplication with processedEvents Set capped at 100 IDs
+
+## Real-Time Messaging & Notification Sprint — May 8, 2026
+
+### Messaging System
+- `bayonhub-app/src/store/useMessageStore.js` [NEW] — Implemented Zustand store for managing conversations, messages, and real-time socket events.
+- `bayonhub-app/src/pages/InboxPage.jsx` [NEW] — Created unified inbox for buyer-seller communications.
+- `bayonhub-app/src/pages/ConversationPage.jsx` [NEW] — Created dedicated chat view with real-time message threading.
+- `bayonhub-app/src/components/messaging/` [NEW] — Added chat bubbles, conversation lists, and message input components.
+- `bayonhub-api/src/modules/messages/socket.ts` — Hardened Socket.io implementation with room-based messaging and delivery receipts.
+- `bayonhub-api/prisma/migrations/` — Added migrations for `conversations` and `messages` tables.
+
+### Notification System
+- `bayonhub-app/src/store/useNotificationStore.js` [NEW] — Added centralized notification management with persistent storage.
+- `bayonhub-app/src/api/notifications.js` [NEW] — Wired backend notification endpoints.
+- `bayonhub-app/public/push-handler.js` [NEW] — Implemented Service Worker handler for Web Push notifications.
+- `bayonhub-api/src/lib/push.ts` [NEW] — Added Web Push (VAPID) integration for mobile push notifications.
+- `bayonhub-api/src/modules/messages/notifications.router.ts` [NEW] — Added endpoints for notification preferences and history.
+
+### Infrastructure & Monetization
+- `bayonhub-api/prisma/schema.prisma` — Expanded schema for badges, bump history, gifts, and ABA payment tracking.
+- `bayonhub-api/src/modules/payments/service.ts` [NEW] — Integrated backend ABA PayWay/KHQR logic.
+- `bayonhub-api/src/lib/telegram.ts` — Added Telegram bot integration for administrative alerts and listing notifications.
+- `bayonhub-api/src/jobs/listingExpiry.ts` — Added automated background job for expiring old listings and notifying users.
+
+### UI & UX Enhancements
+- `bayonhub-app/src/components/layout/Navbar.jsx` — Integrated live notification and unread message counters.
+- `bayonhub-app/src/components/ui/OfflineIndicator.jsx` [NEW] — Added prominent connectivity status indicator.
+- `bayonhub-app/src/lib/translations.js` — Added 100+ new EN/KM keys for messaging, notifications, and new dashboard features.
+
+### Build & Integrity
+- Lint: **PASS**
+- Build: **PASS** — Verified PWA service worker generation and chunk splitting for new routes.
 
 ## Security/SEO and Sitemap Fixes — May 2, 2026
 
@@ -1297,3 +1354,227 @@ Status after sprint:
 - Updated translations to include `ui.retry` in both English and Khmer namespaces
 - Maintained stability with passing lint and build checks
 
+## 2026-05-05 - Phase 1 Task 1.3: Schema Posting Wizard
+- `src/components/posting/PostAdWizard.jsx` — Reordered the posting flow to category, photos, schema details, preview, and publish while preserving existing photo upload, auth replay, KHQR, and createListing behavior.
+- `src/components/posting/PostAdWizard.jsx` — Added `categoryFields` state, wired `CategoryForm`, merged schema fields into the listing payload, and showed filled schema fields plus the cars visibility hint in preview.
+
+## 2026-05-05 - Phase 1 Tasks 1.4-1.6: Discovery Filters, Mobile Nav, Translations
+- `src/pages/CategoryPage.jsx` — Added Khmer-first category hero, schema-aware desktop/mobile filters, sticky active filter chips, and browse-by-type chips that update existing client-side listing filters.
+- `src/components/layout/Navbar.jsx` — Polished the mobile bottom nav to Home, Search, raised Post FAB, Saved, and Account while leaving desktop navigation behavior unchanged.
+- `src/components/layout/Layout.jsx` — Added mobile bottom padding to keep page content clear of the fixed bottom nav.
+- `src/lib/translations.js` — Added Phase 1 category/form/filter/discovery/wizard keys in English and Khmer without deleting existing Sprint A strings.
+
+## 2026-05-05 - Phase 2: Search, Seller Trust, Dashboard
+- `src/pages/SearchPage.jsx` — Added schema-aware client-side faceted filtering, debounced price inputs, result counts, sorting, and save-search modal trigger.
+- `src/components/search/SearchFilters.jsx` — Added reusable desktop sidebar and mobile bottom-sheet filters driven by category schemas.
+- `src/components/search/SaveSearchModal.jsx` — Added saved-search naming and email/SMS preference capture with existing listing-store persistence.
+- `src/store/useListingStore.js` — Extended saved searches compatibly and added persisted favorites/watchlist actions under the required localStorage keys.
+- `src/components/dashboard/SavedSearchesTab.jsx` — Enhanced saved search rows with names, filter summaries, notification badges, run, and delete actions.
+- `src/store/useStorefrontStore.js` — Added reviews state, average rating, review fetch, review submit, and seller badge booleans while preserving `postReview`.
+- `src/components/storefront/ReviewModal.jsx` — Added larger star tap targets, review tags, and a success state.
+- `src/pages/StorefrontPage.jsx` — Added prominent review counts, seller badges, masked reviewer names, review tags, and star breakdown support.
+- `src/components/listing/ListingCard.jsx` — Added seller rating and review count display only when review data exists.
+- `src/components/listing/ListingDetail.jsx` — Added favorite/watchlist actions and seller review CTA/rating display.
+- `src/pages/DashboardPage.jsx` — Added seller stats, leads, analytics, favorites, and price-watch dashboard sections without a chart dependency.
+- `src/lib/translations.js` — Added missing Phase 2 search, rating, seller, dashboard, lead, and day-label keys in English and Khmer.
+
+## 2026-05-05 - Phase 3: UX, PWA, Analytics, Accessibility
+- `vite.config.js` — Added explicit Workbox runtime caches for listings, images, and search; added a `vendor-ui` chunk for Lucide icons while preserving Three.js isolation.
+- `src/lib/utils.js` — Added responsive listing image helpers for `srcSet` and `sizes`.
+- `src/components/listing/ListingCard.jsx`, `src/components/listing/ListingDetail.jsx`, `src/components/listing/ListingListItem.jsx` — Added lazy responsive image attributes and broken-image camera placeholders.
+- `src/components/ui/SkeletonCard.jsx`, `src/components/ui/SkeletonListItem.jsx` — Standardized listing skeleton loaders with reduced-motion-safe shimmer behavior.
+- `src/components/ui/OfflineIndicator.jsx`, `src/components/layout/Layout.jsx` — Added translation-backed offline banner wiring above page content.
+- `src/lib/analytics.js` — Added fetch-based analytics tracking with development console logging and silent endpoint failure.
+- `src/components/posting/PostAdWizard.jsx`, `src/pages/SearchPage.jsx`, `src/pages/ListingPage.jsx`, `src/pages/DashboardPage.jsx` — Wired key marketplace analytics events without changing store action signatures.
+- `src/components/ui/Button.jsx`, `src/components/ui/Modal.jsx`, `src/components/layout/Navbar.jsx` — Tightened shared button focus styles and added translation-backed accessibility labels.
+- `src/pages/CategoryPage.jsx`, `src/pages/AdminPage.jsx`, `src/components/dashboard/MyAdsTab.jsx`, `src/components/dashboard/SavedSearchesTab.jsx`, `src/components/dashboard/SettingsTab.jsx`, `src/components/posting/CategoryForm.jsx` — Added loading/empty-state polish and removed visible hardcoded fallback strings in touched flows.
+- `src/api/listings.js` — Converted the local fallback auth-store access to a static import to remove the Vite mixed dynamic/static import warning.
+- `src/lib/translations.js` — Added Phase 3 offline, analytics, accessibility, validation, and empty-state keys in English and Khmer.
+
+## 2026-05-05 - Sprint B Messaging Lint Cleanup
+- `src/components/layout/Navbar.jsx` — Removed an unused UI-store selector so the unread notification bell integration passes lint.
+- `src/components/listing/ListingDetail.jsx` — Removed an unused router import while preserving the existing seller message modal behavior.
+- `../bayonhub-api/src/modules/messages/router.ts` — Normalized Express route params so conversation message endpoints pass backend TypeScript checks.
+- `../bayonhub-api/prisma/migrations/20260505095617_add_missing_columns_slug_listing_report/migration.sql` — Removed an invalid generated-column default alteration and made the dropped search index tolerant for shadow database replay.
+- `../bayonhub-api/prisma/migrations/20260505095713_add_review_and_banner_url/migration.sql` — Removed duplicated listing/report/user slug operations so the unapplied migration chain replays cleanly.
+- `../bayonhub-api/prisma/migrations/20260505205500_add_conversations/migration.sql` — Added the conversation-based messaging migration for Conversation and Message tables.
+
+## 2026-05-06 - Sprint C1: Backend Search & Discovery
+- `../bayonhub-api/src/modules/listings/service.ts` — Added page-based active-listing search with keyword, category, location, price, condition, sort, pagination, and distinct active locations.
+- `../bayonhub-api/src/modules/listings/controller.ts` — Added Express handlers for `/api/listings/search` and `/api/listings/locations` without changing the homepage listings handler.
+- `../bayonhub-api/src/modules/listings/router.ts` — Registered search and location routes before `/:id` so they do not collide with listing detail routing.
+- `src/api/listings.js` — Added `searchListings` and `fetchLocations` API helpers with localStorage fallback preservation.
+- `src/store/useListingStore.js` — Added search result, pagination, loading, and locations state plus C1 search/location actions without renaming existing actions.
+- `src/components/search/SearchFilters.jsx` — Allowed the location dropdown to use backend-provided locations while falling back to the static province list.
+- `src/pages/SearchPage.jsx` — Replaced client-side filtering with debounced backend search, URL sync, loading skeletons, total count, sorting, and previous/next pagination.
+- `src/pages/CategoryPage.jsx` — Switched category listing data to backend search results and added previous/next pagination while preserving the existing hero and filter UI.
+- `src/lib/translations.js` — Added missing Sprint C1 search and pagination strings in English and Khmer.
+
+## 2026-05-06 - Sprint C2: Listing Detail & Engagement
+- `../bayonhub-api/src/modules/listings/service.ts` — Added session-deduped view increments, similar listings, and seller-enriched listing detail responses without adding migrations.
+- `../bayonhub-api/src/modules/listings/controller.ts` — Added `/api/listings/:id/similar`, `{ views }` view-counter responses, and `{ success: true }` report responses.
+- `../bayonhub-api/src/modules/listings/router.ts` — Registered similar listings before detail routing and moved reports to optional auth while preserving the existing Report schema requirement.
+- `src/api/listings.js` — Added C2 API helpers for listing detail aliasing, similar listings, and session-aware view increments.
+- `src/store/useListingStore.js` — Added `similarListings` and `currentListingLoading`, plus actions for similar listings and updating local view counts.
+- `src/App.jsx` — Added a compatibility route for generated canonical `/buy/:province/:categorySlug/:slugAndId` listing URLs without deleting the existing route.
+- `src/pages/ListingPage.jsx` — Wired session-based view tracking, backend similar listings, and mobile sticky Save/Share/Report actions.
+- `src/components/listing/ListingDetail.jsx` — Hid thumbnail strips for single-image listings, aligned report reasons, and showed seller-specific Telegram/WhatsApp actions only when present.
+- `src/lib/translations.js` — Added missing Sprint C2 listing/report strings in English and Khmer.
+
+## 2026-05-06 - Sprint C3: Post & Manage Listings
+- `../bayonhub-api/src/modules/listings/validators.ts` — Made negotiable default safely for API posting payloads while preserving existing validation.
+- `../bayonhub-api/src/modules/listings/service.ts` — Added alias normalization for category/location/metadata, URL image support, draft save/publish services, and status-filtered my-listings queries.
+- `../bayonhub-api/src/modules/listings/controller.ts` — Added draft, publish, PATCH update, upload-image, and status-aware my-listings handlers.
+- `../bayonhub-api/src/modules/listings/router.ts` — Registered `/api/listings/draft`, `/api/listings/upload-image`, `PATCH /api/listings/:id`, and `PATCH /api/listings/:id/publish`.
+- `src/api/listings.js` — Added `markAsSold`, `saveDraft`, `publishDraft`, `uploadImage`, and status-aware `fetchMyListings`; updates now use PATCH.
+- `src/store/useListingStore.js` — Added `draftListing`, `saveDraft`, and `publishDraft`, and made `fetchMyListings` accept an optional status.
+- `src/components/posting/PostAdWizard.jsx` — Added authenticated 30-second backend draft autosave while preserving localStorage draft recovery and compressed image handling.
+- `src/components/dashboard/MyAdsTab.jsx` — Aligned management tabs/actions with Active, Sold, Expired, and Draft states and removed hardcoded mobile action-sheet text.
+- `src/pages/PostListingPage.jsx` — Added the routed posting page that renders the existing multi-step wizard directly at `/post`.
+- `src/pages/MyListingsPage.jsx` — Added the `/my-listings` page using the existing My Ads manager with auth gating.
+- `src/App.jsx` — Routed `/post` to `PostListingPage` and added `/my-listings`.
+- `src/lib/translations.js` — Added Sprint C3 post/listing/tab strings in English and Khmer.
+
+## 2026-05-06 - Sprint C4: Homepage Intelligence
+- `../bayonhub-api/src/modules/listings/service.ts` — Enhanced the existing homepage listings service response with featured, recent, new-today, trending category, and province-prioritized listing data without replacing the endpoint contract.
+- `src/api/listings.js` — Added `fetchHomepage` and normalized enhanced homepage payload fields while preserving the localStorage fallback path.
+- `src/store/useListingStore.js` — Added homepage intelligence state/actions for featured listings, recent listings, trending categories, new-today counts, and session-based recently viewed listings.
+- `src/pages/HomePage.jsx` — Added the new-today counter, featured horizontal row, trending categories, recent grid, and session-based recently viewed row while preserving existing homepage sections.
+- `src/pages/ListingPage.jsx` — Added listing-object tracking for the session recently viewed homepage row.
+- `src/lib/translations.js` — Added Sprint C4 homepage strings in English and Khmer.
+
+## 2026-05-07 - Sprint C5: My Account & Listings
+- `../bayonhub-api/prisma/schema.prisma` — Added the approved optional `User.province` field for account profiles.
+- `../bayonhub-api/prisma/migrations/20260507000000_add_user_province/migration.sql` — Added and applied the approved SQL migration for the user province field.
+- `../bayonhub-api/src/modules/users/router.ts` — Added `GET/PATCH /api/users/me`, `PATCH /api/users/me/password`, and avatar upload routing while preserving existing PUT compatibility routes.
+- `../bayonhub-api/src/modules/users/service.ts` — Added profile fetch/update, password-change validation, avatar upload, and account stats.
+- `../bayonhub-api/src/modules/listings/router.ts`, `../bayonhub-api/src/modules/listings/controller.ts`, `../bayonhub-api/src/modules/listings/service.ts` — Added authenticated `GET /api/listings/saved` using the existing SavedListing model.
+- `src/api/users.js` — Added `fetchMe`, profile update, password change, avatar upload, and saved-listing API compatibility with localStorage fallback.
+- `src/api/listings.js` — Added `fetchSavedListings` to the listings API layer while preserving save and unsave helpers.
+- `src/store/useUserStore.js` — Added profile and saved-listings state/actions for account pages.
+- `src/store/useListingStore.js` — Extended session recently viewed history to 20 listings and cleared the module-level history with the existing clear action.
+- `src/pages/AccountPage.jsx`, `src/pages/SavedListingsPage.jsx`, `src/pages/RecentlyViewedPage.jsx`, `src/pages/SettingsPage.jsx` — Added C5 account, saved, recent, and settings routes with loading, error, and empty states.
+- `src/App.jsx` — Added `/account`, `/saved`, `/recently-viewed`, and `/settings` routes without changing existing route paths.
+- `src/lib/translations.js` — Added Sprint C5 account, saved, recent, and settings strings in English and Khmer.
+
+## 2026-05-07 - Phase D.0 Account Audit Fix
+- `src/pages/AccountPage.jsx` — Added saved-listing loading on account mount and a compact saved-listings preview with a link to `/saved` so the account page shows profile and saved listings.
+
+## 2026-05-07 - Sprint D1: Admin & Operations
+- `../bayonhub-api/prisma/schema.prisma` — Added admin, ban, featured-listing, appeal, and moderation status fields/models for platform operations.
+- `../bayonhub-api/prisma/migrations/20260507030000_sprint_d1_admin_ops/migration.sql` — Applied the approved D1 admin operations migration to PostgreSQL.
+- `../bayonhub-api/src/middleware/auth.ts`, `../bayonhub-api/src/types/express.d.ts`, `../bayonhub-api/src/modules/auth/service.ts` — Exposed `isAdmin`, switched admin gating to `isAdmin`, and enforced banned-user login suspension.
+- `../bayonhub-api/src/modules/admin/router.ts`, `../bayonhub-api/src/modules/admin/service.ts` — Added D1 dashboard, listings moderation, reports, users, analytics, featured-listing, banned-user, and appeal endpoints while preserving legacy admin routes.
+- `../bayonhub-api/src/modules/listings/service.ts` — Auto-flags listings after three pending reports so public active-only discovery hides them.
+- `../bayonhub-api/src/modules/users/router.ts`, `../bayonhub-api/src/modules/users/service.ts` — Added banned-user appeal submission under `/api/users/me/appeal`.
+- `../bayonhub-api/prisma/seed.ts` — Marked the seeded admin as `isAdmin` and added `admin@bayonhub.com`.
+- `src/pages/AdminPage.jsx` — Added the D1 admin dashboard, listings, users, reports, featured, and analytics UI using existing API client auth.
+- `src/components/layout/Navbar.jsx` — Shows the admin navigation entry only when `user.isAdmin === true`.
+- `src/lib/translations.js` — Added D1 admin, appeal, and moderation-status strings in English and Khmer.
+
+## 2026-05-07 - Sprint D2: Seller Verification & Trust
+- `../bayonhub-api/prisma/schema.prisma` — Added approved phone OTP, seller verification, last-seen, verified-seller, and response-rate schema fields/models.
+- `../bayonhub-api/prisma/migrations/20260507040000_sprint_d2_trust_verification/migration.sql` — Applied the approved D2 trust and verification migration to PostgreSQL.
+- `../bayonhub-api/src/middleware/auth.ts`, `../bayonhub-api/src/types/express.d.ts` — Exposed trust fields on authenticated users and updated `lastSeen` on authenticated requests.
+- `../bayonhub-api/src/modules/auth/router.ts`, `../bayonhub-api/src/modules/auth/controller.ts`, `../bayonhub-api/src/modules/auth/service.ts` — Added dev OTP send/verify endpoints with rate limiting and phone verification persistence.
+- `../bayonhub-api/src/modules/listings/service.ts` — Enforced phone verification before posting and returned seller verification, response-rate, and last-seen fields on listing detail.
+- `../bayonhub-api/src/modules/messages/service.ts` — Recalculated seller response rate when conversations are created and when sellers send their first reply.
+- `../bayonhub-api/src/modules/users/router.ts`, `../bayonhub-api/src/modules/users/service.ts` — Added seller verification submit/status endpoints with compressed image upload handling.
+- `../bayonhub-api/src/modules/admin/router.ts`, `../bayonhub-api/src/modules/admin/service.ts` — Added admin seller-verification review and approve/reject endpoints.
+- `../bayonhub-api/src/modules/storefront/service.ts`, `../bayonhub-api/prisma/seed.ts` — Surfaced seller conversation counts for storefront trust display and seeded verified admin/seller defaults.
+- `src/api/users.js`, `src/store/useUserStore.js` — Added phone OTP and seller verification API/store actions with existing local fallback behavior preserved.
+- `src/pages/AccountPage.jsx` — Added phone verification and seller ID verification UI with loading, error, and status states.
+- `src/components/listing/ListingDetail.jsx`, `src/pages/StorefrontPage.jsx` — Displayed verified-seller, response-rate, and last-seen trust signals.
+- `src/api/listings.js`, `src/lib/translations.js` — Mapped phone-verification posting errors and added Sprint D2 trust strings in English and Khmer.
+
+## 2026-05-07 - Sprint D3: Listing Quality & SEO
+- `src/pages/ListingPage.jsx` — Completed listing detail SEO with absolute OG image URLs, Twitter summary-card tags, and stable UUID extraction for canonical listing URLs.
+- `src/pages/HomePage.jsx` — Added Twitter summary-card tags and absolute homepage OG image URLs.
+- `src/pages/SearchPage.jsx` — Added search-page description, OG, Twitter, and canonical metadata while preserving backend search behavior.
+- `src/lib/translations.js` — Added the search SEO description key in English and Khmer.
+- `../bayonhub-api/src/modules/sitemap/router.ts` — Served `/sitemap.xml` as cached XML directly, included category and `/listing/:id` URLs, and added a Sharp-backed `/og-image/:listingId` PNG endpoint.
+
+## 2026-05-07 - Sprint D4: Notifications & Re-engagement
+- `../bayonhub-api/prisma/schema.prisma` — Added Notification and Telegram chat ID schema fields for D4 notifications.
+- `../bayonhub-api/prisma/migrations/20260507050000_sprint_d4_notifications/migration.sql`, `../bayonhub-api/prisma/migrations/20260507051000_sprint_d4_telegram_chat/migration.sql` — Applied the approved D4 notification and Telegram migrations.
+- `../bayonhub-api/src/modules/messages/notifications.router.ts`, `../bayonhub-api/src/modules/messages/notifications.service.ts` — Added authenticated notification list, read-all, read-one, delete, and notification creation helpers.
+- `../bayonhub-api/src/lib/telegram.ts`, `../bayonhub-api/src/modules/users/router.ts`, `../bayonhub-api/src/modules/users/service.ts` — Added Telegram connect links, webhook handling, and chat ID persistence.
+- `../bayonhub-api/src/modules/messages/service.ts` — Created in-app and Telegram notifications when buyers send sellers new messages.
+- `../bayonhub-api/src/modules/listings/service.ts` — Added saved-listing price-drop notifications with 24-hour per-listing dedupe.
+- `../bayonhub-api/prisma/migrations/20260507052000_sprint_d4_listing_views/migration.sql` — Applied the approved listing-view event migration for accurate daily digest notifications.
+- `../bayonhub-api/src/jobs/listingExpiry.ts` — Added three-day listing expiry reminder notifications in the existing daily job and an 08:00 ICT daily digest job based on listing-view events.
+- `../bayonhub-api/prisma/migrations/20260507053000_sprint_d4_push_subscriptions/migration.sql` — Added the pending PushSubscription migration for browser push subscriptions.
+- `../bayonhub-api/src/lib/push.ts`, `../bayonhub-api/src/config/env.ts` — Added VAPID-backed push subscription persistence and delivery helpers.
+- `src/api/notifications.js`, `src/store/useNotificationStore.js`, `src/pages/NotificationsPage.jsx` — Added notification API helpers, Zustand state, browser push subscription actions, and the routed notification inbox.
+- `src/components/layout/Navbar.jsx` — Added the notification bell dropdown with unread badge, last 10 notifications, mark-all-read, and view-all link.
+- `src/api/users.js`, `src/store/useUserStore.js`, `src/pages/AccountPage.jsx` — Added Telegram connect action, account-page button, and browser push enablement.
+- `src/App.jsx`, `src/lib/translations.js`, `public/push-handler.js`, `vite.config.js` — Added the `/notifications` route, D4 notification strings in English and Khmer, and the imported service-worker push handlers while preserving Workbox runtime caching.
+
+## 2026-05-07 - Sprint D5: Social & Viral Growth
+- `../bayonhub-api/prisma/schema.prisma` — Added pending Follow and Referral models plus user referral-code and Plus-expiry fields.
+- `../bayonhub-api/prisma/migrations/20260507060000_sprint_d5_social_growth/migration.sql` — Added the pending D5 social-growth migration for approval before applying.
+- `../bayonhub-api/src/modules/users/router.ts`, `../bayonhub-api/src/modules/users/service.ts` — Added referral summary/generation, follow/unfollow, following list, and follower-count endpoints.
+- `../bayonhub-api/src/modules/auth/controller.ts`, `../bayonhub-api/src/modules/auth/service.ts`, `../bayonhub-api/src/modules/auth/validators.ts` — Captured optional referral codes during registration without changing token behavior.
+- `../bayonhub-api/src/modules/listings/service.ts`, `../bayonhub-api/src/modules/storefront/service.ts` — Added first-listing referral rewards, followed-seller new-listing notifications, and seller follower counts.
+- `src/api/auth.js`, `src/api/users.js`, `src/store/useUserStore.js` — Added referral and follow API/store helpers while preserving localStorage fallback behavior.
+- `src/pages/AccountPage.jsx`, `src/pages/FollowingPage.jsx`, `src/pages/StorefrontPage.jsx`, `src/components/listing/ListingDetail.jsx` — Added referral UI, following page, seller follow controls, follower counts, and share-card fallback.
+- `src/App.jsx`, `src/api/listings.js`, `src/lib/translations.js` — Added `/following`, normalized follower counts, and D5 social/referral strings in English and Khmer.
+
+## 2026-05-07 - Sprint E0: Free Tier Limits
+- `../bayonhub-api/src/modules/users/service.ts` — Added the reusable `isUserPlus(userId)` helper based on `plusUntil`.
+- `../bayonhub-api/src/modules/listings/service.ts` — Enforced Free daily listing limits, Free/Plus photo caps, and automatic 30-day or 90-day listing expiry on create.
+- `../bayonhub-api/src/modules/listings/router.ts` — Raised multipart image capacity to 20 so Plus listings can submit their full photo allowance while service-level limits still protect Free users.
+- `../bayonhub-api/src/app.ts` — Added exact monetization-limit error responses with `{ error, message }` without changing the default error shape.
+
+## 2026-05-07 - Sprint E1: Plus Feature Gates
+- `../bayonhub-api/src/modules/storefront/service.ts`, `../bayonhub-api/src/modules/storefront/controller.ts` — Gated public storefront access behind active Plus membership and returned exact `PLUS_REQUIRED` responses.
+- `../bayonhub-api/src/modules/users/service.ts` — Blocked WhatsApp and Telegram profile contact-link updates for non-Plus users.
+- `../bayonhub-api/src/modules/listings/service.ts` — Added seller `isPlusMember` metadata to listing detail responses for frontend contact-link gating.
+- `../bayonhub-api/src/modules/sellers/service.ts` — Limited free seller analytics to last-seven-day total views while preserving full analytics for Plus sellers.
+- `src/api/storefront.js`, `src/pages/StorefrontPage.jsx` — Preserved local fallback behavior and rendered a Plus upgrade prompt for locked storefronts.
+- `src/components/listing/ListingDetail.jsx` — Hid WhatsApp and Telegram listing contact buttons unless the seller is an active Plus member.
+- `src/pages/AccountPage.jsx`, `src/pages/DashboardPage.jsx`, `src/components/dashboard/MyAdsTab.jsx` — Added locked profile contact-link controls and free-tier analytics teasers.
+- `src/lib/translations.js` — Added Sprint E1 Plus gate strings in English and Khmer.
+
+## 2026-05-08 - Sprint E2: Upgrade Page & Payment Instructions
+- `src/pages/UpgradePage.jsx` — Added the `/upgrade` Plus page with comparison table, ABA/ACLEDA/Wing payment instructions, compressed receipt upload, success, error, and empty states.
+- `src/App.jsx` — Added the lazy `/upgrade` route without changing existing route paths.
+- `src/pages/AccountPage.jsx` — Added the non-Plus account CTA linking to the Plus upgrade flow and an active Plus state.
+- `src/lib/translations.js` — Added Sprint E2 Plus and payment strings in English and Khmer.
+- `public/assets/aba-qr.png` — Added the requested static ABA QR placeholder image for manual payment instructions.
+
+## 2026-05-08 - Sprint E3: Payment Submission Backend
+- `../bayonhub-api/prisma/schema.prisma` — Added manual Plus payment review fields to the existing Payment model and added APPROVED/REJECTED enum values for the existing PaymentStatus enum.
+- `../bayonhub-api/prisma/migrations/20260508030000_sprint_e3_plus_payments/migration.sql` — Added the pending E3 SQL migration for review; not applied.
+- `../bayonhub-api/src/modules/payments/service.ts` — Added Plus receipt submission, image validation/upload, payment history, and admin email/Telegram notification helpers.
+- `../bayonhub-api/src/modules/payments/router.ts` — Added authenticated `POST /api/payments/submit` and `GET /api/payments/me` while preserving existing promotion payment routes.
+- `../bayonhub-api/src/config/env.ts`, `../bayonhub-api/.env.example` — Added optional admin notification configuration for Plus payment review.
+
+## 2026-05-08 - Sprint E4: Admin Payment Approval
+- `../bayonhub-api/src/modules/admin/service.ts` — Added admin Plus payment listing, approval, rejection, plusUntil stacking, user notifications, and Telegram delivery.
+- `../bayonhub-api/src/modules/admin/router.ts` — Added `GET /api/admin/payments`, `POST /api/admin/payments/:id/approve`, and `POST /api/admin/payments/:id/reject`.
+- `src/pages/AdminPage.jsx` — Added the `/admin/payments` panel with Pending, Approved, and Rejected tabs, screenshot preview, and approve/reject modals.
+- `src/App.jsx` — Added the lazy `/admin/payments` route without changing existing admin routing.
+- `src/lib/translations.js` — Added Sprint E4 admin payment strings in English and Khmer.
+- Migration application note — `npx prisma migrate deploy` was retried after starting Docker Postgres and applied `20260508030000_sprint_e3_plus_payments` successfully.
+
+## 2026-05-08 - Sprint E5: Admin Gift Panel
+- `../bayonhub-api/prisma/schema.prisma` — Added pending `PlusGift` model and `User.isLifetimePlus` field for lifetime Plus grants.
+- `../bayonhub-api/prisma/migrations/20260508040000_sprint_e5_plus_gifts/migration.sql` — Added the E5 migration SQL for review; not applied.
+- `../bayonhub-api/src/modules/users/service.ts`, `../bayonhub-api/src/modules/auth/service.ts` — Updated Plus membership selection and `isUserPlus()` to include lifetime Plus.
+- `../bayonhub-api/src/modules/admin/router.ts`, `../bayonhub-api/src/modules/admin/service.ts` — Added admin user search, gift Plus, revoke Plus, and gift log endpoints.
+- `src/pages/AdminPage.jsx` — Added the `/admin/gift-plus` admin panel with user search, gift buttons, note field, and gift log table.
+- `src/App.jsx` — Added the lazy `/admin/gift-plus` route without changing existing admin routing.
+- `src/lib/translations.js` — Added E5 gift panel strings in English and Khmer.
+
+## 2026-05-08 - Sprint E6: Plus Badges & Bump to Top
+- `../bayonhub-api/prisma/schema.prisma` — Added pending `Listing.bumpedAt` for once-per-day Plus bump tracking.
+- `../bayonhub-api/prisma/migrations/20260508050000_sprint_e6_plus_badges_bump/migration.sql` — Added the E6 bump timestamp migration SQL for review; not applied.
+- `../bayonhub-api/src/modules/listings/router.ts`, `../bayonhub-api/src/modules/listings/controller.ts`, `../bayonhub-api/src/modules/listings/service.ts` — Added `POST /api/listings/:id/bump`, Plus ownership checks, UTC daily guard, Plus/verified seller response badges, and Plus-first search ordering.
+- `../bayonhub-api/src/modules/users/router.ts`, `../bayonhub-api/src/modules/users/service.ts` — Added public user profile response support and Plus badge fields for profile/following data.
+- `../bayonhub-api/src/modules/storefront/service.ts` — Added Plus badge metadata to storefront responses and storefront listings.
+- `src/api/listings.js`, `src/store/useListingStore.js` — Added listing bump API/store actions and normalized Plus/verified seller fields.
+- `src/components/ui/Badge.jsx` — Added reusable Plus and Verified badge types.
+- `src/components/listing/ListingCard.jsx`, `src/components/listing/ListingListItem.jsx`, `src/components/listing/ListingDetail.jsx` — Rendered Plus/Verified badges and added the owner Bump to Top listing-detail action.
+- `src/pages/StorefrontPage.jsx`, `src/pages/FollowingPage.jsx` — Rendered seller Plus/Verified badges in storefront and followed-seller surfaces.
+- `src/lib/translations.js` — Added E6 badge and bump strings in English and Khmer.
