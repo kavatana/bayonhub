@@ -82,6 +82,20 @@ export async function updateProfile(data) {
   }
 }
 
+export async function deleteAccount() {
+  if (!hasApiBackend()) {
+    localStorage.removeItem(STORAGE_KEYS.authToken)
+    localStorage.removeItem(STORAGE_KEYS.authUser)
+    return { success: true }
+  }
+  try {
+    const response = await client.delete("/api/users/me")
+    return response.data
+  } catch (err) {
+    throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
+  }
+}
+
 export async function changePassword(currentPasswordOrData, newPasswordValue) {
   const data = typeof currentPasswordOrData === "object"
     ? currentPasswordOrData

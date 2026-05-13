@@ -3,12 +3,15 @@ import type { RequestHandler } from "express"
 import { LeadType, ReportReason } from "@prisma/client"
 
 import { getPresignedUploadUrl, processAndUpload } from "../../lib/s3"
+import { createHttpError } from "../../lib/errors"
 import { validateMagicBytes } from "../../middleware/upload"
+import { maskPhone, withoutEmail } from "../../utils/safeUser"
 import {
   bumpListing as bumpListingService,
   createLead as createLeadService,
   createListing as createListingService,
   deleteListing as deleteListingService,
+  getFeaturedListings as getFeaturedListingsService,
   getListing as getListingService,
   getListingLocations as getListingLocationsService,
   getListings as getListingsService,
@@ -37,12 +40,6 @@ function parseBoolean(value: unknown): boolean | undefined {
   if (value === "true" || value === "1") return true
   if (value === "false" || value === "0") return false
   return undefined
-}
-
-function createHttpError(status: number, message: string): Error & { status: number } {
-  const error = new Error(message) as Error & { status: number }
-  error.status = status
-  return error
 }
 
 function getParamId(value: string | string[] | undefined): string {
@@ -93,6 +90,15 @@ export const searchListings: RequestHandler = async (req, res, next) => {
   }
 }
 
+export const getFeaturedListings: RequestHandler = async (_req, res, next) => {
+  try {
+    const listings = await getFeaturedListingsService()
+    res.status(200).json({ data: listings })
+  } catch (error) {
+    next(error)
+  }
+}
+
 export const getListingLocations: RequestHandler = async (_req, res, next) => {
   try {
     const locations = await getListingLocationsService()
@@ -105,7 +111,19 @@ export const getListingLocations: RequestHandler = async (_req, res, next) => {
 export const getListing: RequestHandler = async (req, res, next) => {
   try {
     const listing = await getListingService(getParamId(req.params.id))
-    res.status(200).json(listing)
+    const isAuth = Boolean(req.user)
+    // F4.1 — mask seller phone for unauthenticated callers
+    // F4.2 — FULL_LISTING_INCLUDE does not select email, so no stripping needed here;
+    //         email guard is applied at the user profile endpoint (users router /:id)
+    const sellerPhone = (listing.seller as { phone?: string | null }).phone
+    const whatsappNumber = (listing as { whatsappNumber?: string | null }).whatsappNumber
+    const seller = isAuth
+      ? listing.seller
+      : {
+          ...listing.seller,
+          phone: maskPhone(sellerPhone),
+        }
+    res.status(200).json({ ...listing, seller, whatsappNumber: isAuth ? whatsappNumber : maskPhone(whatsappNumber) })
   } catch (error) {
     next(error)
   }
@@ -298,7 +316,8 @@ export const uploadLocal: RequestHandler = async (req, res, next) => {
     if (!(await validateMagicBytes(req.file.buffer, req.file.mimetype))) {
       throw createHttpError(400, "Invalid image format")
     }
-    const result = await processAndUpload(req.file.buffer, `listings/${randomUUID()}.webp`)
+    // F3.4 — storage key scoped to userId so uploads are isolated per user
+    const result = await processAndUpload(req.file.buffer, `listings/${req.user!.id}/${randomUUID()}.webp`)
     res.status(201).json(result)
   } catch (error) {
     next(error)

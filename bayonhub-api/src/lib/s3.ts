@@ -38,11 +38,15 @@ export async function processAndUpload(
   buffer: Buffer,
   key: string,
 ): Promise<{ url: string; thumbUrl: string }> {
+  // F3.3 — .rotate() auto-orients from EXIF then strips all EXIF metadata
+  // when re-encoding to WebP. GPS, camera model, timestamps are all removed.
   const webp = await sharp(buffer)
+    .rotate()                                  // read EXIF orientation, then discard EXIF
     .resize({ width: 1200, withoutEnlargement: true })
     .webp({ quality: 82 })
     .toBuffer()
   const thumb = await sharp(buffer)
+    .rotate()                                  // same EXIF strip for thumbnails
     .resize({ width: 400, withoutEnlargement: true })
     .webp({ quality: 70 })
     .toBuffer()
@@ -75,6 +79,10 @@ export async function processAndUpload(
     throw error
   }
 
+  // F3.5 — Dev fallback: files served directly from Express at localhost.
+  // TODO: In production this path is unreachable (R2 is required). If adding a
+  // staging environment, wire a real CDN here — never serve user uploads from
+  // the same Express origin in production (no Content-Disposition isolation).
   const filename = key.replace(/^\/+/, "")
   const thumbFilename = filename.replace(".webp", "-thumb.webp")
   fs.mkdirSync(path.dirname(path.join(LOCAL_UPLOAD_DIR, filename)), { recursive: true })
@@ -121,7 +129,9 @@ export async function deleteFromStorage(key: string): Promise<void> {
 }
 
 export async function uploadPrivateDocument(buffer: Buffer, key: string): Promise<string> {
+  // F3.3 — .rotate() strips EXIF (including ID document metadata) before storage
   const webp = await sharp(buffer)
+    .rotate()                                  // read EXIF orientation, then discard EXIF
     .resize({ width: 1600, withoutEnlargement: true })
     .webp({ quality: 84 })
     .toBuffer()

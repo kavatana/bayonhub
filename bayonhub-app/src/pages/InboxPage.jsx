@@ -5,6 +5,7 @@ import { useTranslation } from "../hooks/useTranslation"
 import { getListingImage, timeAgo } from "../lib/utils"
 import { useAuthStore } from "../store/useAuthStore"
 import { useMessageStore } from "../store/useMessageStore"
+import { useUIStore } from "../store/useUIStore"
 
 function SkeletonListItem() {
   return (
@@ -44,7 +45,9 @@ export default function InboxPage() {
 
   useEffect(() => {
     if (!isAuthenticated) {
-      navigate("/")
+      useUIStore.getState().setPendingAction({ type: "inbox" })
+      useUIStore.getState().toggleAuthModal(true)
+      navigate("/", { replace: true })
       return
     }
     fetchConversations()

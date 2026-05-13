@@ -4,10 +4,14 @@ import jwt from "jsonwebtoken"
 import { Prisma, Role, VerificationTier } from "@prisma/client"
 
 import { generateAndStoreOTP, verifyAndConsumeOTP } from "../../lib/otp"
+import { SELLER_INVITE_EMAIL, sendPasswordResetEmail } from "../../lib/emailTemplates"
+import { sendEmail } from "../../lib/email"
 import { generateUserSlug } from "../../lib/slug"
 import { sendLocalSms } from "../../lib/sms"
 import { prisma } from "../../lib/prisma"
 import { redis } from "../../config/redis"
+import { recordLoginFailure, clearLoginFailures } from "../../middleware/rateLimiter"
+import { safeUser } from "../../utils/safeUser"
 
 const isProduction = process.env.NODE_ENV === "production"
 
@@ -139,17 +143,29 @@ export async function registerUser(
   const slug = await generateUserSlug(name, user.id)
   await prisma.user.update({ where: { id: user.id }, data: { slug } })
 
+  if (user.email) {
+    const email = SELLER_INVITE_EMAIL(user.name, "BayonHub")
+    sendEmail({
+      to: user.email,
+      subject: "Welcome to BayonHub — Cambodia's Premier Marketplace",
+      html: email.html,
+    }).catch(() => {})
+  }
+
   const tokens = await generateTokens(user.id, user.role, user.verificationTier)
   setAuthCookies(res, tokens)
   return { user: { ...user, slug }, accessToken: tokens.accessToken }
 }
 
 export async function sendOTP(phone: string): Promise<{ success: true }> {
-  const user = await prisma.user.findUnique({ where: { phone }, select: { id: true } })
+  const user = await prisma.user.findUnique({ where: { phone }, select: { id: true, email: true, name: true } })
   if (!user) throw createHttpError(404, "User not found")
 
   const code = await generateAndStoreOTP(phone)
   await sendLocalSms(phone, code)
+  if (user.email) {
+    sendPasswordResetEmail(user.email, user.name, code).catch(() => {})
+  }
   
   return { success: true }
 }
@@ -252,7 +268,9 @@ export async function resetPassword(
     },
   })
 
-  // Clear existing sessions to force re-login on other devices
+  // F1.6 — Session invalidation: delete all refresh tokens so other devices are signed out
+  await prisma.refreshToken.deleteMany({ where: { userId: user.id } })
+  // Clear legacy redis key as well
   await redis.del(`refresh_token:${user.id}`)
 
   return { success: true }
@@ -262,19 +280,26 @@ export async function loginUser(
   res: Response,
   phone: string,
   password: string,
+  ip?: string,
 ): Promise<{ user: SafeUser; accessToken: string }> {
   const user = await prisma.user.findUnique({ where: { phone } })
-  if (!user) throw createHttpError(401, "Invalid credentials")
+  if (!user) {
+    if (ip) recordLoginFailure(ip)
+    throw createHttpError(401, "Invalid credentials")
+  }
   const banned = user.banReason && (!user.bannedUntil || user.bannedUntil > new Date())
   if (banned) throw createHttpError(403, "Account suspended")
 
   const match = await bcrypt.compare(password, user.passwordHash)
-  if (!match) throw createHttpError(401, "Invalid credentials")
+  if (!match) {
+    if (ip) recordLoginFailure(ip)
+    throw createHttpError(401, "Invalid credentials")
+  }
 
+  if (ip) clearLoginFailures(ip)
   const tokens = await generateTokens(user.id, user.role, user.verificationTier)
   setAuthCookies(res, tokens)
-  const { passwordHash: _passwordHash, ...safeUser } = user
-  return { user: safeUser, accessToken: tokens.accessToken }
+  return { user: safeUser(user), accessToken: tokens.accessToken }
 }
 
 async function findStoredRefreshToken(
@@ -337,6 +362,12 @@ export async function logoutUser(refreshTokenFromCookie?: string): Promise<{ suc
 export function clearAuthCookies(res: Response): void {
   res.cookie("accessToken", "", { ...cookieOptions, maxAge: 0 })
   res.cookie("refreshToken", "", { ...cookieOptions, maxAge: 0 })
+}
+
+// F1.7 — Logout from all devices: delete all refresh tokens for this user
+export async function logoutAllSessions(userId: string): Promise<{ message: string }> {
+  await prisma.refreshToken.deleteMany({ where: { userId } })
+  return { message: "Logged out from all devices" }
 }
 
 export async function getMe(userId: string): Promise<SafeUser> {

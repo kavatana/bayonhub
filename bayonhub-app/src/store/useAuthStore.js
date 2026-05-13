@@ -195,6 +195,9 @@ export const useAuthStore = create((set, get) => ({
 
 }))
 
+export const selectIsPlusMember = (state) =>
+  Boolean(state.user?.plusUntil && new Date(state.user.plusUntil) > new Date())
+
 if (typeof window !== "undefined" && import.meta.env.DEV) {
   window.authStore = useAuthStore
 }

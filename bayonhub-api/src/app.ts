@@ -23,7 +23,7 @@ import merchantRouter from "./modules/merchant/router"
 import sitemapRouter from "./modules/sitemap/router"
 import storefrontRouter from "./modules/storefront/router"
 import statsRouter from "./modules/stats/router"
-import { apiLimiter } from "./middleware/rateLimiter"
+import { apiLimiter, publicListingsLimiter } from "./middleware/rateLimiter"
 import { setCsrfCookie, verifyCsrfToken } from "./middleware/csrf"
 import prerenderMiddleware from "./middleware/prerender"
 import path from "path"
@@ -32,28 +32,80 @@ import fs from "fs"
 export const app = express()
 app.set("trust proxy", 1)
 
+// F2.5 — Helmet with full security header suite
+const IS_PROD = env.nodeEnv === "production"
 app.use(helmet({
-  contentSecurityPolicy: false, // Prerender.io and some of our Three.js assets need flexibility
+  // Content Security Policy
+  contentSecurityPolicy: IS_PROD ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        // Allow inline scripts only via nonce — nonce middleware sets res.locals.cspNonce
+        // GSAP CDN used by frontend (loaded client-side, not server-side)
+      ],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https://media.bayonhub.com", "https://*.r2.cloudflarestorage.com"],
+      connectSrc: ["'self'", env.frontendUrl],
+      mediaSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      formAction: ["'self'"],
+      baseUri: ["'self'"],
+      upgradeInsecureRequests: IS_PROD ? [] : null,
+    },
+  } : false,  // Disabled in dev for easier debugging
+  // HTTP Strict Transport Security — 2 years, includeSubDomains
+  hsts: IS_PROD ? {
+    maxAge: 63_072_000, // 2 years in seconds
+    includeSubDomains: true,
+    preload: true,
+  } : false,
+  // Prevent MIME-type sniffing
+  noSniff: true,
+  // Don't expose Express in X-Powered-By
+  hidePoweredBy: true,
+  // Deny framing globally
+  frameguard: { action: "deny" },
+  // Referrer policy
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  // XSS filter (legacy browsers)
+  xssFilter: true,
 }))
 app.use(prerenderMiddleware)
+
+if (process.env.NODE_ENV === "production") {
+  app.use((req, res, next) => {
+    if (req.headers["x-forwarded-proto"] !== "https") {
+      res.redirect(301, `https://${req.headers.host}${req.url}`)
+      return
+    }
+    next()
+  })
+}
+
+// F2.4 — CORS: strict whitelist — bayonhub.com + localhost only
+const CORS_WHITELIST = new Set(
+  [
+    env.frontendUrl,                                  // e.g. https://bayonhub.com
+    env.frontendUrl.endsWith("/")
+      ? env.frontendUrl.slice(0, -1)
+      : env.frontendUrl,
+    IS_PROD ? null : "http://localhost:5173",          // Vite dev server
+    IS_PROD ? null : "http://localhost:4173",          // Vite preview
+    IS_PROD ? null : "http://127.0.0.1:5173",
+  ].filter((v): v is string => v !== null && v.length > 0)
+)
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      const allowedOrigins = [
-        env.frontendUrl,
-        env.frontendUrl.replace("https://", "https://www."),
-        "http://localhost:5173",
-        "http://localhost:4173",
-      ].filter(Boolean)
-
+      // Allow server-to-server requests (no origin) e.g. webhooks, cron jobs
       if (!origin) return callback(null, true)
-
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true)
-      } else {
-        console.warn("[CORS] Blocked origin:", origin)
-        callback(new Error(`CORS: Origin ${origin} not allowed`))
-      }
+      if (CORS_WHITELIST.has(origin)) return callback(null, true)
+      // Block everything else
+      callback(new Error(`CORS: Origin ${origin} not allowed`))
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -64,7 +116,14 @@ app.use(cookieParser())
 app.use(passport.initialize())
 app.use(setCsrfCookie)
 app.use(verifyCsrfToken)
-app.use(express.json({ limit: "10kb" }))
+app.use("/api/payments/khqr/webhook", express.raw({ type: "application/json", limit: "10kb" }))
+app.use((req, res, next) => {
+  if (req.path === "/api/payments/khqr/webhook") {
+    next()
+    return
+  }
+  express.json({ limit: "10kb" })(req, res, next)
+})
 
 app.use((req, _res, next) => {
   req.headers["x-request-id"] =
@@ -87,6 +146,10 @@ if (env.nodeEnv !== "production") {
   app.use("/uploads", express.static("public/uploads"))
 }
 
+// F1.3 — Exempt public listing read routes: 300 req/min (before global limiter)
+app.use("/api/listings/featured", publicListingsLimiter)
+app.get("/api/listings", publicListingsLimiter)
+// Global API rate limit: 100 req/min
 app.use("/api/", apiLimiter)
 app.use("/api/auth", authRouter)
 app.use("/api/listings", listingsRouter)
@@ -157,16 +220,21 @@ app.use((_req, res) => {
 })
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
-  const status = err.status || err.statusCode || 500
-  const message =
-    env.nodeEnv === "production" && status === 500
-      ? "Internal server error"
-      : err.message
-  if (err.publicError) {
-    res.status(status).json({ error: err.publicError, message })
+  const uploadLimitStatus = err.code === "LIMIT_FILE_SIZE" ? 413 : undefined
+  const uploadValidationStatus =
+    typeof err.message === "string" && err.message.startsWith("File type ") ? 400 : undefined
+  const status = uploadLimitStatus || uploadValidationStatus || err.status || err.statusCode || 500
+  if (status === 500 && process.env.NODE_ENV === "production") {
+    res.status(500).json({
+      error: "SERVER_ERROR",
+      message: "Something went wrong. Please try again.",
+    })
     return
   }
-  res.status(status).json({ error: message, code: err.code })
+  res.status(status).json({
+    error: err.error || err.publicError || "ERROR",
+    message: err.message || "An error occurred",
+  })
 }
 
 app.use(errorHandler)

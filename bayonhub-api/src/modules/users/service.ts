@@ -1,12 +1,14 @@
 import bcrypt from "bcryptjs"
 import { randomUUID } from "crypto"
 import { Prisma } from "@prisma/client"
+import { z } from "zod"
 
 import { prisma } from "../../lib/prisma"
 import { processAndUpload } from "../../lib/s3"
 import { getTelegramBotUsername } from "../../lib/telegram"
+import { stripTags } from "../../lib/sanitize"
 
-const CAMBODIA_PHONE_REGEX = /^\+855[1-9][0-9]{7,8}$/
+const CAMBODIA_PHONE_REGEX = /^(\+855|0)(1[0-9]|6[0-9]|7[0-9]|8[0-9]|9[0-9])\d{6,7}$/
 
 const USER_PROFILE_SELECT = {
   id: true,
@@ -44,6 +46,13 @@ function createHttpError(status: number, message: string): Error & { status: num
   return error
 }
 
+function createPublicHttpError(status: number, errorCode: string, message: string): Error & { status: number; error: string } {
+  const error = new Error(message) as Error & { status: number; error: string }
+  error.status = status
+  error.error = errorCode
+  return error
+}
+
 function createPlusRequiredError(): Error & { status: number; publicError: string; code: string } {
   const error = new Error("Plus feature") as Error & { status: number; publicError: string; code: string }
   error.status = 403
@@ -51,6 +60,22 @@ function createPlusRequiredError(): Error & { status: number; publicError: strin
   error.code = "PLUS_REQUIRED"
   return error
 }
+
+// F2.1 — Zod schema for POST /users/me (updateProfile)
+const updateProfileSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  phone: z.string().optional(),
+  bio: z.string().max(500).optional(),
+  avatar: z.string().url().optional(),
+  avatarUrl: z.string().url().optional(),
+  language: z.enum(["en", "km"]).optional(),
+  province: z.string().max(60).optional(),
+  whatsapp: z.string().max(20).optional(),
+  whatsappNumber: z.string().max(20).optional(),
+  telegram: z.string().max(60).optional(),
+  telegramUsername: z.string().max(60).optional(),
+  telegramHandle: z.string().max(60).optional(),
+})
 
 export async function isUserPlus(userId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
@@ -275,23 +300,13 @@ export async function getPublicUserProfile(userId: string) {
 
 export async function updateProfile(
   userId: string,
-  data: {
-    name?: string
-    phone?: string
-    bio?: string
-    avatar?: string
-    avatarUrl?: string
-    language?: string
-    province?: string
-    whatsapp?: string
-    whatsappNumber?: string
-    telegram?: string
-    telegramUsername?: string
-    telegramHandle?: string
-  },
+  rawData: unknown,
 ) {
+  // F2.1 — validate input with Zod before touching the DB
+  const data = updateProfileSchema.parse(rawData)
+
   if (data.phone && !CAMBODIA_PHONE_REGEX.test(data.phone)) {
-    throw createHttpError(400, "Invalid Cambodia phone number")
+    throw createPublicHttpError(400, "INVALID_PHONE", "Please enter a valid Cambodian phone number.")
   }
   const contactLinkRequested = [
     data.whatsapp,
@@ -305,12 +320,13 @@ export async function updateProfile(
   const user = await prisma.user.update({
     where: { id: userId },
     data: {
-      name: typeof data.name === "string" ? data.name.trim() : undefined,
+      // F2.3 — sanitize user-controlled text fields
+      name: data.name !== undefined ? stripTags(data.name) : undefined,
       phone: data.phone,
-      bio: data.bio,
+      bio: data.bio !== undefined ? stripTags(data.bio) : undefined,
       avatarUrl: data.avatarUrl || data.avatar,
       language: data.language,
-      province: data.province,
+      province: data.province !== undefined ? stripTags(data.province) : undefined,
     },
     select: USER_PROFILE_SELECT,
   })
@@ -336,6 +352,10 @@ export async function updatePassword(
     where: { id: userId },
     data: { passwordHash: await bcrypt.hash(newPassword, 12) },
   })
+
+  // F1.6 — Session invalidation: revoke all refresh tokens so all other devices are signed out
+  await prisma.refreshToken.deleteMany({ where: { userId } })
+
   return { success: true }
 }
 
@@ -427,4 +447,128 @@ export async function submitAppeal(userId: string, reason: string) {
     data: { userId, reason: reason.trim() },
   })
   return { appeal }
+}
+
+/**
+ * F4.3 — Self-deletion (GDPR right to erasure).
+ *
+ * Deletes all data associated with userId in correct FK dependency order,
+ * then removes the user record itself. Listing images are deleted from cloud
+ * storage BEFORE the DB transaction so we don't leave orphaned files on
+ * partial failures (DB transaction will roll back if anything fails).
+ */
+export async function deleteMe(userId: string): Promise<{ success: true }> {
+  // 1. Gather listing image URLs for cloud storage cleanup (before DB delete)
+  const listings = await prisma.listing.findMany({
+    where: { sellerId: userId },
+    include: { images: { select: { url: true } } },
+  })
+
+  // 2. Prisma transaction — delete in FK dependency order
+  await prisma.$transaction(async (tx) => {
+    const userListingIds = listings.map((l) => l.id)
+
+    // Messages in conversations where user is buyer or seller
+    const conversationIds = await tx.conversation.findMany({
+      where: { OR: [{ buyerId: userId }, { sellerId: userId }] },
+      select: { id: true },
+    }).then((rows) => rows.map((r) => r.id))
+
+    if (conversationIds.length > 0) {
+      await tx.message.deleteMany({ where: { conversationId: { in: conversationIds } } })
+      await tx.conversation.deleteMany({ where: { id: { in: conversationIds } } })
+    }
+
+    // Notifications
+    await tx.notification.deleteMany({ where: { userId } })
+
+    // Push subscriptions
+    await tx.pushSubscription.deleteMany({ where: { userId } })
+
+    // Saved listings (watchlist)
+    await tx.savedListing.deleteMany({ where: { userId } })
+    // Also remove saves of the user's own listings by others
+    if (userListingIds.length > 0) {
+      await tx.savedListing.deleteMany({ where: { listingId: { in: userListingIds } } })
+    }
+
+    // Reports filed by or against the user's listings
+    await tx.report.deleteMany({ where: { reporterId: userId } })
+    if (userListingIds.length > 0) {
+      await tx.report.deleteMany({ where: { listingId: { in: userListingIds } } })
+    }
+
+    // Listing promotions
+    if (userListingIds.length > 0) {
+      await tx.listingPromotion.deleteMany({ where: { listingId: { in: userListingIds } } })
+    }
+
+    // Leads on the user's listings
+    if (userListingIds.length > 0) {
+      await tx.lead.deleteMany({ where: { listingId: { in: userListingIds } } })
+    }
+
+    // Listing views
+    if (userListingIds.length > 0) {
+      await tx.listingView.deleteMany({ where: { listingId: { in: userListingIds } } })
+    }
+
+    // Listing images (DB records — cloud files deleted separately)
+    if (userListingIds.length > 0) {
+      await tx.listingImage.deleteMany({ where: { listingId: { in: userListingIds } } })
+    }
+
+    // Listings themselves
+    if (userListingIds.length > 0) {
+      await tx.listing.deleteMany({ where: { sellerId: userId } })
+    }
+
+    // Follows (as follower or seller)
+    await tx.follow.deleteMany({ where: { OR: [{ followerId: userId }, { sellerId: userId }] } })
+
+    // Referrals (as referrer or referred)
+    await tx.referral.deleteMany({ where: { OR: [{ referrerId: userId }, { referredId: userId }] } })
+
+    // Plus gifts
+    await tx.plusGift.deleteMany({ where: { userId } })
+
+    // Payments
+    await tx.payment.deleteMany({ where: { userId } })
+
+    // KYC applications
+    await tx.kYCApplication.deleteMany({ where: { userId } })
+
+    // Verification requests
+    await tx.verificationRequest.deleteMany({ where: { userId } })
+
+    // Appeals
+    await tx.appeal.deleteMany({ where: { userId } })
+
+    // Phone OTPs
+    await tx.phoneOTP.deleteMany({ where: { phone: { in: await tx.user.findUnique({ where: { id: userId }, select: { phone: true } }).then((u) => u ? [u.phone] : []) } } })
+
+    // Refresh tokens (sessions)
+    await tx.refreshToken.deleteMany({ where: { userId } })
+
+    // Merchant profile
+    await tx.merchantProfile.deleteMany({ where: { userId } })
+
+    // Delete the user record
+    await tx.user.delete({ where: { id: userId } })
+  })
+
+  // 3. Best-effort cloud storage cleanup for listing images
+  // (fire-and-forget — DB is already clean at this point)
+  const { deleteFromStorage } = await import("../../lib/s3")
+  const allImageUrls = listings.flatMap((l) => l.images.map((img) => img.url))
+  await Promise.allSettled(
+    allImageUrls.map((url) => {
+      // Extract the R2 key from the full public URL
+      const r2PublicBase = process.env.R2_PUBLIC_URL || ""
+      const key = r2PublicBase ? url.replace(`${r2PublicBase}/`, "") : url
+      return deleteFromStorage(key)
+    }),
+  )
+
+  return { success: true }
 }

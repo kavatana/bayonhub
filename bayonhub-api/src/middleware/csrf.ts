@@ -3,6 +3,10 @@ import { type Request, type Response, type NextFunction } from 'express'
 
 const COOKIE_NAME = 'XSRF-TOKEN'
 const HEADER_NAME = 'x-xsrf-token'
+const WEBHOOK_PATHS = new Set([
+  '/api/payments/khqr/webhook',
+  '/api/users/telegram-webhook',
+])
 
 export function setCsrfCookie(req: Request, res: Response, next: NextFunction) {
   if (!req.cookies?.[COOKIE_NAME]) {
@@ -18,7 +22,7 @@ export function setCsrfCookie(req: Request, res: Response, next: NextFunction) {
 
 export function verifyCsrfToken(req: Request, res: Response, next: NextFunction) {
   const safeMethods = ['GET', 'HEAD', 'OPTIONS']
-  if (safeMethods.includes(req.method)) {
+  if (safeMethods.includes(req.method) || WEBHOOK_PATHS.has(req.path)) {
     return next()
   }
 

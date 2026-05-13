@@ -2,7 +2,7 @@ import React, { Suspense, useEffect, useMemo, useRef } from "react"
 import { useGSAP } from "@gsap/react"
 import { Helmet } from "react-helmet-async"
 import gsap from "gsap"
-import { BarChart3, Bookmark, Eye, Heart, MessageCircle, Phone, Send, TrendingDown, X } from "lucide-react"
+import { BarChart3, Bookmark, Eye, Heart, MessageCircle, TrendingDown, X } from "lucide-react"
 import { useSearchParams, useNavigate } from "react-router-dom"
 import { getSavedListings } from "../api/users"
 import ListingCard from "../components/listing/ListingCard"
@@ -13,8 +13,7 @@ import SkeletonListItem from "../components/ui/SkeletonListItem"
 import Button from "../components/ui/Button"
 import { useTranslation } from "../hooks/useTranslation"
 import { trackEvent } from "../lib/analytics"
-import { getListingImage } from "../lib/utils"
-import { useAuthStore } from "../store/useAuthStore"
+import { selectIsPlusMember, useAuthStore } from "../store/useAuthStore"
 import { API_BASE_URL } from "../api/client"
 import { useListingStore } from "../store/useListingStore"
 import { useUIStore } from "../store/useUIStore"
@@ -48,22 +47,6 @@ const categoryFilters = [
   ["property", "category.house-land"],
   ["phones", "category.phones"],
   ["jobs", "category.jobs"],
-]
-
-const leadTypes = [
-  ["CALL", "lead.call", Phone],
-  ["WHATSAPP", "lead.whatsapp", Send],
-  ["CHAT", "lead.chat", MessageCircle],
-]
-
-const dayLabelKeys = [
-  "day.short1",
-  "day.short2",
-  "day.short3",
-  "day.short4",
-  "day.short5",
-  "day.short6",
-  "day.short7",
 ]
 
 function getEntryId(entry) {
@@ -100,67 +83,14 @@ function StatsWidget({ listings, t }) {
   )
 }
 
-function LeadsTab({ listings, t }) {
-  const [leadStatus, setLeadStatus] = React.useState({})
-  const sourceListings = listings.slice(0, 3)
-
-  if (!sourceListings.length) {
-    return (
-      <div className="grid min-h-64 place-items-center rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 p-8 text-center">
-        <div>
-          <MessageCircle className="mx-auto mb-4 h-12 w-12 text-neutral-300" aria-hidden="true" />
-          <h3 className="text-lg font-black text-neutral-900">{t("dashboard.leadsEmpty")}</h3>
-          <p className="mt-1 text-sm font-semibold text-neutral-500">{t("dashboard.leadsEmptyDesc")}</p>
-        </div>
-      </div>
-    )
-  }
-
+function LeadsTab({ t }) {
   return (
-    <div className="grid gap-4">
-      {sourceListings.map((listing, listingIndex) => (
-        <article className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm" key={listing.id}>
-          <div className="mb-3 flex items-center gap-3">
-            <img alt={listing.title} className="h-14 w-16 rounded-xl object-cover" src={getListingImage(listing)} />
-            <div>
-              <h2 className="font-black text-neutral-900">{listing.title}</h2>
-              <p className="text-xs font-bold text-neutral-500">{t("dashboard.leads")}</p>
-            </div>
-          </div>
-          <div className="grid gap-2">
-            {leadTypes.map(([type, label, Icon], typeIndex) => {
-              const id = `${listing.id}-${type}`
-              const status = leadStatus[id]
-              return (
-                <div className="flex flex-col gap-3 rounded-xl bg-neutral-50 p-3 sm:flex-row sm:items-center sm:justify-between" key={id}>
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-10 w-10 place-items-center rounded-full bg-primary/10 text-primary">
-                      <Icon className="h-4 w-4" aria-hidden="true" />
-                    </span>
-                    <div>
-                      <p className="font-black text-neutral-900">{t("lead.mockBuyer", { number: listingIndex + typeIndex + 1 })}</p>
-                      <p className="text-xs font-bold text-neutral-500">{t(label)} · {t("dashboard.today")}</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {status ? (
-                      <span className="rounded-full bg-primary/10 px-3 py-2 text-xs font-black text-primary">
-                        {status === "contacted" ? t("lead.contacted") : t("lead.replied")}
-                      </span>
-                    ) : null}
-                    <Button onClick={() => setLeadStatus((current) => ({ ...current, [id]: "contacted" }))} size="sm" variant="secondary">
-                      {t("lead.markContacted")}
-                    </Button>
-                    <Button onClick={() => setLeadStatus((current) => ({ ...current, [id]: "replied" }))} size="sm" variant="secondary">
-                      {t("lead.markReplied")}
-                    </Button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </article>
-      ))}
+    <div className="grid min-h-64 place-items-center rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 p-8 text-center">
+      <div>
+        <MessageCircle className="mx-auto mb-4 h-12 w-12 text-neutral-300" aria-hidden="true" />
+        <h3 className="text-lg font-black text-neutral-900">{t("dashboard.leadsEmpty")}</h3>
+        <p className="mt-1 text-sm font-semibold text-neutral-500">{t("dashboard.noLeadsYet")}</p>
+      </div>
     </div>
   )
 }
@@ -171,7 +101,6 @@ function AnalyticsTab({ isPlusMember, listings, navigate, t }) {
   const topListings = [...listings]
     .sort((a, b) => Number(b.views || b.viewCount || 0) - Number(a.views || a.viewCount || 0))
     .slice(0, 3)
-  const dayViews = Array.from({ length: 7 }, (_, index) => Math.max(4, Math.round((totalViews || 7) / (index + 2)) % 100))
 
   if (!isPlusMember) {
     return (
@@ -217,16 +146,9 @@ function AnalyticsTab({ isPlusMember, listings, navigate, t }) {
           <BarChart3 className="h-5 w-5 text-primary" aria-hidden="true" />
           <h2 className="text-lg font-black text-neutral-900">{t("dashboard.viewsPerDay")}</h2>
         </div>
-        <div className="grid h-44 grid-cols-7 items-end gap-2">
-          {dayViews.map((views, index) => {
-            const heightClass = ["h-10", "h-16", "h-20", "h-24", "h-28", "h-32", "h-36"][index]
-            return (
-              <div className="grid gap-2 text-center" key={`${views}-${index}`}>
-                <div className={`${heightClass} rounded-t-xl bg-primary/80`} />
-                <span className="text-xs font-black text-neutral-500">{t(dayLabelKeys[index])}</span>
-              </div>
-            )
-          })}
+        <div className="flex h-32 flex-col items-center justify-center gap-2 text-neutral-400">
+          <BarChart3 size={24} aria-hidden="true" />
+          <p className="text-sm font-semibold">{t("dashboard.analyticsComingSoon")}</p>
         </div>
       </section>
 
@@ -370,7 +292,7 @@ export default function DashboardPage() {
   const [savedError, setSavedError] = React.useState("")
   const [searchParams, setSearchParams] = useSearchParams()
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
-  const user = useAuthStore((state) => state.user)
+  const isPlusMember = useAuthStore(selectIsPlusMember)
   const listings = useListingStore((state) => state.listings)
   const myListings = useListingStore((state) => state.myListings)
   const myListingsLoading = useListingStore((state) => state.myListingsLoading)
@@ -383,7 +305,6 @@ export default function DashboardPage() {
   const contentRef = useRef(null)
   const hasRedirected = useRef(false)
   const dashboardListings = myListings.length ? myListings : listings
-  const isPlusMember = Boolean(user?.plusUntil && new Date(user.plusUntil) > new Date())
 
   useEffect(() => {
     fetchListings()
@@ -465,23 +386,28 @@ export default function DashboardPage() {
       <div className="grid min-w-0 gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="noise-overlay relative min-w-0 rounded-2xl border border-neutral-200 bg-white/80 p-2 shadow-sm backdrop-blur">
           <h1 className="px-3 py-4 text-2xl font-black text-neutral-900">{t("dashboard.title")}</h1>
-          <nav className="flex max-w-full gap-2 overflow-x-auto lg:grid">
-            {tabs.map(([id, label]) => (
-              <button
-                className={`whitespace-nowrap rounded-xl px-4 py-3 text-left text-sm font-black transition ${
-                  activeTab === id ? "bg-primary text-white" : "text-neutral-600 hover:bg-neutral-100"
-                }`}
-                key={id}
-                onClick={() => {
-                  trackEvent("dashboard_tab_viewed", { tab: id })
-                  setSearchParams(id === "ads" ? {} : { tab: id })
-                }}
-                type="button"
-              >
-                {t(label)}
-              </button>
-            ))}
-          </nav>
+          <div className="relative">
+            <nav className="flex max-w-full gap-2 overflow-x-auto pb-1 lg:grid lg:overflow-visible lg:pb-0" role="tablist">
+              {tabs.map(([id, label]) => (
+                <button
+                  aria-selected={activeTab === id}
+                  className={`flex-shrink-0 whitespace-nowrap rounded-xl px-4 py-3 text-left text-sm font-black transition ${
+                    activeTab === id ? "bg-primary text-white" : "text-neutral-600 hover:bg-neutral-100"
+                  }`}
+                  key={id}
+                  onClick={() => {
+                    trackEvent("dashboard_tab_viewed", { tab: id })
+                    setSearchParams(id === "ads" ? {} : { tab: id })
+                  }}
+                  role="tab"
+                  type="button"
+                >
+                  {t(label)}
+                </button>
+              ))}
+            </nav>
+            <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white/90 to-transparent lg:hidden" />
+          </div>
         </aside>
         <section ref={contentRef} className="min-w-0">
           <Suspense

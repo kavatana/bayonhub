@@ -11,7 +11,7 @@ import Button from "../components/ui/Button"
 import Modal from "../components/ui/Modal"
 import PageTransition from "../components/ui/PageTransition"
 
-const TABS = ["listings", "reports", "users", "kyc", "import", "stats"]
+const TABS = ["listings", "imageReview", "reports", "users", "kyc", "import", "stats"]
 
 function parseCsv(input) {
   const rows = input.trim().split(/\r?\n/).map((line) => line.split(","))
@@ -44,6 +44,7 @@ function rowToListing(row) {
 
 function tabLabel(t, tab) {
   if (tab === "reports") return t("admin.reports")
+  if (tab === "imageReview") return t("admin.imageReview")
   if (tab === "users") return t("admin.users")
   if (tab === "kyc") return t("admin.kyc")
   if (tab === "import") return t("admin.import")
@@ -59,6 +60,7 @@ export function LegacyAdminPage() {
   const [error, setError] = useState("")
   const [listings, setListings] = useState([])
   const [reports, setReports] = useState([])
+  const [imageReviewListings, setImageReviewListings] = useState([])
   const [users, setUsers] = useState([])
   const [kycApplications, setKycApplications] = useState([])
   const [stats, setStats] = useState(null)
@@ -73,8 +75,9 @@ export function LegacyAdminPage() {
       setLoading(true)
       setError("")
       try {
-        const [listingResponse, reportResponse, userResponse, kycResponse, statsResponse] = await Promise.all([
+        const [listingResponse, imageReviewResponse, reportResponse, userResponse, kycResponse, statsResponse] = await Promise.all([
           client.get("/api/admin/listings"),
+          client.get("/api/admin/listings", { params: { imageReview: "pending" } }),
           client.get("/api/admin/reports"),
           client.get("/api/admin/users"),
           client.get("/api/admin/kyc"),
@@ -83,6 +86,7 @@ export function LegacyAdminPage() {
         if (cancelled) return
         setListings(listingResponse.data.listings || [])
         setReports(reportResponse.data.reports || [])
+        setImageReviewListings(imageReviewResponse.data.listings || [])
         setUsers(userResponse.data.users || [])
         setKycApplications(kycResponse.data.applications || [])
         setStats(statsResponse.data)
@@ -100,18 +104,24 @@ export function LegacyAdminPage() {
 
   const empty = useMemo(() => {
     if (activeTab === "reports") return reports.length === 0
+    if (activeTab === "imageReview") return imageReviewListings.length === 0
     if (activeTab === "users") return users.length === 0
     if (activeTab === "kyc") return kycApplications.length === 0
     if (activeTab === "stats") return !stats
     if (activeTab === "import") return false
     return listings.length === 0
-  }, [activeTab, kycApplications.length, listings.length, reports.length, stats, users.length])
+  }, [activeTab, imageReviewListings.length, kycApplications.length, listings.length, reports.length, stats, users.length])
 
   if (user?.role !== "ADMIN") return <Navigate replace to="/" />
 
   async function updateListing(id, status) {
     await client.put(`/api/admin/listings/${id}/status`, { status })
     setListings((current) => current.map((listing) => (listing.id === id ? { ...listing, status } : listing)))
+  }
+
+  async function updateImageReview(id, status) {
+    await client.patch(`/api/admin/listings/${id}/image-review`, { status })
+    setImageReviewListings((current) => current.filter((listing) => listing.id !== id))
   }
 
   async function updateReport(id, status, listingStatus) {
@@ -202,6 +212,30 @@ export function LegacyAdminPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      ) : null}
+
+      {activeTab === "imageReview" && imageReviewListings.length ? (
+        <div className="grid gap-3">
+          {imageReviewListings.map((listing) => (
+            <article className="rounded-xl border border-neutral-200 bg-white p-4" key={listing.id}>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  {listing.images?.[0] ? (
+                    <img alt={listing.title} className="h-16 w-20 rounded-xl object-cover" loading="lazy" src={listing.images[0].thumbUrl || listing.images[0].url} />
+                  ) : null}
+                  <div>
+                    <h2 className="font-black text-neutral-900">{listing.title}</h2>
+                    <p className="text-sm font-semibold text-neutral-500">{listing.seller?.name} · {listing.imageReviewStatus}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => updateImageReview(listing.id, "approved")} size="sm">{t("admin.approveImages")}</Button>
+                  <Button onClick={() => updateImageReview(listing.id, "flagged")} size="sm" variant="danger">{t("admin.flagImages")}</Button>
+                </div>
+              </div>
+            </article>
+          ))}
         </div>
       ) : null}
 
@@ -375,11 +409,12 @@ export function LegacyAdminPage() {
   )
 }
 
-const d1Tabs = ["dashboard", "listings", "users", "reports", "payments", "giftPlus", "featured", "analytics"]
+const d1Tabs = ["dashboard", "listings", "imageReview", "users", "reports", "payments", "giftPlus", "featured", "analytics"]
 
 function d1TabLabel(tab, t) {
   if (tab === "dashboard") return t("admin.dashboard")
   if (tab === "listings") return t("admin.listings")
+  if (tab === "imageReview") return t("admin.imageReview")
   if (tab === "users") return t("admin.users")
   if (tab === "reports") return t("admin.reports")
   if (tab === "payments") return t("admin.payments")
@@ -496,6 +531,7 @@ export default function AdminPage() {
     dashboard: null,
     listings: [],
     reports: [],
+    imageReview: [],
     users: [],
     payments: [],
     giftLog: [],
@@ -510,9 +546,10 @@ export default function AdminPage() {
       setLoading(true)
       setError("")
       try {
-        const [dashboard, listings, users, reports, payments, featured, analytics] = await Promise.all([
+        const [dashboard, listings, imageReview, users, reports, payments, featured, analytics] = await Promise.all([
           client.get("/api/admin/dashboard"),
           client.get("/api/admin/listings", { params: { limit: 20, search: listingSearch || undefined } }),
+          client.get("/api/admin/listings", { params: { limit: 20, imageReview: "pending" } }),
           client.get("/api/admin/users", { params: { limit: 20, search: userSearch || undefined } }),
           client.get("/api/admin/reports", { params: { limit: 20, status: "PENDING" } }),
           client.get("/api/admin/payments", { params: { limit: 20, status: paymentStatus } }),
@@ -526,6 +563,7 @@ export default function AdminPage() {
         setData({
           dashboard: dashboard.data,
           listings: listings.data.data || listings.data.listings || [],
+          imageReview: imageReview.data.data || imageReview.data.listings || [],
           users: users.data.data || users.data.users || [],
           reports: reports.data.data || reports.data.reports || [],
           payments: payments.data.data || [],
@@ -600,6 +638,10 @@ export default function AdminPage() {
     } catch {
       toast.error(t("ui.error"))
     }
+  }
+
+  async function updateImageReview(id, status) {
+    await runAction(() => client.patch(`/api/admin/listings/${id}/image-review`, { status }))
   }
 
   async function approveSelectedPayment() {
@@ -777,6 +819,36 @@ export default function AdminPage() {
             </table>
           </div>
           {!data.listings.length ? <p className="p-6 text-center font-bold text-neutral-500">{t("admin.noData")}</p> : null}
+        </section>
+      ) : null}
+
+      {!loading && selectedTab === "imageReview" ? (
+        <section className="grid gap-3">
+          {data.imageReview.map((listing) => (
+            <article className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm" key={listing.id}>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex gap-3">
+                  {d1ListingImage(listing) ? <img alt={listing.title} className="h-16 w-20 rounded-xl object-cover" src={d1ListingImage(listing)} /> : null}
+                  <div>
+                    <h3 className="font-black text-neutral-900">{listing.title}</h3>
+                    <p className="text-sm font-bold text-neutral-500">{listing.seller?.name || t("ui.anonymous")}</p>
+                    <p className="text-xs font-black text-primary">{t("admin.imageReviewPending")}</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => updateImageReview(listing.id, "approved")} size="sm">
+                    <Check className="h-4 w-4" aria-hidden="true" />
+                    {t("admin.approveImages")}
+                  </Button>
+                  <Button onClick={() => updateImageReview(listing.id, "flagged")} size="sm" variant="danger">
+                    <X className="h-4 w-4" aria-hidden="true" />
+                    {t("admin.flagImages")}
+                  </Button>
+                </div>
+              </div>
+            </article>
+          ))}
+          {!data.imageReview.length ? <p className="rounded-2xl bg-white p-6 text-center font-bold text-neutral-500">{t("admin.noData")}</p> : null}
         </section>
       ) : null}
 

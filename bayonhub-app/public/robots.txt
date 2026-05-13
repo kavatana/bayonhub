@@ -1,0 +1,14 @@
+User-agent: *
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /inbox
+Disallow: /account
+Disallow: /post
+Disallow: /post-listing
+Disallow: /edit-listing
+Disallow: /upgrade
+Disallow: /search?*
+Disallow: /category/*?page=*
+Allow: /
+
+Sitemap: https://bayonhub.com/sitemap.xml

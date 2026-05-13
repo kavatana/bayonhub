@@ -1,11 +1,19 @@
 import { Router } from "express"
 
 import { requireAuth } from "../../middleware/auth"
-import { authLimiter, forgotPasswordLimiter, otpLimiter, registerLimiter } from "../../middleware/rateLimiter"
+import {
+  authLimiter,
+  forgotPasswordLimiter,
+  ipBlockMiddleware,
+  loginLimiter,
+  otpLimiter,
+  registerLimiter,
+} from "../../middleware/rateLimiter"
 import {
   getMe,
   login,
   logout,
+  logoutAll,
   refreshTokens,
   register,
   resetPassword,
@@ -34,9 +42,12 @@ router.post("/verify-otp", validateVerifyOtp, verifyOtp)
 router.post("/otp/send", forgotPasswordLimiter, otpLimiter, validateSendOtp, sendPhoneOtp)
 router.post("/otp/verify", validateVerifyOtp, requireAuth, verifyPhoneOtp)
 router.put("/reset-password", authLimiter, validateResetPassword, resetPassword)
-router.post("/login", authLimiter, validateLogin, login)
+// F1.1 — 5 attempts / 15 min + IP auto-block after 20 failures
+router.post("/login", ipBlockMiddleware, loginLimiter, validateLogin, login)
 router.post("/refresh", refreshTokens)
 router.delete("/logout", logout)
+// F1.7 — Logout from all devices
+router.post("/logout-all", requireAuth, logoutAll)
 router.get("/me", requireAuth, getMe)
 mountOAuthRoutes(router)
 

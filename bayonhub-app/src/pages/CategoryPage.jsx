@@ -39,7 +39,7 @@ const sortOptions = [
   ["newest", "sort.newestFirst"],
   ["priceLow", "sort.priceLow"],
   ["priceHigh", "sort.priceHigh"],
-  ["views", "sort.views"],
+  ["views", "sort.mostViewed"],
 ]
 
 const vehicleFacetIds = ["make", "bodyType"]
@@ -682,8 +682,12 @@ export default function CategoryPage() {
         </div>
       ) : null}
       <FacetedFilter category={activeSubcategory?.slug || category?.slug} currentFilters={facetFilters} hiddenFacetIds={hiddenFacetIds} onChange={setFacetFilters} />
-      <Button onClick={() => setFilterOpen(false)}>{t("filter.applyFilters")}</Button>
-      <Button onClick={resetFilters} variant="secondary">{t("filter.resetAll")}</Button>
+      <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 flex flex-shrink-0 gap-3 border-t border-neutral-200 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <Button className="flex-1" onClick={resetFilters} variant="secondary">{t("filter.resetAll")}</Button>
+        <Button className="flex-1" onClick={() => setFilterOpen(false)}>
+          {t("filter.apply")} {activeFilters.length > 0 ? `(${activeFilters.length})` : ""}
+        </Button>
+      </div>
     </div>
   )
 

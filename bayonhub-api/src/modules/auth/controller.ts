@@ -4,6 +4,7 @@ import {
   clearAuthCookies,
   getMe as getMeService,
   loginUser,
+  logoutAllSessions,
   logoutUser,
   refreshAuthTokens,
   registerUser,
@@ -13,6 +14,7 @@ import {
   verifyPhoneOTP,
   verifyOTP,
 } from "./service"
+import { getClientIp } from "../../middleware/rateLimiter"
 
 export const register: RequestHandler = async (req, res, next) => {
   try {
@@ -77,7 +79,8 @@ export const resetPassword: RequestHandler = async (req, res, next) => {
 
 export const login: RequestHandler = async (req, res, next) => {
   try {
-    const user = await loginUser(res, req.body.phone, req.body.password)
+    const ip = getClientIp(req)
+    const user = await loginUser(res, req.body.phone, req.body.password, ip)
     res.status(200).json({ user })
   } catch (error) {
     next(error)
@@ -96,6 +99,17 @@ export const refreshTokens: RequestHandler = async (req, res, next) => {
 export const logout: RequestHandler = async (req, res, next) => {
   try {
     const result = await logoutUser(req.cookies?.refreshToken)
+    clearAuthCookies(res)
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+}
+
+// F1.7 — Logout from all devices
+export const logoutAll: RequestHandler = async (req, res, next) => {
+  try {
+    const result = await logoutAllSessions(req.user!.id)
     clearAuthCookies(res)
     res.status(200).json(result)
   } catch (error) {

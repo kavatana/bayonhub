@@ -1,8 +1,26 @@
-import { PaymentStatus } from "@prisma/client"
+import cron from "node-cron"
+import { ListingStatus, PaymentStatus } from "@prisma/client"
 import { prisma } from "./prisma"
 
 export function startScheduler() {
   console.info("[Scheduler] Starting background tasks...")
+
+  cron.schedule("*/30 * * * *", async () => {
+    try {
+      const result = await prisma.listing.updateMany({
+        where: {
+          status: ListingStatus.ACTIVE,
+          expiresAt: { lt: new Date() },
+        },
+        data: { status: ListingStatus.EXPIRED },
+      })
+      if (result.count > 0) {
+        console.info(`[Scheduler] Expired ${result.count} listings`)
+      }
+    } catch (err) {
+      console.error("[Scheduler] Expiry job failed:", err)
+    }
+  })
   
   // Every 5 minutes: Expire old pending payments
   setInterval(async () => {

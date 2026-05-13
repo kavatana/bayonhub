@@ -1,4 +1,6 @@
 import { randomUUID } from "crypto"
+import { lookup } from "dns/promises"
+import net from "net"
 import bcrypt from "bcryptjs"
 import { KYCStatus, ListingStatus, PaymentStatus, Prisma, ReportStatus, Role, VerificationTier } from "@prisma/client"
 
@@ -60,6 +62,60 @@ function createHttpError(status: number, message: string): Error & { status: num
   const error = new Error(message) as Error & { status: number }
   error.status = status
   return error
+}
+
+function isPrivateNetworkAddress(address: string): boolean {
+  const normalized = address.toLowerCase()
+  if (normalized.startsWith("::ffff:")) return isPrivateNetworkAddress(normalized.slice(7))
+  if (net.isIPv4(address)) {
+    const [first, second] = address.split(".").map(Number)
+    return (
+      first === 0 ||
+      first === 10 ||
+      first === 127 ||
+      first >= 224 ||
+      (first === 100 && second >= 64 && second <= 127) ||
+      (first === 169 && second === 254) ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168) ||
+      (first === 192 && second === 0) ||
+      (first === 198 && (second === 18 || second === 19))
+    )
+  }
+  if (net.isIPv6(address)) {
+    return (
+      normalized === "::" ||
+      normalized === "::1" ||
+      normalized.startsWith("fc") ||
+      normalized.startsWith("fd") ||
+      normalized.startsWith("fe80:")
+    )
+  }
+  return true
+}
+
+async function assertSafeImportUrl(url: string): Promise<URL> {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw createHttpError(400, "Invalid import image URL")
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw createHttpError(400, "Import image URL protocol is not allowed")
+  }
+  if (parsed.username || parsed.password) {
+    throw createHttpError(400, "Import image URL credentials are not allowed")
+  }
+  const hostname = parsed.hostname.toLowerCase()
+  if (hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local")) {
+    throw createHttpError(400, "Import image URL host is not allowed")
+  }
+  const records = await lookup(hostname, { all: true })
+  if (!records.length || records.some((record) => isPrivateNetworkAddress(record.address))) {
+    throw createHttpError(400, "Import image URL resolves to a private network")
+  }
+  return parsed
 }
 
 function addMonths(base: Date, months: number) {
@@ -289,6 +345,7 @@ export async function getAdminListingsPage(filters: {
   status?: string
   category?: string
   flagged?: string
+  imageReview?: string
   search?: string
 }) {
   const page = Math.max(1, filters.page || 1)
@@ -296,6 +353,7 @@ export async function getAdminListingsPage(filters: {
   const where: Prisma.ListingWhereInput = {}
   if (filters.status) where.status = toListingStatus(filters.status)
   if (filters.category) where.categorySlug = filters.category
+  if (filters.imageReview) where.imageReviewStatus = filters.imageReview
   if (filters.flagged === "true" || filters.flagged === "1") {
     where.OR = [
       { status: ListingStatus.FLAGGED },
@@ -844,6 +902,27 @@ export async function updateListingStatus(id: string, status: ListingStatus) {
   return prisma.listing.update({ where: { id }, data: { status } })
 }
 
+export async function updateListingImageReviewStatus(id: string, status: "approved" | "flagged") {
+  const listing = await prisma.listing.update({
+    where: { id },
+    data: { imageReviewStatus: status },
+    include: {
+      images: { take: 1, orderBy: { order: "asc" } },
+      seller: { select: SAFE_USER_SELECT },
+    },
+  })
+  if (status === "flagged") {
+    await createNotification({
+      userId: listing.sellerId,
+      type: "image_review",
+      title: "Listing image review",
+      body: `Your listing '${listing.title}' has been flagged for image review. Please update your photos.`,
+      link: `/listing/${listing.id}/edit`,
+    })
+  }
+  return listing
+}
+
 export async function getUsers(cursor?: string, limit = 20) {
   const take = Math.min(limit, 50)
   const users = await prisma.user.findMany({
@@ -944,7 +1023,11 @@ export async function updateKycApplication(id: string, reviewerId: string, statu
 }
 
 async function downloadImage(url: string): Promise<Buffer> {
-  const response = await fetch(url)
+  const safeUrl = await assertSafeImportUrl(url)
+  const response = await fetch(safeUrl, {
+    redirect: "error",
+    signal: AbortSignal.timeout(5000),
+  })
   if (!response.ok) throw new Error(`Image download failed: ${url}`)
   return Buffer.from(await response.arrayBuffer())
 }
@@ -1014,7 +1097,8 @@ export async function importListings(inputs: ImportListing[]) {
       const uploadedImages = await Promise.all(
         input.images.map(async (url) => {
           const buffer = await downloadImage(url)
-          return processAndUpload(buffer, `listings/${randomUUID()}.webp`)
+          // F3.4 — key scoped to seller.id to isolate imports per seller
+          return processAndUpload(buffer, `listings/${seller.id}/${randomUUID()}.webp`)
         }),
       )
       const slug = await generateUniqueSlug(input.title)
@@ -1032,6 +1116,7 @@ export async function importListings(inputs: ImportListing[]) {
           district: input.district || null,
           condition: input.condition,
           status: ListingStatus.ACTIVE,
+          imageReviewStatus: uploadedImages.length > 0 ? "pending" : "approved",
           slug,
           sellerId: seller.id,
           facets: input.facets ? (input.facets as Prisma.InputJsonValue) : Prisma.JsonNull,

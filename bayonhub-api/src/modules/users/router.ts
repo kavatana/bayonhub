@@ -1,10 +1,15 @@
+import crypto from "crypto"
+import type { NextFunction, Request, Response } from "express"
 import { Router } from "express"
+import rateLimit from "express-rate-limit"
 
 import { requireAuth } from "../../middleware/auth"
 import { upload } from "../../middleware/upload"
 import { validateMagicBytes } from "../../middleware/upload"
+import { maskPhone, withoutEmail } from "../../utils/safeUser"
 import {
   createTelegramConnectLink,
+  deleteMe,
   followSeller,
   generateReferralCode,
   getFollowerSummary,
@@ -25,8 +30,53 @@ import {
 
 const router = Router()
 
+const telegramWebhookRateLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
 function getQueryString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined
+}
+
+function signatureMatches(received: string, expected: string): boolean {
+  const receivedBuffer = Buffer.from(received, "hex")
+  const expectedBuffer = Buffer.from(expected, "hex")
+  if (receivedBuffer.length !== expectedBuffer.length) return false
+  return crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
+}
+
+function verifyTelegramWebhook(req: Request, res: Response, next: NextFunction) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN
+  if (!botToken) {
+    console.warn("[Telegram] TELEGRAM_BOT_TOKEN not set — webhook disabled")
+    res.status(503).json({ error: "Webhook not configured" })
+    return
+  }
+
+  const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET
+  if (secretToken) {
+    const receivedToken = req.headers["x-telegram-bot-api-secret-token"]
+    if (receivedToken !== secretToken) {
+      console.warn("[Telegram] Invalid webhook secret token")
+      res.status(401).json({ error: "Unauthorized" })
+      return
+    }
+    next()
+    return
+  }
+
+  const body = JSON.stringify(req.body)
+  const secret = crypto.createHash("sha256").update(botToken).digest()
+  const hmac = crypto.createHmac("sha256", secret).update(body).digest("hex")
+  const received = req.headers["x-telegram-signature"]
+  if (typeof received !== "string" || !signatureMatches(received, hmac)) {
+    res.status(401).json({ error: "Invalid signature" })
+    return
+  }
+  next()
 }
 
 router.get("/me/saved", requireAuth, async (req, res, next) => {
@@ -84,29 +134,7 @@ router.patch("/me", requireAuth, async (req, res, next) => {
   }
 })
 
-router.put("/me", requireAuth, async (req, res, next) => {
-  try {
-    const user = await updateProfile(req.user!.id, req.body)
-    res.status(200).json({ user })
-  } catch (error) {
-    next(error)
-  }
-})
-
 router.patch("/me/password", requireAuth, async (req, res, next) => {
-  try {
-    const result = await updatePassword(
-      req.user!.id,
-      req.body.currentPassword || req.body.oldPassword,
-      req.body.newPassword,
-    )
-    res.status(200).json(result)
-  } catch (error) {
-    next(error)
-  }
-})
-
-router.put("/me/password", requireAuth, async (req, res, next) => {
   try {
     const result = await updatePassword(
       req.user!.id,
@@ -175,7 +203,7 @@ router.post("/me/connect-telegram", requireAuth, async (req, res, next) => {
   }
 })
 
-router.post("/telegram-webhook", async (req, res, next) => {
+router.post("/telegram-webhook", telegramWebhookRateLimiter, verifyTelegramWebhook, async (req, res, next) => {
   try {
     const result = await handleTelegramWebhook(req.body)
     res.status(200).json(result)
@@ -192,6 +220,25 @@ router.post("/me/appeal", requireAuth, async (req, res, next) => {
     }
     const result = await submitAppeal(req.user!.id, req.body.reason)
     res.status(201).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// F4.3 — DELETE /users/me: GDPR account self-deletion.
+// Requires the client to send { confirm: "DELETE" } in the request body.
+// requireAuth guarantees a valid session exists before any deletion.
+router.delete("/me", requireAuth, async (req, res, next) => {
+  try {
+    if (req.body.confirm !== "DELETE") {
+      res.status(400).json({ error: 'Send { confirm: "DELETE" } to confirm account deletion' })
+      return
+    }
+    const result = await deleteMe(req.user!.id)
+    // Clear auth cookies so the browser session is invalidated immediately
+    res.clearCookie("accessToken", { httpOnly: true, sameSite: "strict" })
+    res.clearCookie("refreshToken", { httpOnly: true, sameSite: "strict" })
+    res.status(200).json(result)
   } catch (error) {
     next(error)
   }
@@ -227,7 +274,13 @@ router.get("/:id/followers", async (req, res, next) => {
 router.get("/:id", async (req, res, next) => {
   try {
     const result = await getPublicUserProfile(getQueryString(req.params.id) || "")
-    res.status(200).json(result)
+    const isAuth = Boolean(req.user)
+    // F4.1 — mask phone for unauthenticated visitors
+    // F4.2 — strip email from public profile (only /me and admin may see it)
+    const publicResult = isAuth
+      ? result
+      : { ...withoutEmail(result), phone: maskPhone(result.phone) }
+    res.status(200).json(publicResult)
   } catch (error) {
     next(error)
   }

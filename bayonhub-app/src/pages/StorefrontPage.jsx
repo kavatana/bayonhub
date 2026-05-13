@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { Helmet } from "react-helmet-async"
 import { 
   Calendar, 
@@ -54,6 +54,7 @@ function getReviewTagLabelKey(tag) {
 export default function StorefrontPage() {
   const { id, slug } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const identifier = slug || id
   const { t, language } = useTranslation()
   
@@ -95,11 +96,11 @@ export default function StorefrontPage() {
   useEffect(() => {
     if (seller && id && !slug && seller.slug) {
       const canonical = sellerUrl(seller)
-      if (window.location.pathname !== canonical) {
+      if (location.pathname !== canonical) {
         navigate(canonical, { replace: true })
       }
     }
-  }, [id, slug, seller, navigate])
+  }, [id, slug, seller, location.pathname, navigate])
 
   const filteredListings = useMemo(() => {
     if (!seller?.listings) return []

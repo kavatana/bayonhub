@@ -700,6 +700,19 @@ export async function getListings(params = {}) {
   return paginate(filtered, params.page || 1, params.limit || 24)
 }
 
+export async function getFeaturedListings() {
+  if (!hasApiBackend()) return []
+  try {
+    const response = await client.get("/api/listings/featured")
+    const listings = Array.isArray(response.data)
+      ? response.data
+      : response.data.data || response.data.listings || []
+    return listings.map(normalizeListing)
+  } catch {
+    return []
+  }
+}
+
 export async function fetchHomepage(province) {
   const params = province && province !== "all" ? { province, limit: 12 } : { limit: 12 }
   const result = await getListings(params)

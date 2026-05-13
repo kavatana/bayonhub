@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto"
+import type { Filter as BadWordsFilter } from "bad-words"
 import {
   LeadType,
   ListingStatus,
@@ -11,6 +12,7 @@ import {
 import { prisma } from "../../lib/prisma"
 import { processAndUpload } from "../../lib/s3"
 import { generateUniqueSlug } from "../../lib/slug"
+import { stripTags, allowBasicHtml } from "../../lib/sanitize"
 import { notifyUser } from "../messages/notifications.service"
 import { isUserPlus } from "../users/service"
 import { listingSchema } from "./validators"
@@ -58,6 +60,29 @@ const FULL_LISTING_INCLUDE = {
 } satisfies Prisma.ListingInclude
 
 const viewedSessions = new Set<string>()
+const FEATURED_CACHE_KEY = "featured"
+const FEATURED_CACHE_TTL_MS = 60_000
+const FEATURED_ROTATION_POOL_SIZE = 64
+const MAX_LISTING_PRICE = 10_000_000
+const CONTENT_VIOLATION_MESSAGE = "Your listing contains prohibited content. Please review and resubmit."
+
+let contentFilter: Promise<BadWordsFilter> | null = null
+
+const FEATURED_LISTING_INCLUDE = {
+  images: { take: 1, orderBy: { order: "asc" as const } },
+  seller: {
+    select: {
+      id: true,
+      name: true,
+      plusUntil: true,
+      isLifetimePlus: true,
+    },
+  },
+} satisfies Prisma.ListingInclude
+
+type FeaturedListing = Prisma.ListingGetPayload<{ include: typeof FEATURED_LISTING_INCLUDE }>
+type FeaturedListingResponse = ReturnType<typeof decorateListing<FeaturedListing>>
+const featuredListingsCache = new Map<string, { data: FeaturedListingResponse[]; expiresAt: number }>()
 
 export interface ListingFilters {
   category?: string
@@ -115,6 +140,13 @@ function createHttpError(status: number, message: string): Error & { status: num
   return error
 }
 
+function createPublicHttpError(status: number, errorCode: string, message: string): Error & { status: number; error: string } {
+  const error = new Error(message) as Error & { status: number; error: string }
+  error.status = status
+  error.error = errorCode
+  return error
+}
+
 function createLimitError(code: string, message: string): Error & { status: number; publicError: string; code: string } {
   const error = new Error(message) as Error & { status: number; publicError: string; code: string }
   error.status = 403
@@ -148,6 +180,31 @@ function parseJsonObject(value: unknown): Prisma.JsonObject | typeof Prisma.Json
   return parsed && typeof parsed === "object" && !Array.isArray(parsed)
     ? (parsed as Prisma.JsonObject)
     : Prisma.JsonNull
+}
+
+async function getContentFilter() {
+  if (!contentFilter) {
+    const loadBadWords = new Function("specifier", "return import(specifier)") as (
+      specifier: string,
+    ) => Promise<typeof import("bad-words")>
+    contentFilter = loadBadWords("bad-words").then(({ Filter }) => new Filter())
+  }
+  return contentFilter
+}
+
+async function assertAllowedContent(title?: string | null, description?: string | null) {
+  const filter = await getContentFilter()
+  const plainDescription = stripTags(description || "")
+  if (filter.isProfane(title || "") || filter.isProfane(plainDescription)) {
+    throw createPublicHttpError(400, "CONTENT_VIOLATION", CONTENT_VIOLATION_MESSAGE)
+  }
+}
+
+function assertPriceAllowed(price: unknown) {
+  const value = Number(price)
+  if (!Number.isFinite(value) || value < 0 || value > MAX_LISTING_PRICE) {
+    throw createPublicHttpError(400, "INVALID_PRICE", "Price must be between $0 and $10,000,000.")
+  }
 }
 
 function normalizeListingInput(input: unknown): ListingInput & { images?: unknown; id?: unknown } {
@@ -366,6 +423,34 @@ async function notifyFollowersOfNewListing(listing: Prisma.ListingGetPayload<{ i
   )
 }
 
+async function autoFlagNewAccountSpam(
+  userId: string,
+  seller: { createdAt?: Date | null },
+  newListing: { id: string },
+) {
+  const accountAge = Date.now() - new Date(seller.createdAt || 0).getTime()
+  const isNewAccount = accountAge < 60 * 60 * 1000
+  if (!isNewAccount) return
+
+  const recentCount = await prisma.listing.count({
+    where: {
+      sellerId: userId,
+      createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) },
+    },
+  })
+  if (recentCount < 3) return
+
+  await prisma.report.create({
+    data: {
+      reporterId: userId,
+      listingId: newListing.id,
+      reason: ReportReason.SPAM,
+      detail: "AUTO_FLAG: New account posting spam",
+    },
+  })
+  console.log("[AUTO_FLAG] New account spam detected:", userId)
+}
+
 function buildWhere(filters: ListingFilters, includeCursor: boolean): Prisma.ListingWhereInput {
   const where: Prisma.ListingWhereInput = {
     status: ListingStatus.ACTIVE,
@@ -463,6 +548,57 @@ function sortRankedListings<T extends {
     if (plusDelta !== 0) return plusDelta
     return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
   })
+}
+
+function seededHash(value: string, seed: number) {
+  let hash = seed || 1
+  for (const char of value) {
+    hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0
+  }
+  return hash
+}
+
+function sortBySeed<T extends { id: string }>(listings: T[], seed: number) {
+  return [...listings].sort((a, b) => seededHash(a.id, seed) - seededHash(b.id, seed))
+}
+
+export async function getFeaturedListings() {
+  const cached = featuredListingsCache.get(FEATURED_CACHE_KEY)
+  if (cached && cached.expiresAt > Date.now()) return cached.data
+
+  const now = new Date()
+  const seed = Math.floor(Date.now() / 3_600_000)
+  const listings = await prisma.listing.findMany({
+    where: {
+      status: ListingStatus.ACTIVE,
+      expiresAt: { gt: now },
+      seller: {
+        OR: [
+          { plusUntil: { gt: now } },
+          { isLifetimePlus: true },
+        ],
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: FEATURED_ROTATION_POOL_SIZE,
+    include: FEATURED_LISTING_INCLUDE,
+  })
+  const data = sortBySeed(listings, seed)
+    .slice(0, 8)
+    .map((listing) => ({
+      ...decorateListing(listing),
+      location: listing.province,
+      seller: {
+        ...listing.seller,
+        isPlusMember: true,
+      },
+    }))
+
+  featuredListingsCache.set(FEATURED_CACHE_KEY, {
+    data,
+    expiresAt: Date.now() + FEATURED_CACHE_TTL_MS,
+  })
+  return data
 }
 
 export async function getListings(filters: ListingFilters) {
@@ -730,13 +866,14 @@ export async function createListing(
   const [user, plus] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
-      select: { phoneVerified: true },
+      select: { phoneVerified: true, createdAt: true },
     }),
     isUserPlus(userId),
   ])
   if (!user?.phoneVerified) throw createHttpError(403, "Phone verification required to post listings")
   const normalizedInput = normalizeListingInput(input)
   const data = listingSchema.parse(normalizedInput)
+  assertPriceAllowed(data.price)
   const imageUrls = imageUrlsFromInput(normalizedInput)
   const imageCount = files.length + imageUrls.length
   const photoLimit = plus ? 20 : 5
@@ -762,32 +899,55 @@ export async function createListing(
       )
     }
   }
+  const sanitizedTitle = stripTags(data.title)
+  const sanitizedDescription = allowBasicHtml(data.description)
+  await assertAllowedContent(sanitizedTitle, sanitizedDescription)
+  const duplicate = await prisma.listing.findFirst({
+    where: {
+      sellerId: userId,
+      title: { equals: sanitizedTitle, mode: "insensitive" },
+      price: data.price,
+      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      status: ListingStatus.ACTIVE,
+    },
+    select: { id: true },
+  })
+  if (duplicate) {
+    throw createPublicHttpError(
+      409,
+      "DUPLICATE_LISTING",
+      "You already have a similar listing posted in the last 24 hours.",
+    )
+  }
   const slug = await generateUniqueSlug(data.title)
   const uploadedImages = await Promise.all(
-    files.map((file) => processAndUpload(file.buffer, `listings/${randomUUID()}.webp`)),
+    // F3.4 — key includes userId to isolate each seller's uploads
+    files.map((file) => processAndUpload(file.buffer, `listings/${userId}/${randomUUID()}.webp`)),
   )
   const images = imageCreateData(uploadedImages, imageUrls)
 
   const createData: Prisma.ListingCreateInput = {
-    title: data.title,
-    titleKm: data.titleKm || null,
-    description: data.description,
-    descriptionKm: data.descriptionKm || null,
+    // F2.3: sanitize-html applied as defence-in-depth after Zod/DOMPurify in validators.ts
+    title: sanitizedTitle,
+    titleKm: data.titleKm ? stripTags(data.titleKm) : null,
+    description: sanitizedDescription,
+    descriptionKm: data.descriptionKm ? allowBasicHtml(data.descriptionKm) : null,
     price: data.price,
     currency: data.currency,
     negotiable: data.negotiable,
     condition: data.condition || null,
-    categorySlug: data.categorySlug,
-    subcategorySlug: data.subcategorySlug || null,
-    province: data.province,
-    district: data.district || null,
-    addressDetail: data.addressDetail || null,
+    categorySlug: stripTags(data.categorySlug),
+    subcategorySlug: data.subcategorySlug ? stripTags(data.subcategorySlug) : null,
+    province: stripTags(data.province),
+    district: data.district ? stripTags(data.district) : null,
+    addressDetail: data.addressDetail ? stripTags(data.addressDetail) : null,
     lat: data.lat,
     lng: data.lng,
     facets: parseJsonObject(normalizedInput.facets),
     promoted: normalizedInput.promoted === "true" || normalizedInput.promoted === true,
     urgent: normalizedInput.urgent === "true" || normalizedInput.urgent === true,
     expiresAt: listingExpiryDate(plus),
+    imageReviewStatus: imageCount > 0 ? "pending" : "approved",
     slug,
     seller: { connect: { id: userId } },
     images: {
@@ -799,6 +959,7 @@ export async function createListing(
     data: createData,
     include: FULL_LISTING_INCLUDE,
   })
+  await autoFlagNewAccountSpam(userId, user, listing)
   if (triggerGrowthRewards) {
     await Promise.all([
       rewardReferralIfFirstListing(userId),
@@ -827,16 +988,33 @@ export async function updateListing(
   const existingListing = await assertListingOwner(userId, role, listingId)
   const normalizedInput = normalizeListingInput(input)
   const data = listingSchema.partial().parse(normalizedInput)
+  if (data.price !== undefined) assertPriceAllowed(data.price)
   const uploadedImages = await Promise.all(
-    files.map((file) => processAndUpload(file.buffer, `listings/${randomUUID()}.webp`)),
+    // F3.4 — key includes userId to isolate each seller's uploads
+    files.map((file) => processAndUpload(file.buffer, `listings/${userId}/${randomUUID()}.webp`)),
   )
   const images = imageCreateData(uploadedImages, imageUrlsFromInput(normalizedInput))
+  const sanitizedTitle = data.title !== undefined ? stripTags(data.title) : undefined
+  const sanitizedDescription = data.description !== undefined ? allowBasicHtml(data.description) : undefined
+  await assertAllowedContent(
+    sanitizedTitle !== undefined ? sanitizedTitle : existingListing.title,
+    sanitizedDescription !== undefined ? sanitizedDescription : existingListing.description,
+  )
 
   const updated = await prisma.listing.update({
     where: { id: listingId },
     data: {
+      // F2.3: sanitize parsed fields on update too
       ...data,
+      title: sanitizedTitle,
+      titleKm: data.titleKm !== undefined ? (data.titleKm ? stripTags(data.titleKm) : null) : undefined,
+      description: sanitizedDescription,
+      descriptionKm: data.descriptionKm !== undefined ? (data.descriptionKm ? allowBasicHtml(data.descriptionKm) : null) : undefined,
+      province: data.province !== undefined ? stripTags(data.province) : undefined,
+      district: data.district !== undefined ? (data.district ? stripTags(data.district) : null) : undefined,
+      addressDetail: data.addressDetail !== undefined ? (data.addressDetail ? stripTags(data.addressDetail) : null) : undefined,
       facets: normalizedInput.facets !== undefined ? parseJsonObject(normalizedInput.facets) : undefined,
+      imageReviewStatus: images.length > 0 ? "pending" : undefined,
       images:
         images.length > 0
           ? {

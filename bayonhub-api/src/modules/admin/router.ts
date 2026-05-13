@@ -1,9 +1,12 @@
 import { Router } from "express"
 import fs from "fs"
 import { KYCStatus, ListingStatus, ReportStatus, Role, VerificationTier } from "@prisma/client"
+import { z } from "zod"
 
 import { getLocalPrivateDocumentPath, getPrivateDocumentReadUrl } from "../../lib/s3"
+import { createHttpError } from "../../lib/errors"
 import { requireAdmin, requireAuth } from "../../middleware/auth"
+import { logAdminAction } from "./audit"
 import {
   addFeaturedListing,
   approvePayment,
@@ -38,6 +41,7 @@ import {
   searchGiftUsers,
   unbanUser,
   updateAdminListing,
+  updateListingImageReviewStatus,
   updateKycApplication,
   updateListingStatus,
   updateReport,
@@ -48,12 +52,6 @@ import {
 
 const router = Router()
 
-function createHttpError(status: number, message: string): Error & { status: number } {
-  const error = new Error(message) as Error & { status: number }
-  error.status = status
-  return error
-}
-
 function getParam(value: string | string[] | undefined, label: string): string {
   if (typeof value === "string" && value.length > 0) return value
   throw createHttpError(400, `Invalid ${label}`)
@@ -62,6 +60,11 @@ function getParam(value: string | string[] | undefined, label: string): string {
 function getQueryString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined
 }
+
+// F2.1 — Zod schema for POST /admin/listings/import
+const importListingsSchema = z.object({
+  listings: z.array(z.record(z.string(), z.unknown())).min(1).max(100),
+})
 
 router.use(requireAuth, requireAdmin)
 
@@ -90,6 +93,8 @@ router.get("/payments", async (req, res, next) => {
 router.post("/payments/:id/approve", async (req, res, next) => {
   try {
     const result = await approvePayment(getParam(req.params.id, "payment id"), req.user!.id)
+    // F4.4 — audit log
+    logAdminAction({ adminId: req.user!.id, action: "payment.approve", targetId: req.params.id, targetType: "payment" })
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -101,6 +106,8 @@ router.post("/payments/:id/reject", async (req, res, next) => {
     const reviewNote = typeof req.body.reviewNote === "string" ? req.body.reviewNote : ""
     if (!reviewNote.trim()) throw createHttpError(400, "reviewNote is required")
     const result = await rejectPayment(getParam(req.params.id, "payment id"), req.user!.id, reviewNote)
+    // F4.4 — audit log
+    logAdminAction({ adminId: req.user!.id, action: "payment.reject", targetId: req.params.id, targetType: "payment", note: reviewNote })
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -114,6 +121,8 @@ router.post("/gift-plus", async (req, res, next) => {
       giftType: typeof req.body.giftType === "string" ? req.body.giftType : undefined,
       note: typeof req.body.note === "string" ? req.body.note : undefined,
     })
+    // F4.4 — audit log
+    logAdminAction({ adminId: req.user!.id, action: "plus.gift", targetId: req.body.userId, targetType: "user", note: req.body.note })
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -136,6 +145,8 @@ router.post("/gift-plus/:userId/revoke", async (req, res, next) => {
   try {
     const note = typeof req.body.note === "string" ? req.body.note : undefined
     const result = await revokePlus(getParam(req.params.userId, "user id"), note)
+    // F4.4 — audit log
+    logAdminAction({ adminId: req.user!.id, action: "plus.revoke", targetId: req.params.userId, targetType: "user", note })
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -260,6 +271,7 @@ router.get("/listings", async (req, res, next) => {
       status: getQueryString(req.query.status),
       category: getQueryString(req.query.category),
       flagged: getQueryString(req.query.flagged),
+      imageReview: getQueryString(req.query.imageReview),
       search: getQueryString(req.query.search),
     })
     res.status(200).json({ ...result, listings: result.data })
@@ -281,6 +293,8 @@ router.patch("/listings/:id", async (req, res, next) => {
 router.delete("/listings/:id", async (req, res, next) => {
   try {
     const result = await hardDeleteListing(getParam(req.params.id, "listing id"))
+    // F4.4 — audit log
+    logAdminAction({ adminId: req.user!.id, action: "listing.delete", targetId: req.params.id, targetType: "listing" })
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -311,9 +325,23 @@ router.put("/listings/:id/status", async (req, res, next) => {
   }
 })
 
+router.patch("/listings/:id/image-review", async (req, res, next) => {
+  try {
+    const status = req.body.status
+    if (status !== "approved" && status !== "flagged") {
+      throw createHttpError(400, "Invalid image review status")
+    }
+    const listing = await updateListingImageReviewStatus(getParam(req.params.id, "listing id"), status)
+    res.status(200).json(listing)
+  } catch (error) {
+    next(error)
+  }
+})
+
 router.post("/listings/import", async (req, res, next) => {
   try {
-    const result = await importListings(req.body.listings)
+    const body = importListingsSchema.parse(req.body) // F2.1 validate
+    const result = await importListings(body.listings as unknown as Parameters<typeof importListings>[0])
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -371,6 +399,8 @@ router.patch("/users/:id/ban", async (req, res, next) => {
     if (!reason.trim()) throw createHttpError(400, "reason is required")
     const duration = req.body.duration === null || req.body.duration === undefined ? null : Number(req.body.duration)
     const result = await banUser(getParam(req.params.id, "user id"), reason.trim(), duration)
+    // F4.4 — audit log
+    logAdminAction({ adminId: req.user!.id, action: "user.ban", targetId: req.params.id, targetType: "user", note: reason, meta: { duration } })
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -382,6 +412,8 @@ router.patch("/users/:id/warn", async (req, res, next) => {
     const reason = typeof req.body.reason === "string" ? req.body.reason : ""
     if (!reason.trim()) throw createHttpError(400, "reason is required")
     const result = await warnUser(getParam(req.params.id, "user id"), reason.trim())
+    // F4.4 — audit log
+    logAdminAction({ adminId: req.user!.id, action: "user.warn", targetId: req.params.id, targetType: "user", note: reason })
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -391,6 +423,8 @@ router.patch("/users/:id/warn", async (req, res, next) => {
 router.patch("/users/:id/unban", async (req, res, next) => {
   try {
     const result = await unbanUser(getParam(req.params.id, "user id"))
+    // F4.4 — audit log
+    logAdminAction({ adminId: req.user!.id, action: "user.unban", targetId: req.params.id, targetType: "user" })
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -512,6 +546,9 @@ router.patch("/verifications/:id", async (req, res, next) => {
       action,
       typeof req.body.adminNote === "string" ? req.body.adminNote : undefined,
     )
+    // F4.4 — audit log: action is "approve" or "reject"
+    const auditAction = action === "approve" ? "verification.approve" : "verification.reject"
+    logAdminAction({ adminId: req.user!.id, action: auditAction, targetId: req.params.id, targetType: "verification", note: req.body.adminNote })
     res.status(200).json(result)
   } catch (error) {
     next(error)

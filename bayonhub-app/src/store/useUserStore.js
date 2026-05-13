@@ -2,6 +2,7 @@ import { create } from "zustand"
 import {
   changePassword as changePasswordApi,
   connectTelegram as connectTelegramApi,
+  deleteAccount as deleteAccountApi,
   fetchFollowers as fetchFollowersApi,
   fetchFollowing as fetchFollowingApi,
   fetchMe as fetchMeApi,
@@ -59,6 +60,25 @@ export const useUserStore = create((set, get) => ({
   changePassword: async (data) => {
     try {
       return await changePasswordApi(data)
+    } catch (error) {
+      set({ error: error.message })
+      return { success: false, error: error.message }
+    }
+  },
+
+  deleteAccount: async () => {
+    try {
+      const result = await deleteAccountApi()
+      set({
+        profile: null,
+        savedListings: [],
+        followingSellers: [],
+        referral: null,
+        followerCounts: {},
+        verificationStatus: null,
+        error: null,
+      })
+      return result
     } catch (error) {
       set({ error: error.message })
       return { success: false, error: error.message }

@@ -8,6 +8,7 @@ import {
   createLead,
   createListing,
   deleteListing,
+  getFeaturedListings,
   getListing,
   getListingLocations,
   getListings,
@@ -33,6 +34,7 @@ const router = Router()
 
 router.get("/", optionalAuth, getListings)
 router.get("/search", searchListings)
+router.get("/featured", getFeaturedListings)
 router.get("/locations", getListingLocations)
 router.get("/upload-url", requireAuth, getUploadUrl)
 router.get("/mine", requireAuth, getMyListings)

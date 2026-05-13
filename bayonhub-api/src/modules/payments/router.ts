@@ -1,14 +1,22 @@
 import crypto from "crypto"
-import { PaymentStatus, PromotionPlan } from "@prisma/client"
+import { PaymentStatus, Prisma, PromotionPlan } from "@prisma/client"
 import { Router } from "express"
+import { z } from "zod"
 
 import { env } from "../../config/env"
+import { createHttpError } from "../../lib/errors"
+import { sendPromotionConfirmationEmail } from "../../lib/emailTemplates"
 import { prisma } from "../../lib/prisma"
 import { redis } from "../../config/redis"
 import { sendTelegramMessage } from "../../lib/telegram"
 import { requireAuth } from "../../middleware/auth"
 import { upload } from "../../middleware/upload"
 import { getMyPayments, submitPlusPayment } from "./service"
+
+// F2.1 — Zod schema for POST /payments/submit
+const submitPaymentSchema = z.object({
+  note: z.string().max(500).optional(),
+})
 
 const router = Router()
 
@@ -22,12 +30,6 @@ const PLAN_DAYS: Record<PromotionPlan, number> = {
   BOOST: 7,
   TOP_AD: 7,
   VIP_30: 30,
-}
-
-function createHttpError(status: number, message: string): Error & { status: number } {
-  const error = new Error(message) as Error & { status: number }
-  error.status = status
-  return error
 }
 
 function addMinutes(date: Date, minutes: number): Date {
@@ -49,7 +51,8 @@ function validatePlan(value: unknown): PromotionPlan {
 
 router.post("/submit", requireAuth, upload.single("screenshot"), async (req, res, next) => {
   try {
-    const result = await submitPlusPayment(req.user!.id, req.file, req.body.note)
+    const body = submitPaymentSchema.parse(req.body) // F2.1 validate
+    const result = await submitPlusPayment(req.user!.id, req.file, body.note)
     res.status(201).json(result)
   } catch (error) {
     next(error)
@@ -193,7 +196,7 @@ async function generateKhqrPayload(reference: string, amount: number): Promise<s
   return `MOCK_KHQR|merchant=BayonHub|reference=${reference}|amount=${amount.toFixed(2)}|currency=USD`
 }
 
-function verifyWebhookSignature(body: unknown, signature: string | undefined): boolean {
+function verifyWebhookSignature(rawBody: Buffer, signature: string | undefined): boolean {
   if (!env.abaWebhookSecret) {
     console.warn("[Payments] ABA_WEBHOOK_SECRET missing — processing webhook without signature in development.")
     return true
@@ -203,15 +206,14 @@ function verifyWebhookSignature(body: unknown, signature: string | undefined): b
     return false
   }
 
-  // NOTE: JSON.stringify can sometimes reorder keys, which might break signatures.
-  // In a high-traffic production environment, it is better to use the raw body buffer.
-  const payload = JSON.stringify(body)
   const expected = crypto
     .createHmac("sha256", env.abaWebhookSecret)
-    .update(payload)
+    .update(rawBody)
     .digest("hex")
 
-  const isValid = expected === signature
+  const expectedBuffer = Buffer.from(expected, "hex")
+  const receivedBuffer = Buffer.from(signature, "hex")
+  const isValid = expectedBuffer.length === receivedBuffer.length && crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
   if (!isValid) {
     console.error("[Payments] Webhook signature mismatch")
   }
@@ -360,19 +362,24 @@ router.post("/khqr/generate", requireAuth, async (req, res, next) => {
 
 router.post("/khqr/webhook", async (req, res, next) => {
   try {
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}))
     const signature = String(req.headers["x-aba-signature"] || "")
-    if (!verifyWebhookSignature(req.body, signature)) {
+    if (!verifyWebhookSignature(rawBody, signature)) {
       throw createHttpError(401, "Invalid webhook signature")
     }
 
-    const reference = String(req.body.reference || req.body.tran_id || "")
+    const payload = JSON.parse(rawBody.toString()) as Prisma.InputJsonObject
+    const reference = String(payload.reference || payload.tran_id || "")
     if (!reference) throw createHttpError(400, "Missing payment reference")
     const confirmed =
-      req.body.status === "PAID" ||
-      req.body.status === "APPROVED" ||
-      req.body.payment_status === "APPROVED"
+      payload.status === "PAID" ||
+      payload.status === "APPROVED" ||
+      payload.payment_status === "APPROVED"
 
-    const payment = await prisma.payment.findUnique({ where: { reference } })
+    const payment = await prisma.payment.findUnique({
+      where: { reference },
+      include: { user: { select: { email: true } } },
+    })
     if (!payment) throw createHttpError(404, "Payment not found")
 
     if (confirmed && payment.status !== PaymentStatus.PAID) {
@@ -384,7 +391,7 @@ router.post("/khqr/webhook", async (req, res, next) => {
           data: {
             status: PaymentStatus.PAID,
             paidAt: new Date(),
-            webhookPayload: req.body,
+            webhookPayload: payload,
           },
         }),
         prisma.listingPromotion.create({
@@ -405,7 +412,7 @@ router.post("/khqr/webhook", async (req, res, next) => {
         where: { id: payment.id },
         data: {
           status: confirmed ? PaymentStatus.PAID : PaymentStatus.FAILED,
-          webhookPayload: req.body,
+          webhookPayload: payload,
         },
       })
     }
@@ -415,6 +422,9 @@ router.post("/khqr/webhook", async (req, res, next) => {
       const amountText = `${payment.currency === "KHR" ? `${payment.amount.toFixed(2)} ៛` : `$${payment.amount.toFixed(2)}`}`
       const message = `✅ Payment confirmed for BayonHub\nTransaction: ${reference}\nAmount: ${amountText}\nStatus: Paid`
       await sendTelegramMessage(telegramChatId, message)
+    }
+    if (confirmed && payment.user.email) {
+      sendPromotionConfirmationEmail(payment.user.email, reference).catch(() => {})
     }
 
     res.status(200).json({ received: true })

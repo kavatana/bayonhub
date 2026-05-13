@@ -1,170 +1,112 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Helmet } from "react-helmet-async"
-import { BadgeCheck, Check, CreditCard, ImagePlus, Upload, X } from "lucide-react"
+import toast from "react-hot-toast"
+import { BadgeCheck, Check, CreditCard, X } from "lucide-react"
+import client, { hasApiBackend } from "../api/client"
 import Button from "../components/ui/Button"
-import Modal from "../components/ui/Modal"
 import PageTransition from "../components/ui/PageTransition"
 import { useTranslation } from "../hooks/useTranslation"
-import { useAuthStore } from "../store/useAuthStore"
+import { selectIsPlusMember, useAuthStore } from "../store/useAuthStore"
 
-const MAX_RECEIPT_SIZE = 5 * 1024 * 1024
+const PLUS_PLAN = "VIP_30"
+const PLAN_PRICES = {
+  [PLUS_PLAN]: 15,
+}
 const PAYMENT_HISTORY_KEY = "bayonhub:plusPaymentSubmissions"
 
-function plusActive(user) {
-  return Boolean(user?.plusUntil && new Date(user.plusUntil) > new Date())
-}
-
-function saveLocalSubmission(file, note) {
+function saveLocalPayment(plan) {
   const existing = JSON.parse(localStorage.getItem(PAYMENT_HISTORY_KEY) || "[]")
+  const reference = `LOCAL-${Date.now()}`
   const submission = {
     id: crypto.randomUUID(),
-    screenshotName: file.name,
-    note: note.trim(),
+    reference,
+    plan,
+    amount: PLAN_PRICES[plan],
+    currency: "USD",
     status: "PENDING",
     createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
   }
   localStorage.setItem(PAYMENT_HISTORY_KEY, JSON.stringify([submission, ...existing].slice(0, 20)))
-  return { message: "payment.underReview", submission }
-}
-
-async function submitPaymentReceipt({ file, note }) {
-  const { default: imageCompression } = await import("browser-image-compression")
-  const { default: client, hasApiBackend } = await import("../api/client")
-  const compressed = await imageCompression(file, {
-    maxSizeMB: 1,
-    maxWidthOrHeight: 1600,
-    useWebWorker: true,
-  })
-
-  if (hasApiBackend()) {
-    const formData = new FormData()
-    formData.append("screenshot", compressed)
-    if (note.trim()) formData.append("note", note.trim())
-    try {
-      const response = await client.post("/api/payments/submit", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
-      return response.data
-    } catch (error) {
-      if (!error?.response || error.response.status === 404) return saveLocalSubmission(compressed, note)
-      throw error
-    }
-  }
-
-  return saveLocalSubmission(compressed, note)
-}
-
-function PaymentSubmitModal({ open, onClose, onSubmitted }) {
-  const { t } = useTranslation()
-  const [receipt, setReceipt] = useState(null)
-  const [note, setNote] = useState("")
-  const [error, setError] = useState("")
-  const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-
-  function selectReceipt(file) {
-    setSubmitted(false)
-    if (!file) {
-      setReceipt(null)
-      return
-    }
-    if (!file.type.startsWith("image/")) {
-      setError(t("payment.imageOnly"))
-      setReceipt(null)
-      return
-    }
-    if (file.size > MAX_RECEIPT_SIZE) {
-      setError(t("payment.fileTooLarge"))
-      setReceipt(null)
-      return
-    }
-    setError("")
-    setReceipt(file)
-  }
-
-  async function submitReceipt(event) {
-    event.preventDefault()
-    if (!receipt) {
-      setError(t("payment.fileRequired"))
-      return
-    }
-    setSubmitting(true)
-    setError("")
-    try {
-      await submitPaymentReceipt({ file: receipt, note })
-      setSubmitted(true)
-      onSubmitted()
-    } catch (err) {
-      setError(err?.response?.data?.message || err?.message || t("payment.submitError"))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  function closeModal() {
-    setReceipt(null)
-    setNote("")
-    setError("")
-    setSubmitting(false)
-    setSubmitted(false)
-    onClose()
-  }
-
-  return (
-    <Modal onClose={closeModal} open={open} size="md" title={t("payment.submit")}>
-      {submitted ? (
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5 text-emerald-800">
-          <BadgeCheck className="h-8 w-8" aria-hidden="true" />
-          <h3 className="mt-3 text-lg font-black">{t("payment.underReview")}</h3>
-          <p className="mt-2 text-sm font-bold leading-7">{t("payment.reviewMessage")}</p>
-          <Button className="mt-5" onClick={closeModal} type="button">
-            {t("ui.close")}
-          </Button>
-        </div>
-      ) : (
-        <form className="grid gap-4" onSubmit={submitReceipt}>
-          <label className="grid gap-2 text-sm font-bold text-neutral-700">
-            {t("payment.uploadReceipt")}
-            <span className="grid min-h-40 cursor-pointer place-items-center rounded-2xl border-2 border-dashed border-neutral-300 bg-neutral-50 px-4 py-8 text-center transition hover:border-primary hover:bg-primary/5">
-              <input
-                accept="image/*"
-                className="sr-only"
-                onChange={(event) => selectReceipt(event.target.files?.[0] || null)}
-                type="file"
-              />
-              <ImagePlus className="h-9 w-9 text-primary" aria-hidden="true" />
-              <span className="mt-3 block text-sm font-black text-neutral-900">
-                {receipt?.name || t("payment.fileHelp")}
-              </span>
-            </span>
-          </label>
-          <label className="grid gap-2 text-sm font-bold text-neutral-700">
-            {t("payment.note")}
-            <textarea
-              className="min-h-24 rounded-xl border border-neutral-200 px-3 py-2 outline-none focus:border-primary"
-              onChange={(event) => setNote(event.target.value)}
-              placeholder={t("payment.notePlaceholder")}
-              value={note}
-            />
-          </label>
-          {error ? <p className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
-          <Button disabled={submitting} loading={submitting} type="submit">
-            <Upload className="h-4 w-4" aria-hidden="true" />
-            {t("payment.submit")}
-          </Button>
-        </form>
-      )}
-    </Modal>
-  )
+  return submission
 }
 
 export default function UpgradePage() {
   const { t, language } = useTranslation()
   const user = useAuthStore((state) => state.user)
-  const [modalOpen, setModalOpen] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-  const isPlusMember = plusActive(user)
+  const isPlusMember = useAuthStore(selectIsPlusMember)
+  const loadProfile = useAuthStore((state) => state.loadProfile)
+  const [paymentRef, setPaymentRef] = useState(null)
+  const [paymentStatus, setPaymentStatus] = useState("idle")
+  const [polling, setPolling] = useState(false)
+  const [qrImageFailed, setQrImageFailed] = useState(false)
+  const pollingRef = useRef(null)
+  const expiryRef = useRef(null)
   const pageClass = language === "km" ? "font-khmer leading-8" : ""
+  const isGenerating = paymentStatus === "generating"
+  const isPending = paymentStatus === "pending"
+
+  function clearPolling() {
+    if (pollingRef.current) window.clearInterval(pollingRef.current)
+    if (expiryRef.current) window.clearTimeout(expiryRef.current)
+    pollingRef.current = null
+    expiryRef.current = null
+    setPolling(false)
+  }
+
+  function startPolling(reference) {
+    clearPolling()
+    setPolling(true)
+    pollingRef.current = window.setInterval(async () => {
+      try {
+        const response = await client.get(`/api/payments/status/${reference}`)
+        if (response.data.status === "PAID") {
+          clearPolling()
+          setPaymentStatus("success")
+          toast.success(t("payment.success"))
+          await loadProfile()
+        } else if (response.data.status === "EXPIRED") {
+          clearPolling()
+          setPaymentStatus("expired")
+          toast.error(t("payment.expired"))
+        }
+      } catch {
+        // Keep polling until the timeout expires.
+      }
+    }, 5000)
+    expiryRef.current = window.setTimeout(() => {
+      clearPolling()
+      setPaymentStatus("expired")
+      toast.error(t("payment.expired"))
+    }, 15 * 60 * 1000)
+  }
+
+  async function handleUpgrade(plan) {
+    setPaymentStatus("generating")
+    setQrImageFailed(false)
+    try {
+      if (!hasApiBackend()) {
+        const localPayment = saveLocalPayment(plan)
+        setPaymentRef(localPayment)
+        setPaymentStatus("pending")
+        return
+      }
+
+      const response = await client.post("/api/payments/khqr/generate", {
+        plan,
+        amount: PLAN_PRICES[plan],
+        currency: "USD",
+      })
+      setPaymentRef(response.data)
+      setPaymentStatus("pending")
+      startPolling(response.data.reference)
+    } catch {
+      toast.error(t("payment.generateFailed"))
+      setPaymentStatus("idle")
+    }
+  }
+
+  useEffect(() => clearPolling, [])
 
   const comparisonRows = useMemo(
     () => [
@@ -212,7 +154,7 @@ export default function UpgradePage() {
           <h1 className="mt-2 text-3xl font-black text-neutral-950 sm:text-5xl">{t("plus.upgradeTitle")}</h1>
           <p className="mt-4 max-w-2xl text-base font-bold text-neutral-600 sm:text-lg">{t("plus.tagline")}</p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <Button disabled={isPlusMember} onClick={() => setModalOpen(true)} size="lg">
+            <Button disabled={isPlusMember || isGenerating || isPending} loading={isGenerating} onClick={() => handleUpgrade(PLUS_PLAN)} size="lg">
               <CreditCard className="h-5 w-5" aria-hidden="true" />
               {isPlusMember ? t("plus.active") : t("plus.upgradeCta")}
             </Button>
@@ -257,12 +199,37 @@ export default function UpgradePage() {
           <h2 className="text-2xl font-black text-neutral-950">{t("payment.instructions")}</h2>
           <p className="mt-2 text-sm font-bold leading-7 text-neutral-600">{t("payment.referenceHelp")}</p>
           <div className="mt-5 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
-            <img alt={t("payment.abaQrAlt")} className="mx-auto aspect-square w-full max-w-56 rounded-xl object-cover" src="/assets/aba-qr.png" />
+            {paymentRef ? (
+              <>
+                <img
+                  alt={t("payment.qrAlt")}
+                  className={`${qrImageFailed ? "hidden" : "mx-auto aspect-square w-full max-w-56 rounded-xl object-cover"}`}
+                  onError={() => setQrImageFailed(true)}
+                  src={paymentRef.qrImageUrl || "/assets/aba-qr.png"}
+                />
+                <div className={`${qrImageFailed ? "flex" : "hidden"} mx-auto h-56 w-56 items-center justify-center rounded-xl border-2 border-dashed border-neutral-300 p-4 text-center text-xs font-bold text-neutral-400`}>
+                  {t("payment.qrLoadFailed")}
+                </div>
+              </>
+            ) : (
+              <div className="grid h-56 place-items-center text-center text-neutral-500">
+                <div>
+                  <CreditCard className="mx-auto h-10 w-10 text-primary" aria-hidden="true" />
+                  <p className="mt-3 text-sm font-black">{t("plus.upgradeCta")}</p>
+                </div>
+              </div>
+            )}
           </div>
-          <Button className="mt-5 w-full" disabled={isPlusMember} onClick={() => setModalOpen(true)} size="lg">
-            {isPlusMember ? t("plus.active") : t("payment.openModal")}
+          {paymentRef ? (
+            <p className="mt-3 rounded-xl bg-neutral-50 p-3 text-xs font-black text-neutral-600">
+              {t("payment.reference")}: {paymentRef.reference}
+            </p>
+          ) : null}
+          <Button className="mt-5 w-full" disabled={isPlusMember || isGenerating || isPending} loading={isGenerating || polling} onClick={() => handleUpgrade(PLUS_PLAN)} size="lg">
+            {isPlusMember ? t("plus.active") : isPending ? t("payment.underReview") : t("plus.upgradeCta")}
           </Button>
-          {submitted ? <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-700">{t("payment.reviewMessage")}</p> : null}
+          {paymentStatus === "success" ? <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-700">{t("payment.success")}</p> : null}
+          {paymentStatus === "expired" ? <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{t("payment.expired")}</p> : null}
         </div>
 
         <div className="grid gap-4">
@@ -292,11 +259,6 @@ export default function UpgradePage() {
         </div>
       </section>
 
-      <PaymentSubmitModal
-        onClose={() => setModalOpen(false)}
-        onSubmitted={() => setSubmitted(true)}
-        open={modalOpen}
-      />
     </PageTransition>
   )
 }

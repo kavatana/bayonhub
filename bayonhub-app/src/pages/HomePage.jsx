@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useGSAP } from "@gsap/react"
 import { Helmet } from "react-helmet-async"
 import { Link } from "react-router-dom"
@@ -55,7 +55,6 @@ const iconMap = {
 export default function HomePage() {
   const { t, language } = useTranslation()
   const listings = useListingStore((state) => state.listings)
-  const featuredListings = useListingStore((state) => state.featuredListings)
   const recentListings = useListingStore((state) => state.recentListings)
   const trendingCategories = useListingStore((state) => state.trendingCategories)
   const newTodayCount = useListingStore((state) => state.newTodayCount)
@@ -72,6 +71,7 @@ export default function HomePage() {
   const toggleLocationSelector = useUIStore((state) => state.toggleLocationSelector)
   const { canInstall, promptInstall, dismiss } = usePWAInstall()
   const categoriesRef = useRef(null)
+  const [plusFeaturedListings, setPlusFeaturedListings] = useState([])
   const categoryCounts = useMemo(() => {
     if (trendingCategories.length) {
       return trendingCategories.reduce((acc, item) => {
@@ -104,15 +104,41 @@ export default function HomePage() {
       })
       .slice(0, 8)
   }, [listings, selectedProvince])
+  const plusFeaturedCards = useMemo(
+    () => plusFeaturedListings.map((listing) => ({
+      ...listing,
+      isPlusMember: true,
+      seller: {
+        ...listing.seller,
+        isPlusMember: true,
+      },
+    })),
+    [plusFeaturedListings],
+  )
 
   useEffect(() => {
     fetchListings()
     fetchHomepage(selectedProvince)
   }, [fetchHomepage, fetchListings, selectedProvince])
 
-  const retryHomepage = useCallback(() => {
-    fetchHomepage(selectedProvince)
-  }, [fetchHomepage, selectedProvince])
+  useEffect(() => {
+    let mounted = true
+
+    async function fetchPlusFeaturedListings() {
+      try {
+        const { getFeaturedListings } = await import("../api/listings")
+        const results = await getFeaturedListings()
+        if (mounted) setPlusFeaturedListings(Array.isArray(results) ? results : [])
+      } catch {
+        if (mounted) setPlusFeaturedListings([])
+      }
+    }
+
+    fetchPlusFeaturedListings()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   useGSAP(
     () => {
@@ -269,28 +295,24 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Featured listings */}
-      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">
-            {t("home.featured")}
+      {plusFeaturedCards.length ? (
+        <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+          <h2
+            className={`text-2xl font-black text-amber-600 dark:text-amber-400 ${
+              language === "km" ? "font-khmer leading-[2]" : ""
+            }`}
+          >
+            {t("plus.featuredSection")}
           </h2>
-          <Link className="text-sm font-black text-primary" to="/search?sort=most_viewed">
-            {t("home.viewAll")}
-          </Link>
-        </div>
-        {featuredListings.length ? (
-          <div className="mt-5 grid auto-cols-[78%] grid-flow-col gap-4 overflow-x-auto pb-3 sm:auto-cols-[42%] lg:auto-cols-[24%]">
-            {featuredListings.slice(0, 6).map((listing) => (
-              <ListingCard key={listing.id} listing={listing} />
+          <div className="-mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-3 sm:mx-0 sm:grid sm:grid-cols-4 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0">
+            {plusFeaturedCards.map((listing) => (
+              <div key={listing.id} className="w-[70vw] shrink-0 snap-start sm:w-auto">
+                <ListingCard listing={listing} />
+              </div>
             ))}
           </div>
-        ) : (
-          <div className="mt-5">
-            <ListingGrid listings={[]} loading={homepageLoading || loading} error={error} onRetry={retryHomepage} />
-          </div>
-        )}
-      </section>
+        </section>
+      ) : null}
 
       {/* Recently viewed */}
       {recentlyViewedListings.length > 0 ? (

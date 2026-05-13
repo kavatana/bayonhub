@@ -5,6 +5,20 @@ import { prisma } from "../../lib/prisma"
 
 const router = Router()
 
+void prisma.$queryRaw<{ pg_trgm_installed: boolean }[]>`
+  SELECT EXISTS (
+    SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'
+  ) AS pg_trgm_installed
+`
+  .then((result) => {
+    if (!result[0]?.pg_trgm_installed) {
+      console.error("[Search] CRITICAL: pg_trgm extension not installed. Run: CREATE EXTENSION pg_trgm;")
+      return
+    }
+    console.info("[Search] pg_trgm extension confirmed")
+  })
+  .catch(() => console.error("[Search] Could not verify pg_trgm extension"))
+
 router.get("/suggestions", async (req, res, next) => {
   try {
     const q = typeof req.query.q === "string" ? req.query.q.trim() : ""

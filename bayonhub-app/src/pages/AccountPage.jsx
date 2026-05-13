@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react"
 import { Helmet } from "react-helmet-async"
+import toast from "react-hot-toast"
 import { BadgeCheck, Camera, Copy, Eye, ListChecks, Lock, Send, ShieldAlert } from "lucide-react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import ListingCard from "../components/listing/ListingCard"
 import PageTransition from "../components/ui/PageTransition"
 import Button from "../components/ui/Button"
+import Modal from "../components/ui/Modal"
 import { useTranslation } from "../hooks/useTranslation"
 import { PROVINCES } from "../lib/locations"
-import { useAuthStore } from "../store/useAuthStore"
+import { selectIsPlusMember, useAuthStore } from "../store/useAuthStore"
 import { useNotificationStore } from "../store/useNotificationStore"
 import { useUIStore } from "../store/useUIStore"
 import { useUserStore } from "../store/useUserStore"
@@ -34,7 +36,10 @@ function initials(name = "") {
 
 export default function AccountPage() {
   const { t, language } = useTranslation()
+  const navigate = useNavigate()
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const isPlusMember = useAuthStore(selectIsPlusMember)
+  const logout = useAuthStore((state) => state.logout)
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const profile = useUserStore((state) => state.profile)
   const profileLoading = useUserStore((state) => state.profileLoading)
@@ -51,6 +56,7 @@ export default function AccountPage() {
   const fetchSellerVerification = useUserStore((state) => state.fetchSellerVerification)
   const submitSellerVerification = useUserStore((state) => state.submitSellerVerification)
   const connectTelegram = useUserStore((state) => state.connectTelegram)
+  const deleteAccount = useUserStore((state) => state.deleteAccount)
   const referral = useUserStore((state) => state.referral)
   const fetchReferral = useUserStore((state) => state.fetchReferral)
   const generateReferral = useUserStore((state) => state.generateReferral)
@@ -63,6 +69,9 @@ export default function AccountPage() {
   const [idBack, setIdBack] = useState(null)
   const [phoneTouched, setPhoneTouched] = useState(false)
   const [saved, setSaved] = useState("")
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState("")
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -93,7 +102,6 @@ export default function AccountPage() {
 
   const phoneInvalid = phoneTouched && form.phone && !PHONE_REGEX.test(form.phone)
   const avatar = profile?.avatar || profile?.avatarUrl
-  const isPlusMember = Boolean(profile?.plusUntil && new Date(profile.plusUntil) > new Date())
   const stats = useMemo(() => [
     [t("account.totalListings"), profile?.totalListings || 0, ListChecks],
     [t("account.totalViews"), profile?.totalViews || 0, Eye],
@@ -172,6 +180,29 @@ export default function AccountPage() {
     if (!link) return
     await navigator.clipboard?.writeText(link)
     setSaved("referral")
+  }
+
+  function closeDeleteModal() {
+    if (deleteLoading) return
+    setDeleteModalOpen(false)
+    setDeleteConfirm("")
+  }
+
+  async function submitDeleteAccount() {
+    if (deleteConfirm !== "DELETE") return
+    setDeleteLoading(true)
+    const result = await deleteAccount()
+    if (result?.success) {
+      try {
+        await logout()
+      } finally {
+        toast.success(t("account.deleteSuccess"))
+        navigate("/")
+      }
+      return
+    }
+    setDeleteLoading(false)
+    toast.error(t("account.deleteError"))
   }
 
   if (!isAuthenticated) {
@@ -383,7 +414,7 @@ export default function AccountPage() {
                   value={otpCode}
                 />
                 {saved === "otp-sent" ? <p className="text-sm font-bold text-emerald-700 sm:col-span-2">{t("verify.enterCode")}</p> : null}
-                <Button disabled={!otpCode || otpCode.length < 6} type="submit">{t("verify.verified")}</Button>
+                <Button disabled={!otpCode || otpCode.length < 6} type="submit">{t("verify.submitOtp")}</Button>
               </form>
             ) : (
               <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-700">{t("verify.verified")}</p>
@@ -417,14 +448,39 @@ export default function AccountPage() {
           </section>
 
           <section className="rounded-2xl border border-red-100 bg-red-50 p-5">
-            <div className="flex items-center gap-2 text-red-700">
-              <ShieldAlert className="h-5 w-5" aria-hidden="true" />
-              <h2 className="text-xl font-black">{t("account.dangerZone")}</h2>
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="mt-1 h-5 w-5 text-red-700" aria-hidden="true" />
+              <div>
+                <h2 className="text-xl font-black text-red-700">{t("account.dangerZone")}</h2>
+                <p className="mt-1 text-sm font-bold text-red-700/80">{t("account.deleteWarning")}</p>
+              </div>
             </div>
-            <Button className="mt-4" disabled variant="secondary">{t("account.deleteAccount")}</Button>
+            <Button className="mt-4 border-red-300 text-red-700 hover:border-red-600 hover:bg-red-100 hover:text-red-800" onClick={() => setDeleteModalOpen(true)} variant="secondary">
+              {t("account.deleteAccount")}
+            </Button>
           </section>
         </main>
       </div>
+      <Modal open={deleteModalOpen} onClose={closeDeleteModal} title={t("account.deleteAccount")} size="sm">
+        <div className="grid gap-4">
+          <p className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{t("account.deleteWarning")}</p>
+          <p className="text-sm font-bold leading-6 text-neutral-600">{t("account.deleteImpact")}</p>
+          <input
+            className="h-11 rounded-xl border border-neutral-200 px-3 font-bold outline-none focus:border-primary"
+            onChange={(event) => setDeleteConfirm(event.target.value)}
+            placeholder={t("account.deleteConfirm")}
+            value={deleteConfirm}
+          />
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button disabled={deleteLoading} onClick={closeDeleteModal} type="button" variant="secondary">
+              {t("ui.cancel")}
+            </Button>
+            <Button disabled={deleteConfirm !== "DELETE"} loading={deleteLoading} onClick={submitDeleteAccount} type="button" variant="danger">
+              {t("account.deleteAccount")}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </PageTransition>
   )
 }
