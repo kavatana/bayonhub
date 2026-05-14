@@ -5,7 +5,7 @@ import { BarChart2, Check, Pencil, PlusCircle, Rocket, Trash2, TrendingUp, MoreV
 import { useTranslation } from "../../hooks/useTranslation"
 import { getPromotionState, isPromotedListing, PROMOTION_LABELS } from "../../lib/promotionStates"
 import { formatPrice, getListingImage, listingUrl, timeAgo } from "../../lib/utils"
-import { useAuthStore } from "../../store/useAuthStore"
+import { selectIsPlusMember, useAuthStore } from "../../store/useAuthStore"
 import { useListingStore } from "../../store/useListingStore"
 import { useUIStore } from "../../store/useUIStore"
 import Button from "../ui/Button"
@@ -22,6 +22,7 @@ export default function MyAdsTab() {
   const { t, language } = useTranslation()
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
+  const isPlusMember = useAuthStore(selectIsPlusMember)
   const storeMyListings = useListingStore((state) => state.myListings)
   const myListingsLoading = useListingStore((state) => state.myListingsLoading)
   const fetchMyListings = useListingStore((state) => state.fetchMyListings)
@@ -61,7 +62,6 @@ export default function MyAdsTab() {
   )
   const pageCount = Math.max(1, Math.ceil(myListings.length / perPage))
   const pageItems = myListings.slice((page - 1) * perPage, page * perPage)
-  const isPlusMember = Boolean(user?.plusUntil && new Date(user.plusUntil) > new Date())
 
   function bumpListing(id) {
     updateListing(id, { updatedAt: new Date().toISOString(), postedAt: new Date().toISOString() })

@@ -116,9 +116,11 @@ app.use(cookieParser())
 app.use(passport.initialize())
 app.use(setCsrfCookie)
 app.use(verifyCsrfToken)
-app.use("/api/payments/khqr/webhook", express.raw({ type: "application/json", limit: "10kb" }))
+const ABA_WEBHOOK_PATHS = new Set(["/api/payments/aba-webhook", "/api/payments/khqr/webhook"])
+app.use("/api/payments/aba-webhook", express.raw({ type: "*/*", limit: "10kb" }))
+app.use("/api/payments/khqr/webhook", express.raw({ type: "*/*", limit: "10kb" }))
 app.use((req, res, next) => {
-  if (req.path === "/api/payments/khqr/webhook") {
+  if (ABA_WEBHOOK_PATHS.has(req.path)) {
     next()
     return
   }

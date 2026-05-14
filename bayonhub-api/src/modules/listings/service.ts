@@ -522,7 +522,7 @@ function buildSearchSqlWhere(filters: ListingSearchFilters) {
   const clauses: Prisma.Sql[] = [Prisma.sql`l.status = 'ACTIVE'`]
   const q = filters.q?.trim()
   if (q) {
-    clauses.push(Prisma.sql`(l.title ILIKE ${`%${q}%`} OR l.description ILIKE ${`%${q}%`})`)
+    clauses.push(Prisma.sql`(l.search_vector @@ websearch_to_tsquery('english', ${q}) OR l.title % ${q})`)
   }
   if (filters.category) {
     const category = normalizeSearchCategory(filters.category)
@@ -616,7 +616,6 @@ export async function getListings(filters: ListingFilters) {
       WHERE (
         l.search_vector @@ websearch_to_tsquery('english', ${q})
         OR l.title % ${q}
-        OR l.title ILIKE ${`%${q}%`}
       )
       AND l.status = 'ACTIVE'
       AND (l."expiresAt" IS NULL OR l."expiresAt" > NOW())
@@ -645,7 +644,6 @@ export async function getListings(filters: ListingFilters) {
       WHERE (
         l.search_vector @@ websearch_to_tsquery('english', ${q})
         OR l.title % ${q}
-        OR l.title ILIKE ${`%${q}%`}
       )
       AND l.status = 'ACTIVE'
       AND (l."expiresAt" IS NULL OR l."expiresAt" > NOW())
@@ -737,9 +735,16 @@ export async function searchListings(filters: ListingSearchFilters) {
   const where = buildSearchWhere(filters)
   const orderBy = searchOrderBy(filters.sortBy)
   const rankedSort = !filters.sortBy || filters.sortBy === "newest"
+  const q = filters.q?.trim()
 
   if (rankedSort) {
     const sqlWhere = buildSearchSqlWhere(filters)
+    const queryRankOrder = q
+      ? Prisma.sql`
+          ts_rank(l.search_vector, websearch_to_tsquery('english', ${q})) DESC,
+          similarity(l.title, ${q}) DESC,
+        `
+      : Prisma.empty
     const start = startOfUtcDay()
     const [idRows, countRows] = await Promise.all([
       prisma.$queryRaw<{ id: string }[]>`
@@ -750,6 +755,7 @@ export async function searchListings(filters: ListingSearchFilters) {
         ORDER BY
           CASE WHEN l."bumpedAt" >= ${start} THEN 0 ELSE 1 END,
           CASE WHEN u."isLifetimePlus" = true OR u."plusUntil" > NOW() THEN 0 ELSE 1 END,
+          ${queryRankOrder}
           l."createdAt" DESC
         OFFSET ${skip}
         LIMIT ${limit}

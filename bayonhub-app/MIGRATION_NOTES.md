@@ -1947,3 +1947,21 @@ Phase 4 — UX Improvements:
 
 Audit findings addressed: 27/27
 Production readiness: 9.5/10
+
+## Audit Gap Remediation Follow-Up — 2026-05-14
+
+- `bayonhub-api/src/modules/users/router.ts` — required `TELEGRAM_WEBHOOK_SECRET` and `X-Telegram-Bot-Api-Secret-Token` for Telegram webhook access while preserving the 20 req/min limiter.
+- `bayonhub-api/src/lib/emailTemplates.ts` — added a dedicated welcome email template for registrations.
+- `bayonhub-api/src/modules/auth/service.ts` — switched registration welcome email to the dedicated template and kept email failures non-blocking.
+- `bayonhub-api/prisma/migrations/20260514090000_enable_pg_trgm/migration.sql` — added idempotent pg_trgm and unaccent extension migration, then applied it with `prisma migrate deploy`.
+- `bayonhub-api/src/app.ts` — mounted raw-body parsing before JSON parsing for ABA/KHQR payment webhook paths.
+- `bayonhub-api/src/modules/payments/router.ts` — shared the raw-body ABA webhook handler across `/aba-webhook` and `/khqr/webhook`.
+- `bayonhub-api/src/modules/search/router.ts` — removed ILIKE fallback from suggestions and downgraded pg_trgm startup failure to warning logs.
+- `bayonhub-api/src/modules/listings/service.ts` — removed ILIKE fallback from listing search and added ts_rank ordering when query search is present.
+- `bayonhub-api/src/lib/errors.ts` — restored the shared HTTP error helper to the local `Error & { status: number }` shape.
+- `bayonhub-app/src/pages/PostPage.jsx` — deleted the dead redirect/timer stub after `/post` was confirmed to render `PostListingPage` directly.
+- `bayonhub-app/src/pages/DashboardPage.jsx` — stopped dashboard mount from fetching the public marketplace feed and kept stats scoped to `myListings`.
+- `bayonhub-app/src/pages/UpgradePage.jsx` — fixed payment polling status reads with a ref and confirmed `loadProfile()` is the existing profile refresh method.
+- `bayonhub-app/src/components/dashboard/MyAdsTab.jsx` — replaced the remaining inline Plus membership calculation with the Zustand selector.
+- `bayonhub-app/src/pages/CategoryPage.jsx` — changed the mobile filter sheet to a flex layout with independently scrolling filters and a fixed Apply/Reset row.
+- `bayonhub-app/src/pages/InboxPage.jsx` — added Dashboard-style one-shot auth modal and pending-action handling for unauthenticated access.

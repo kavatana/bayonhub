@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { MessageCircle } from "lucide-react"
 import { useTranslation } from "../hooks/useTranslation"
@@ -42,9 +42,11 @@ export default function InboxPage() {
   const conversations = useMessageStore((state) => state.conversations)
   const loading = useMessageStore((state) => state.loading)
   const fetchConversations = useMessageStore((state) => state.fetchConversations)
+  const hasRedirected = useRef(false)
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !hasRedirected.current) {
+      hasRedirected.current = true
       useUIStore.getState().setPendingAction({ type: "inbox" })
       useUIStore.getState().toggleAuthModal(true)
       navigate("/", { replace: true })

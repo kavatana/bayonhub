@@ -1,4 +1,3 @@
-import crypto from "crypto"
 import type { NextFunction, Request, Response } from "express"
 import { Router } from "express"
 import rateLimit from "express-rate-limit"
@@ -41,41 +40,21 @@ function getQueryString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined
 }
 
-function signatureMatches(received: string, expected: string): boolean {
-  const receivedBuffer = Buffer.from(received, "hex")
-  const expectedBuffer = Buffer.from(expected, "hex")
-  if (receivedBuffer.length !== expectedBuffer.length) return false
-  return crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
-}
-
 function verifyTelegramWebhook(req: Request, res: Response, next: NextFunction) {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN
-  if (!botToken) {
-    console.warn("[Telegram] TELEGRAM_BOT_TOKEN not set — webhook disabled")
+  const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET
+  if (!secretToken) {
+    console.warn("[Telegram] TELEGRAM_WEBHOOK_SECRET not set - webhook disabled")
     res.status(503).json({ error: "Webhook not configured" })
     return
   }
 
-  const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET
-  if (secretToken) {
-    const receivedToken = req.headers["x-telegram-bot-api-secret-token"]
-    if (receivedToken !== secretToken) {
-      console.warn("[Telegram] Invalid webhook secret token")
-      res.status(401).json({ error: "Unauthorized" })
-      return
-    }
-    next()
+  const receivedToken = req.headers["x-telegram-bot-api-secret-token"]
+  if (receivedToken !== secretToken) {
+    console.warn("[Telegram] Invalid webhook secret token")
+    res.status(401).json({ error: "Unauthorized" })
     return
   }
 
-  const body = JSON.stringify(req.body)
-  const secret = crypto.createHash("sha256").update(botToken).digest()
-  const hmac = crypto.createHmac("sha256", secret).update(body).digest("hex")
-  const received = req.headers["x-telegram-signature"]
-  if (typeof received !== "string" || !signatureMatches(received, hmac)) {
-    res.status(401).json({ error: "Invalid signature" })
-    return
-  }
   next()
 }
 

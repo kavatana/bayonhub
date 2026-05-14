@@ -298,18 +298,16 @@ export default function DashboardPage() {
   const myListingsLoading = useListingStore((state) => state.myListingsLoading)
   const savedIds = useListingStore((state) => state.savedIds)
   const savedSnapshots = useListingStore((state) => state.savedSnapshots)
-  const fetchListings = useListingStore((state) => state.fetchListings)
   const fetchMyListings = useListingStore((state) => state.fetchMyListings)
   const queryTab = searchParams.get("tab")
   const activeTab = tabs.some(([id]) => id === queryTab) ? queryTab : "ads"
   const contentRef = useRef(null)
   const hasRedirected = useRef(false)
-  const dashboardListings = myListings.length ? myListings : listings
+  const dashboardListings = myListings
 
   useEffect(() => {
-    fetchListings()
     fetchMyListings()
-  }, [fetchListings, fetchMyListings])
+  }, [fetchMyListings])
 
   useEffect(() => {
     if (isAuthenticated || hasRedirected.current) return

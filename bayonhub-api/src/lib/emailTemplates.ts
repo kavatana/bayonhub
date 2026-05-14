@@ -1,5 +1,15 @@
 import { sendEmail } from "./email"
 
+export const WELCOME_EMAIL = (name: string) => ({
+  subject: "Welcome to BayonHub",
+  html: `
+    <p>Hi ${name},</p>
+    <p>Welcome to BayonHub. Your account is ready to use.</p>
+    <p>You can post listings, save favorites, and manage seller tools from your dashboard.</p>
+    <p>Team BayonHub</p>
+  `,
+})
+
 export const SELLER_INVITE_EMAIL = (sellerName: string, listingTitle: string) => ({
   subject: `Your listing "${listingTitle}" is now live on BayonHub`,
   text: `
@@ -49,6 +59,11 @@ export const PROMOTION_CONFIRMATION_EMAIL = (reference: string) => ({
 
 export async function sendSellerInviteEmail(to: string, sellerName: string, listingTitle: string): Promise<boolean> {
   const email = SELLER_INVITE_EMAIL(sellerName, listingTitle)
+  return sendEmail({ to, subject: email.subject, html: email.html })
+}
+
+export async function sendWelcomeEmail(to: string, name: string): Promise<boolean> {
+  const email = WELCOME_EMAIL(name)
   return sendEmail({ to, subject: email.subject, html: email.html })
 }
 

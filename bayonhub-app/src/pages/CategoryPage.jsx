@@ -250,6 +250,7 @@ function BottomSheet({ open, onClose, children, title, returnFocusRef }) {
       open={open}
     >
       <div
+        className="flex max-h-[86vh] flex-col"
         onTouchEnd={(event) => {
           if (startY !== null && event.changedTouches[0].clientY - startY > 80) onClose()
           setStartY(null)
@@ -260,7 +261,7 @@ function BottomSheet({ open, onClose, children, title, returnFocusRef }) {
         <div className="border-b border-neutral-100 p-4">
           <h2 className="font-black text-neutral-900">{title}</h2>
         </div>
-        <div className="max-h-[72vh] overflow-y-auto p-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
       </div>
     </Overlay>,
     document.body,
@@ -600,89 +601,93 @@ export default function CategoryPage() {
   }
 
   const filterPanel = (
-    <div className="grid gap-4">
-      <label className="grid gap-2 text-sm font-bold text-neutral-700">
-        {t("post.province")}
-        <select className="h-11 rounded-xl border border-neutral-200 bg-white px-3 outline-none focus:border-primary" onChange={(event) => setSelectedProvince(event.target.value)} value={selectedProvince}>
-          <option value="all">{t("nav.allCambodia")}</option>
-          {PROVINCES.map((province) => (
-            <option key={province.id} value={province.label.en}>{province.label[language]}</option>
-          ))}
-        </select>
-      </label>
-      {selectedProvince !== "all" ? (
-        <MultiSelectFilter label={t("filter.district")} onChange={setDistricts} options={districtOptions} searchable selected={districts} />
-      ) : null}
-      <div className="grid gap-2">
-        <ToggleFilter checked={verifiedOnly} label={t("filter.verifiedOnly")} onChange={setVerifiedOnly} />
-        <ToggleFilter checked={withPhotos} label={t("filter.withPhotos")} onChange={setWithPhotos} />
-        <ToggleFilter checked={negotiableOnly} label={t("filter.negotiable")} onChange={setNegotiableOnly} />
-      </div>
-      <PriceRangeSlider max={priceMax} min={0} onChange={setPrice} value={priceValue} />
-      <MultiSelectFilter
-        label={t("filter.condition")}
-        onChange={setConditions}
-        options={conditionOptions.map((option) => ({ value: option.value, label: t(option.key) }))}
-        selected={conditions}
-      />
-      {isVehicleCategory ? (
-        <div className="grid gap-3">
-          <h3 className="text-sm font-bold text-neutral-700">{t("filter.make")}</h3>
-          <BrandLogoFilter brands={CAR_BRANDS} onChange={(nextSelected) => setFacetValue("make", nextSelected)} selected={getBrandIds(facetFilters.make)} />
-        </div>
-      ) : null}
-      {isHouseLandCategory ? (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="grid gap-4">
-          <div className="grid gap-3">
-            <h3 className="text-sm font-bold text-neutral-700">{t("filter.propertyType")}</h3>
-            <PropertyTypeFilter onChange={(value) => setFacetValue("type", value)} options={propertyTypeOptions} selected={facetFilters.type || ""} />
-          </div>
-          <div className="grid gap-3">
-            <h3 className="text-sm font-bold text-neutral-700">{t("filter.sizeRange")}</h3>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                aria-label={t("filter.minSize")}
-                className="h-11 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
-                max="2000"
-                min="0"
-                onChange={(event) => setSizeRange([Number(event.target.value), sizeRange[1]])}
-                type="number"
-                value={sizeRange[0]}
-              />
-              <input
-                aria-label={t("filter.maxSize")}
-                className="h-11 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
-                max="2000"
-                min="0"
-                onChange={(event) => setSizeRange([sizeRange[0], Number(event.target.value)])}
-                type="number"
-                value={sizeRange[1]}
-              />
-            </div>
-            <input
-              aria-label={t("filter.sizeRange")}
-              className="accent-primary"
-              max="2000"
-              min="0"
-              onChange={(event) => setSizeRange([sizeRange[0], Number(event.target.value)])}
-              type="range"
-              value={sizeRange[1]}
-            />
-          </div>
           <label className="grid gap-2 text-sm font-bold text-neutral-700">
-            {t("filter.floorNumber")}
-            <input
-              className="h-11 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
-              min="0"
-              onChange={(event) => setFloorNumber(event.target.value)}
-              type="number"
-              value={floorNumber}
-            />
+            {t("post.province")}
+            <select className="h-11 rounded-xl border border-neutral-200 bg-white px-3 outline-none focus:border-primary" onChange={(event) => setSelectedProvince(event.target.value)} value={selectedProvince}>
+              <option value="all">{t("nav.allCambodia")}</option>
+              {PROVINCES.map((province) => (
+                <option key={province.id} value={province.label.en}>{province.label[language]}</option>
+              ))}
+            </select>
           </label>
+          {selectedProvince !== "all" ? (
+            <MultiSelectFilter label={t("filter.district")} onChange={setDistricts} options={districtOptions} searchable selected={districts} />
+          ) : null}
+          <div className="grid gap-2">
+            <ToggleFilter checked={verifiedOnly} label={t("filter.verifiedOnly")} onChange={setVerifiedOnly} />
+            <ToggleFilter checked={withPhotos} label={t("filter.withPhotos")} onChange={setWithPhotos} />
+            <ToggleFilter checked={negotiableOnly} label={t("filter.negotiable")} onChange={setNegotiableOnly} />
+          </div>
+          <PriceRangeSlider max={priceMax} min={0} onChange={setPrice} value={priceValue} />
+          <MultiSelectFilter
+            label={t("filter.condition")}
+            onChange={setConditions}
+            options={conditionOptions.map((option) => ({ value: option.value, label: t(option.key) }))}
+            selected={conditions}
+          />
+          {isVehicleCategory ? (
+            <div className="grid gap-3">
+              <h3 className="text-sm font-bold text-neutral-700">{t("filter.make")}</h3>
+              <BrandLogoFilter brands={CAR_BRANDS} onChange={(nextSelected) => setFacetValue("make", nextSelected)} selected={getBrandIds(facetFilters.make)} />
+            </div>
+          ) : null}
+          {isHouseLandCategory ? (
+            <div className="grid gap-4">
+              <div className="grid gap-3">
+                <h3 className="text-sm font-bold text-neutral-700">{t("filter.propertyType")}</h3>
+                <PropertyTypeFilter onChange={(value) => setFacetValue("type", value)} options={propertyTypeOptions} selected={facetFilters.type || ""} />
+              </div>
+              <div className="grid gap-3">
+                <h3 className="text-sm font-bold text-neutral-700">{t("filter.sizeRange")}</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    aria-label={t("filter.minSize")}
+                    className="h-11 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
+                    max="2000"
+                    min="0"
+                    onChange={(event) => setSizeRange([Number(event.target.value), sizeRange[1]])}
+                    type="number"
+                    value={sizeRange[0]}
+                  />
+                  <input
+                    aria-label={t("filter.maxSize")}
+                    className="h-11 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
+                    max="2000"
+                    min="0"
+                    onChange={(event) => setSizeRange([sizeRange[0], Number(event.target.value)])}
+                    type="number"
+                    value={sizeRange[1]}
+                  />
+                </div>
+                <input
+                  aria-label={t("filter.sizeRange")}
+                  className="accent-primary"
+                  max="2000"
+                  min="0"
+                  onChange={(event) => setSizeRange([sizeRange[0], Number(event.target.value)])}
+                  type="range"
+                  value={sizeRange[1]}
+                />
+              </div>
+              <label className="grid gap-2 text-sm font-bold text-neutral-700">
+                {t("filter.floorNumber")}
+                <input
+                  className="h-11 rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-primary"
+                  min="0"
+                  onChange={(event) => setFloorNumber(event.target.value)}
+                  type="number"
+                  value={floorNumber}
+                />
+              </label>
+            </div>
+          ) : null}
+          <FacetedFilter category={activeSubcategory?.slug || category?.slug} currentFilters={facetFilters} hiddenFacetIds={hiddenFacetIds} onChange={setFacetFilters} />
         </div>
-      ) : null}
-      <FacetedFilter category={activeSubcategory?.slug || category?.slug} currentFilters={facetFilters} hiddenFacetIds={hiddenFacetIds} onChange={setFacetFilters} />
-      <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 flex flex-shrink-0 gap-3 border-t border-neutral-200 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      </div>
+      <div className="flex flex-shrink-0 gap-3 border-t border-neutral-200 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <Button className="flex-1" onClick={resetFilters} variant="secondary">{t("filter.resetAll")}</Button>
         <Button className="flex-1" onClick={() => setFilterOpen(false)}>
           {t("filter.apply")} {activeFilters.length > 0 ? `(${activeFilters.length})` : ""}
@@ -1001,7 +1006,7 @@ export default function CategoryPage() {
       </div>
       <BottomSheet onClose={closeFilters} open={filterOpen} returnFocusRef={filterTriggerRef} title={t("filters.title")}>{filterPanel}</BottomSheet>
       <BottomSheet onClose={() => setSortOpen(false)} open={sortOpen} title={t("filter.sortButton")}>
-        <div className="grid gap-2">
+        <div className="grid gap-2 p-4">
           {sortOptions.map(([value, label]) => (
             <label className="flex items-center justify-between rounded-xl bg-neutral-50 p-3 text-sm font-black text-neutral-700" key={value}>
               {t(label)}

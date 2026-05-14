@@ -42,9 +42,15 @@ export default function UpgradePage() {
   const [qrImageFailed, setQrImageFailed] = useState(false)
   const pollingRef = useRef(null)
   const expiryRef = useRef(null)
+  const paymentStatusRef = useRef("idle")
   const pageClass = language === "km" ? "font-khmer leading-8" : ""
   const isGenerating = paymentStatus === "generating"
   const isPending = paymentStatus === "pending"
+
+  function updatePaymentStatus(status) {
+    paymentStatusRef.current = status
+    setPaymentStatus(status)
+  }
 
   function clearPolling() {
     if (pollingRef.current) window.clearInterval(pollingRef.current)
@@ -58,16 +64,17 @@ export default function UpgradePage() {
     clearPolling()
     setPolling(true)
     pollingRef.current = window.setInterval(async () => {
+      if (paymentStatusRef.current !== "pending") return
       try {
         const response = await client.get(`/api/payments/status/${reference}`)
         if (response.data.status === "PAID") {
           clearPolling()
-          setPaymentStatus("success")
+          updatePaymentStatus("success")
           toast.success(t("payment.success"))
           await loadProfile()
         } else if (response.data.status === "EXPIRED") {
           clearPolling()
-          setPaymentStatus("expired")
+          updatePaymentStatus("expired")
           toast.error(t("payment.expired"))
         }
       } catch {
@@ -75,20 +82,21 @@ export default function UpgradePage() {
       }
     }, 5000)
     expiryRef.current = window.setTimeout(() => {
+      if (paymentStatusRef.current !== "pending") return
       clearPolling()
-      setPaymentStatus("expired")
+      updatePaymentStatus("expired")
       toast.error(t("payment.expired"))
     }, 15 * 60 * 1000)
   }
 
   async function handleUpgrade(plan) {
-    setPaymentStatus("generating")
+    updatePaymentStatus("generating")
     setQrImageFailed(false)
     try {
       if (!hasApiBackend()) {
         const localPayment = saveLocalPayment(plan)
         setPaymentRef(localPayment)
-        setPaymentStatus("pending")
+        updatePaymentStatus("pending")
         return
       }
 
@@ -98,11 +106,11 @@ export default function UpgradePage() {
         currency: "USD",
       })
       setPaymentRef(response.data)
-      setPaymentStatus("pending")
+      updatePaymentStatus("pending")
       startPolling(response.data.reference)
     } catch {
       toast.error(t("payment.generateFailed"))
-      setPaymentStatus("idle")
+      updatePaymentStatus("idle")
     }
   }
 

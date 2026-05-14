@@ -4,8 +4,7 @@ import jwt from "jsonwebtoken"
 import { Prisma, Role, VerificationTier } from "@prisma/client"
 
 import { generateAndStoreOTP, verifyAndConsumeOTP } from "../../lib/otp"
-import { SELLER_INVITE_EMAIL, sendPasswordResetEmail } from "../../lib/emailTemplates"
-import { sendEmail } from "../../lib/email"
+import { sendPasswordResetEmail, sendWelcomeEmail } from "../../lib/emailTemplates"
 import { generateUserSlug } from "../../lib/slug"
 import { sendLocalSms } from "../../lib/sms"
 import { prisma } from "../../lib/prisma"
@@ -144,12 +143,7 @@ export async function registerUser(
   await prisma.user.update({ where: { id: user.id }, data: { slug } })
 
   if (user.email) {
-    const email = SELLER_INVITE_EMAIL(user.name, "BayonHub")
-    sendEmail({
-      to: user.email,
-      subject: "Welcome to BayonHub — Cambodia's Premier Marketplace",
-      html: email.html,
-    }).catch(() => {})
+    sendWelcomeEmail(user.email, user.name).catch(() => {})
   }
 
   const tokens = await generateTokens(user.id, user.role, user.verificationTier)

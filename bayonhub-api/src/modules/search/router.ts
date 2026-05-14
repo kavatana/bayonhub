@@ -12,12 +12,12 @@ void prisma.$queryRaw<{ pg_trgm_installed: boolean }[]>`
 `
   .then((result) => {
     if (!result[0]?.pg_trgm_installed) {
-      console.error("[Search] CRITICAL: pg_trgm extension not installed. Run: CREATE EXTENSION pg_trgm;")
+      console.warn("[Search] pg_trgm extension not installed. Search suggestions will skip trigram ranking until it is enabled.")
       return
     }
     console.info("[Search] pg_trgm extension confirmed")
   })
-  .catch(() => console.error("[Search] Could not verify pg_trgm extension"))
+  .catch(() => console.warn("[Search] Could not verify pg_trgm extension"))
 
 router.get("/suggestions", async (req, res, next) => {
   try {
@@ -40,7 +40,6 @@ router.get("/suggestions", async (req, res, next) => {
       WHERE (
         search_vector @@ websearch_to_tsquery('english', ${q})
         OR title % ${q}
-        OR title ILIKE ${`%${q}%`}
       )
       AND status = 'ACTIVE'
       ORDER BY 

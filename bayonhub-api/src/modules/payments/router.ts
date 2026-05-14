@@ -1,5 +1,6 @@
 import crypto from "crypto"
 import { PaymentStatus, Prisma, PromotionPlan } from "@prisma/client"
+import type { RequestHandler } from "express"
 import { Router } from "express"
 import { z } from "zod"
 
@@ -360,7 +361,7 @@ router.post("/khqr/generate", requireAuth, async (req, res, next) => {
   }
 })
 
-router.post("/khqr/webhook", async (req, res, next) => {
+const handleAbaWebhook: RequestHandler = async (req, res, next) => {
   try {
     const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}))
     const signature = String(req.headers["x-aba-signature"] || "")
@@ -431,7 +432,10 @@ router.post("/khqr/webhook", async (req, res, next) => {
   } catch (error) {
     next(error)
   }
-})
+}
+
+router.post("/aba-webhook", handleAbaWebhook)
+router.post("/khqr/webhook", handleAbaWebhook)
 
 router.get("/status/:reference", requireAuth, async (req, res, next) => {
   try {
