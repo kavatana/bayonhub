@@ -1,7 +1,7 @@
 import crypto from "crypto"
 import cookieParser from "cookie-parser"
 import cors from "cors"
-import express, { ErrorRequestHandler } from "express"
+import express, { ErrorRequestHandler, Request } from "express"
 import passport from "passport"
 import helmet from "helmet"
 import morgan from "morgan"
@@ -9,6 +9,7 @@ import morgan from "morgan"
 import { env } from "./config/env"
 import { redis } from "./config/redis"
 import { prisma } from "./lib/prisma"
+import { testR2Connection } from "./lib/s3"
 import adminRouter from "./modules/admin/router"
 import authRouter from "./modules/auth/router"
 import listingsRouter from "./modules/listings/router"
@@ -31,6 +32,11 @@ import fs from "fs"
 
 export const app = express()
 app.set("trust proxy", 1)
+
+const getReqId = (req: Request): string => {
+  const requestId = (req as Request & { id?: string }).id ?? req.headers["x-request-id"] ?? ""
+  return Array.isArray(requestId) ? requestId[0] || "" : String(requestId)
+}
 
 // F2.5 — Helmet with full security header suite
 const IS_PROD = env.nodeEnv === "production"
@@ -92,6 +98,10 @@ const CORS_WHITELIST = new Set(
     env.frontendUrl.endsWith("/")
       ? env.frontendUrl.slice(0, -1)
       : env.frontendUrl,
+    env.frontendUrlWww,
+    env.frontendUrlWww?.endsWith("/")
+      ? env.frontendUrlWww.slice(0, -1)
+      : env.frontendUrlWww,
     IS_PROD ? null : "http://localhost:5173",          // Vite dev server
     IS_PROD ? null : "http://localhost:4173",          // Vite preview
     IS_PROD ? null : "http://127.0.0.1:5173",
@@ -133,16 +143,19 @@ app.use((req, _res, next) => {
   next()
 })
 
-if (env.nodeEnv === "development") {
-  app.use(morgan("dev"))
-} else {
-  app.use(morgan("combined", {
-    skip: (_req, res) => res.statusCode < 400,
-    stream: {
-      write: (message: string) => console.log("[HTTP]", message.trim()),
-    },
-  }))
-}
+app.use((req, res, next) => {
+  res.setHeader("X-Request-Id", getReqId(req))
+  next()
+})
+
+app.use(morgan((tokens, req, res) => JSON.stringify({
+  level: "http",
+  requestId: getReqId(req as Request),
+  method: tokens.method(req, res),
+  path: tokens.url(req, res),
+  status: Number(tokens.status(req, res)),
+  ms: tokens["response-time"](req, res),
+})))
 
 if (env.nodeEnv !== "production") {
   app.use("/uploads", express.static("public/uploads"))
@@ -169,36 +182,37 @@ app.use("/api/storefront", storefrontRouter)
 app.use("/api", statsRouter)
 app.use("/", sitemapRouter)
 
-app.get("/health", async (_req, res) => {
+const healthHandler = async (_req: Request, res: express.Response) => {
   const startTime = Date.now()
 
   const dbStatus = await prisma.$queryRaw`SELECT 1`
     .then(() => "ok" as const)
-    .catch((err: Error) => { console.error("[Health] DB error:", err.message); return "error" as const })
+    .catch(() => "error" as const)
 
-  const redisStatus = redis.status === "ready" ? "ok" as const :
-    redis.status === "connecting" ? "connecting" as const : "error" as const
+  const redisStatus = await redis.ping()
+    .then(() => "ok" as const)
+    .catch(() => "error" as const)
 
-  const r2Status = process.env.R2_ACCOUNT_ID ? "configured" as const : "not_configured" as const
-  const twilioStatus = process.env.TWILIO_ACCOUNT_SID
-    ? (process.env.TWILIO_PHONE_NUMBER === "+855963131281" ? "misconfigured" as const : "configured" as const)
-    : "not_configured" as const
+  const r2Status = await testR2Connection()
+    .then((ok) => ok ? "ok" as const : "error" as const)
+    .catch(() => "error" as const)
 
-  const overall = dbStatus === "ok" && redisStatus === "ok" ? "ok" as const : "degraded" as const
+  const overall = dbStatus === "ok" && redisStatus === "ok" && r2Status === "ok" ? "ok" as const : "degraded" as const
 
   res.status(overall === "ok" ? 200 : 503).json({
     status: overall,
+    db: dbStatus,
+    redis: redisStatus,
+    r2: r2Status,
+    uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     responseMs: Date.now() - startTime,
-    services: {
-      database: dbStatus,
-      redis: redisStatus,
-      r2: r2Status,
-      twilio: twilioStatus,
-    },
     version: process.env.npm_package_version || "1.0.0",
   })
-})
+}
+
+app.get("/health", healthHandler)
+app.get("/api/health", healthHandler)
 
 // Handle SPA routing in production
 if (env.nodeEnv === "production") {
@@ -221,11 +235,21 @@ app.use((_req, res) => {
   res.status(404).json({ error: "Not found" })
 })
 
-const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   const uploadLimitStatus = err.code === "LIMIT_FILE_SIZE" ? 413 : undefined
   const uploadValidationStatus =
     typeof err.message === "string" && err.message.startsWith("File type ") ? 400 : undefined
   const status = uploadLimitStatus || uploadValidationStatus || err.status || err.statusCode || 500
+  if (status === 500) {
+    console.error(JSON.stringify({
+      level: "error",
+      requestId: getReqId(req),
+      method: req.method,
+      path: req.path,
+      error: err.message,
+      stack: err.stack,
+    }))
+  }
   if (status === 500 && process.env.NODE_ENV === "production") {
     res.status(500).json({
       error: "SERVER_ERROR",

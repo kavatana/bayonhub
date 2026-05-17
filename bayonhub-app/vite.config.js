@@ -87,8 +87,8 @@ export default defineConfig({
             handler: "NetworkFirst",
             options: {
               cacheName: "listings-cache",
-              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 },
-              networkTimeoutSeconds: 5,
+              expiration: { maxEntries: 100, maxAgeSeconds: 300 },
+              networkTimeoutSeconds: 3,
             },
           },
           {
@@ -104,7 +104,7 @@ export default defineConfig({
             handler: "StaleWhileRevalidate",
             options: {
               cacheName: "search-cache",
-              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 6 },
+              expiration: { maxEntries: 50, maxAgeSeconds: 600 },
             },
           },
         ],

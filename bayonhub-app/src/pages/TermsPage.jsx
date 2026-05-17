@@ -33,7 +33,7 @@ export default function TermsPage() {
           </nav>
         </aside>
         <article className="min-w-0" data-animate>
-          <p className="text-sm font-black uppercase tracking-wide text-primary">{t("terms.draftNotice")}</p>
+          <p className="text-sm font-black uppercase tracking-wide text-primary">{t("legal.lastUpdated")}</p>
           <h1 className="mt-3 text-3xl font-black text-neutral-900 sm:text-4xl">{t("terms.pageTitle")}</h1>
           <div className="mt-8 grid gap-5">
             {sections.map((section) => (

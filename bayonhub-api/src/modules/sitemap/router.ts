@@ -72,6 +72,7 @@ async function buildSitemapXml() {
   const listings = await prisma.listing.findMany({
     where: {
       status: 'ACTIVE',
+      deletedAt: null,
       OR: [
         { expiresAt: null },
         { expiresAt: { gt: new Date() } }
@@ -137,6 +138,7 @@ router.get('/og-image/:listingId', async (req, res, next) => {
       where: {
         id: req.params.listingId,
         status: 'ACTIVE',
+        deletedAt: null,
         OR: [
           { expiresAt: null },
           { expiresAt: { gt: new Date() } },

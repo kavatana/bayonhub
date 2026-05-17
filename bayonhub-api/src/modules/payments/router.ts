@@ -11,7 +11,8 @@ import { prisma } from "../../lib/prisma"
 import { redis } from "../../config/redis"
 import { sendTelegramMessage } from "../../lib/telegram"
 import { requireAuth } from "../../middleware/auth"
-import { upload } from "../../middleware/upload"
+import { khqrGenerateLimiter, paymentSubmitLimiter } from "../../middleware/rateLimiter"
+import { upload, validateMagicBytes } from "../../middleware/upload"
 import { getMyPayments, submitPlusPayment } from "./service"
 
 // F2.1 — Zod schema for POST /payments/submit
@@ -20,6 +21,29 @@ const submitPaymentSchema = z.object({
 })
 
 const router = Router()
+
+const responseEnvelope: RequestHandler = (req, res, next) => {
+  if (req.path === "/aba-webhook" || req.path === "/khqr/webhook") {
+    next()
+    return
+  }
+  const originalJson = res.json.bind(res)
+  res.json = (body?: unknown) => {
+    if (res.statusCode >= 400) {
+      const errorBody = body && typeof body === "object" ? body as { message?: unknown; error?: unknown } : {}
+      const message = typeof errorBody.message === "string"
+        ? errorBody.message
+        : typeof errorBody.error === "string"
+          ? errorBody.error
+          : "An error occurred"
+      return originalJson({ error: true, message })
+    }
+    return originalJson({ data: body ?? null })
+  }
+  next()
+}
+
+router.use(responseEnvelope)
 
 const PLAN_PRICES: Record<PromotionPlan, number> = {
   BOOST: 2,
@@ -50,9 +74,12 @@ function validatePlan(value: unknown): PromotionPlan {
   throw createHttpError(400, "Invalid promotion plan")
 }
 
-router.post("/submit", requireAuth, upload.single("screenshot"), async (req, res, next) => {
+router.post("/submit", requireAuth, paymentSubmitLimiter, upload.single("screenshot"), async (req, res, next) => {
   try {
     const body = submitPaymentSchema.parse(req.body) // F2.1 validate
+    if (req.file && !(await validateMagicBytes(req.file.buffer, req.file.mimetype))) {
+      throw createHttpError(400, "Invalid payment screenshot image")
+    }
     const result = await submitPlusPayment(req.user!.id, req.file, body.note)
     res.status(201).json(result)
   } catch (error) {
@@ -199,8 +226,8 @@ async function generateKhqrPayload(reference: string, amount: number): Promise<s
 
 function verifyWebhookSignature(rawBody: Buffer, signature: string | undefined): boolean {
   if (!env.abaWebhookSecret) {
-    console.warn("[Payments] ABA_WEBHOOK_SECRET missing — processing webhook without signature in development.")
-    return true
+    console.error(JSON.stringify({ event: "aba_webhook_secret_missing", severity: "CRITICAL" }))
+    return false
   }
   if (!signature) {
     console.error("[Payments] Missing signature in webhook request")
@@ -310,7 +337,7 @@ router.get("/omw/:transactionId", requireAuth, async (req, res, next) => {
   }
 })
 
-router.post("/khqr/generate", requireAuth, async (req, res, next) => {
+router.post("/khqr/generate", requireAuth, khqrGenerateLimiter, async (req, res, next) => {
   try {
     const plan = validatePlan(req.body.plan)
     const listingId = typeof req.body.listingId === "string" ? req.body.listingId : undefined
@@ -328,6 +355,29 @@ router.post("/khqr/generate", requireAuth, async (req, res, next) => {
 
     const amount = PLAN_PRICES[plan]
     const expiresAt = addMinutes(new Date(), 30)
+    const recentPendingPayment = await prisma.payment.findFirst({
+      where: {
+        userId: req.user!.id,
+        listingId: listingId ?? null,
+        plan,
+        status: PaymentStatus.PENDING,
+        createdAt: { gte: addMinutes(new Date(), -30) },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    if (recentPendingPayment) {
+      res.status(200).json({
+        reference: recentPendingPayment.reference,
+        amount: Number(recentPendingPayment.amount),
+        currency: recentPendingPayment.currency,
+        qrPayload: recentPendingPayment.khqrPayload,
+        expiresAt: recentPendingPayment.expiresAt,
+        status: recentPendingPayment.status,
+      })
+      return
+    }
+
     const reference = generateReference()
     const qrPayload = await generateKhqrPayload(reference, amount)
 

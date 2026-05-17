@@ -22,6 +22,17 @@ function Highlight({ text, query }) {
   )
 }
 
+function conditionLabel(condition, t) {
+  const normalized = String(condition || "").trim().toLowerCase()
+  if (normalized === "new") return t("condition.new")
+  if (normalized === "used") return t("condition.used")
+  if (normalized === "like new") return t("condition.likeNew")
+  if (normalized === "good") return t("condition.good")
+  if (normalized === "refurbished") return t("condition.refurbished")
+  if (normalized === "for rent") return t("condition.forRent")
+  return condition
+}
+
 const ListingListItem = memo(function ListingListItem({ listing, highlightQuery = "" }) {
   const { t, language } = useTranslation()
   const saved = useListingStore((state) => state.savedIds.includes(listing.id))
@@ -86,7 +97,7 @@ const ListingListItem = memo(function ListingListItem({ listing, highlightQuery 
             </span>
             <span>{timeAgo(listing.postedAt, language)}</span>
             {listing.condition ? (
-              <span className="rounded-full bg-neutral-100 px-2 py-1 text-neutral-700">{listing.condition}</span>
+              <span className="rounded-full bg-neutral-100 px-2 py-1 text-neutral-700">{conditionLabel(listing.condition, t)}</span>
             ) : null}
             {listing.verified ? (
               <span className="inline-flex items-center gap-1 text-primary">

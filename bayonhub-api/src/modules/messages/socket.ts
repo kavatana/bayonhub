@@ -3,6 +3,7 @@ import type { Server, Socket } from "socket.io"
 
 import { redis } from "../../config/redis"
 import { prisma } from "../../lib/prisma"
+import { notifyUser } from "./notifications.service"
 
 export function registerSocketHandlers(io: Server): void {
   io.use((socket, next) => {
@@ -57,6 +58,19 @@ export function registerSocketHandlers(io: Server): void {
       })
 
       const receiverId = conversation.buyerId === userId ? conversation.sellerId : conversation.buyerId
+      const receiver = await prisma.user.findUnique({
+        where: { id: receiverId },
+        select: { telegramChatId: true },
+      })
+      const preview = body.length > 120 ? `${body.slice(0, 117)}...` : body
+      void notifyUser({
+        userId: receiverId,
+        type: "message",
+        title: "New message on BayonHub",
+        body: preview,
+        link: `/inbox/${conversationId}`,
+        telegramChatId: receiver?.telegramChatId,
+      })
       io.to(`user:${receiverId}`).emit("message:receive", message)
       socket.emit("message:sent", message)
     })

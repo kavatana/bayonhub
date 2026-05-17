@@ -3,7 +3,7 @@ import { PaymentStatus, PromotionPlan } from "@prisma/client"
 
 import { env } from "../../config/env"
 import { prisma } from "../../lib/prisma"
-import { processAndUpload } from "../../lib/s3"
+import { uploadPrivateDocument } from "../../lib/s3"
 import { sendTelegramMessage } from "../../lib/telegram"
 import { validateMagicBytes } from "../../middleware/upload"
 
@@ -114,7 +114,7 @@ export async function submitPlusPayment(
   const validImage = await validateMagicBytes(file.buffer, file.mimetype)
   if (!validImage) throw createHttpError(400, "Invalid image file")
 
-  const upload = await processAndUpload(file.buffer, `payments/${userId}/${randomUUID()}.webp`)
+  const screenshotKey = await uploadPrivateDocument(file.buffer, `payments/${userId}/${randomUUID()}.webp`)
   const payment = await prisma.payment.create({
     data: {
       reference: plusReference(),
@@ -123,7 +123,7 @@ export async function submitPlusPayment(
       amount: PLUS_MONTHLY_AMOUNT,
       currency: "USD",
       status: PaymentStatus.PENDING,
-      screenshotUrl: upload.url,
+      screenshotUrl: screenshotKey,
       note: typeof note === "string" && note.trim() ? note.trim() : null,
       expiresAt: addDays(new Date(), RECEIPT_TTL_DAYS),
     },

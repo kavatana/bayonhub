@@ -1,9 +1,16 @@
 import client from "./client"
 
+function unwrapEnvelope(payload) {
+  if (payload && typeof payload === "object" && !Array.isArray(payload) && Object.prototype.hasOwnProperty.call(payload, "data")) {
+    return payload.data
+  }
+  return payload
+}
+
 export const getStorefront = async (identifier) => {
   try {
-    const response = await client.get(`/storefront/${identifier}`, { _csrfRetry: true })
-    return response.data
+    const response = await client.get(`/api/storefront/${identifier}`, { _csrfRetry: true })
+    return unwrapEnvelope(response.data)
   } catch (error) {
     if (error?.response?.status === 403 && error?.response?.data?.error === "PLUS_REQUIRED") {
       throw new Error("PLUS_REQUIRED", { cause: error })
@@ -17,8 +24,8 @@ export const getStorefront = async (identifier) => {
 
 export const submitReview = async (reviewData) => {
   try {
-    const response = await client.post("/storefront/review", reviewData)
-    return response.data
+    const response = await client.post("/api/storefront/review", reviewData)
+    return unwrapEnvelope(response.data)
   } catch (err) {
     throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
   }

@@ -551,8 +551,10 @@ export default function PostAdWizard({
                         <Icon className="h-6 w-6" aria-hidden="true" />
                       </span>
                       <span className="min-w-0">
-                        <span className="block text-base font-black leading-8">{item.label.km}</span>
-                        <span className={cn("block text-xs font-bold", active ? "text-white/80" : "text-neutral-500")}>{item.label.en}</span>
+                        <span className="block text-base font-black leading-8">{item.label[language]}</span>
+                        <span className={cn("block text-xs font-bold", active ? "text-white/80" : "text-neutral-500")}>
+                          {language === "km" ? item.label.en : item.label.km}
+                        </span>
                       </span>
                     </button>
                   )
@@ -754,7 +756,7 @@ export default function PostAdWizard({
                   <p className="text-xs font-black uppercase tracking-widest text-neutral-400">{t("post.reviewSummary")}</p>
                   <div className="mt-4 flex gap-4">
                     <div className="h-24 w-28 shrink-0 overflow-hidden rounded-xl bg-neutral-100">
-                      {coverImage ? <img alt={data.title} className="h-full w-full object-cover" src={coverImage.preview || coverImage.url} /> : null}
+                      {coverImage ? <img alt={data.title} className="h-full w-full object-cover" loading="lazy" src={coverImage.preview || coverImage.url} /> : null}
                     </div>
                     <div className="min-w-0">
                       <h3 className="line-clamp-2 text-lg font-black text-neutral-900">{data.title}</h3>

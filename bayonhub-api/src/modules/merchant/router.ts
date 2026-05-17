@@ -14,6 +14,17 @@ interface MerchantRequest extends Request {
   }
 }
 
+const MERCHANT_PUBLIC_FIELDS = [
+  "storeName",
+  "storeNameKm",
+  "tagline",
+  "taglineKm",
+  "logoKey",
+  "aboutUs",
+  "aboutUsKm",
+  "isActive",
+] as const
+
 function createHttpError(status: number, message: string): Error & { status: number } {
   const error = new Error(message) as Error & { status: number }
   error.status = status
@@ -30,6 +41,29 @@ function isValidUuid(value: string): boolean {
 
 function validateMerchantApiKey(value: unknown): boolean {
   return typeof value === "string" && getMerchantApiKeys().includes(value.trim())
+}
+
+function getMerchantApiKeyBindings(): Record<string, string> {
+  const raw = process.env.MERCHANT_API_KEY_BINDINGS
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {}
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+    )
+  } catch {
+    return Object.fromEntries(
+      raw
+        .split(",")
+        .map((pair) => pair.split(":").map((part) => part.trim()))
+        .filter((parts): parts is [string, string] => parts.length === 2 && Boolean(parts[0]) && Boolean(parts[1])),
+    )
+  }
+}
+
+function pickMerchantPublicFields<T extends Record<string, unknown>>(profile: T) {
+  return Object.fromEntries(MERCHANT_PUBLIC_FIELDS.map((field) => [field, profile[field]]))
 }
 
 async function requireAuthOrApiKey(req: MerchantRequest, res: Response, next: NextFunction) {
@@ -72,13 +106,27 @@ function mapMerchantPayload(body: any) {
 router.post("/onboard", requireAuthOrApiKey, async (req, res, next) => {
   try {
     const userId = req.user?.id
-    if (!userId && (req as MerchantRequest).merchantAuth?.type !== "apiKey") {
+    const merchantAuth = (req as MerchantRequest).merchantAuth
+    if (!userId && merchantAuth?.type !== "apiKey") {
       throw createHttpError(401, "Authentication required for onboarding")
     }
 
-    // In case of API key onboarding without a user, we might need a placeholder or specific logic.
-    // For now, we assume a userId is available if it's a real user.
-    const targetUserId = userId || (req.body.merchant_id && isValidUuid(req.body.merchant_id) ? req.body.merchant_id : null)
+    const bindings = getMerchantApiKeyBindings()
+    const apiKeyBoundUserId = merchantAuth?.type === "apiKey" ? bindings[merchantAuth.identity] : null
+    if (merchantAuth?.type === "apiKey" && !apiKeyBoundUserId) {
+      console.warn({ event: "merchant_onboard_denied", reason: "no key binding", keyPrefix: merchantAuth.identity.slice(0, 8) })
+      throw createHttpError(403, "Merchant API key is not bound to a user")
+    }
+
+    const requestedMerchantId = typeof req.body.merchant_id === "string" && isValidUuid(req.body.merchant_id)
+      ? req.body.merchant_id
+      : null
+    if (merchantAuth?.type === "apiKey" && requestedMerchantId && requestedMerchantId !== apiKeyBoundUserId) {
+      console.warn({ event: "merchant_onboard_denied", reason: "binding mismatch", keyPrefix: merchantAuth.identity.slice(0, 8) })
+      throw createHttpError(403, "Merchant API key cannot onboard this user")
+    }
+
+    const targetUserId = apiKeyBoundUserId || userId || requestedMerchantId
     
     if (!targetUserId) {
       throw createHttpError(400, "Missing userId or merchant_id for onboarding")
@@ -104,7 +152,13 @@ router.get("/profile/:userId", requireAuthOrApiKey, async (req, res, next) => {
     const profile = await getMerchantProfile(userId)
     if (!profile) throw createHttpError(404, "Merchant profile not found")
 
-    res.status(200).json({ merchant_profile: profile })
+    const merchantAuth = (req as MerchantRequest).merchantAuth
+    const requesterId = req.user?.id
+    const isOwner = requesterId === userId
+    const isAdmin = Boolean(req.user?.isAdmin)
+    const canReadFull = merchantAuth?.type === "apiKey" || isOwner || isAdmin
+
+    res.status(200).json({ merchant_profile: canReadFull ? profile : pickMerchantPublicFields(profile) })
   } catch (error) {
     next(error)
   }
@@ -114,6 +168,15 @@ router.put("/profile/:userId", requireAuthOrApiKey, async (req, res, next) => {
   try {
     const userId = String(req.params.userId || "").trim()
     if (!isValidUuid(userId)) throw createHttpError(400, "Invalid userId")
+    const merchantAuth = (req as MerchantRequest).merchantAuth
+    if (merchantAuth?.type === "apiKey") {
+      console.warn("[Merchant] API key profile update denied", { apiKeyIdentity: merchantAuth.identity, targetUserId: userId })
+      throw createHttpError(403, "API key callers cannot update merchant profiles")
+    }
+    if (req.user?.id !== userId && !req.user?.isAdmin) {
+      console.warn({ event: "merchant_update_denied", userId: req.user?.id, targetId: userId })
+      throw createHttpError(403, "Forbidden")
+    }
 
     const profileData = mapMerchantPayload(req.body)
     const profile = await upsertMerchantProfile(userId, profileData)

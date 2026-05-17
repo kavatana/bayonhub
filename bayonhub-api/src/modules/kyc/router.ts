@@ -1,13 +1,32 @@
 import { randomUUID } from "crypto"
 import { IDType } from "@prisma/client"
-import { Router } from "express"
+import { Router, type RequestHandler } from "express"
 
 import { prisma } from "../../lib/prisma"
-import { uploadPrivateDocument } from "../../lib/s3"
+import { deleteFromR2, uploadPrivateDocument } from "../../lib/s3"
 import { requireAuth } from "../../middleware/auth"
-import { upload } from "../../middleware/upload"
+import { upload, validateMagicBytes } from "../../middleware/upload"
 
 const router = Router()
+
+const responseEnvelope: RequestHandler = (_req, res, next) => {
+  const originalJson = res.json.bind(res)
+  res.json = (body?: unknown) => {
+    if (res.statusCode >= 400) {
+      const errorBody = body && typeof body === "object" ? body as { message?: unknown; error?: unknown } : {}
+      const message = typeof errorBody.message === "string"
+        ? errorBody.message
+        : typeof errorBody.error === "string"
+          ? errorBody.error
+          : "An error occurred"
+      return originalJson({ error: true, message })
+    }
+    return originalJson({ data: body ?? null })
+  }
+  next()
+}
+
+router.use(responseEnvelope)
 
 function createHttpError(status: number, message: string): Error & { status: number } {
   const error = new Error(message) as Error & { status: number }
@@ -35,6 +54,13 @@ function fileFromMap(
   return files[field]?.[0]
 }
 
+async function assertValidImageFile(file: Express.Multer.File | undefined, label: string) {
+  if (!file) return
+  if (!(await validateMagicBytes(file.buffer, file.mimetype))) {
+    throw createHttpError(400, `Invalid image format for ${label}`)
+  }
+}
+
 router.use(requireAuth)
 
 router.post(
@@ -54,6 +80,13 @@ router.post(
       const selfie = fileFromMap(req.files, "selfie")
 
       if (!idFront) throw createHttpError(400, "idFront is required")
+      await assertValidImageFile(idFront, "idFront")
+      await assertValidImageFile(idBack, "idBack")
+      await assertValidImageFile(selfie, "selfie")
+      const existingApplication = await prisma.kYCApplication.findUnique({
+        where: { userId: req.user!.id },
+        select: { idFrontKey: true, idBackKey: true, selfieKey: true },
+      })
 
       const baseKey = `kyc/${req.user!.id}/${randomUUID()}`
       const idFrontKey = await uploadPrivateDocument(idFront.buffer, `${baseKey}-front.webp`)
@@ -84,8 +117,19 @@ router.post(
           selfieKey,
         },
       })
+      if (existingApplication) {
+        try {
+          await Promise.all(
+            [existingApplication.idFrontKey, existingApplication.idBackKey, existingApplication.selfieKey]
+              .filter((key): key is string => Boolean(key))
+              .map((key) => deleteFromR2(key)),
+          )
+        } catch (err) {
+          console.error({ event: "kyc_r2_delete_error", userId: req.user!.id, err })
+        }
+      }
 
-      res.status(201).json({ applicationId: application.id, status: application.status })
+	      res.status(201).json({ applicationId: application.id, status: application.status })
     } catch (error) {
       next(error)
     }

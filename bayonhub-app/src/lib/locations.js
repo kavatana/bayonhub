@@ -74,3 +74,13 @@ export function getDistrictsForProvince(provinceSlug) {
     district(`${provinceSlug || "province"}-south`, `${provinceSlug || "province"}-south`, "South", "ខាងត្បូង"),
   ]
 }
+
+export function slugToDisplayName(slug) {
+  const provinceMatch = PROVINCES.find((item) => item.slug === slug || item.id === slug)
+  if (provinceMatch) return provinceMatch.label.en
+  return String(slug || "")
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}

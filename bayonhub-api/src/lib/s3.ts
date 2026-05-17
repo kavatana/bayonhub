@@ -114,18 +114,38 @@ export async function getPresignedUploadUrl(
 }
 
 export async function deleteFromStorage(key: string): Promise<void> {
+  const normalizedKey = normalizeStorageKey(key)
   if (hasR2 && s3) {
     await s3.send(
       new DeleteObjectCommand({
         Bucket: process.env.R2_BUCKET_NAME!,
-        Key: key,
+        Key: normalizedKey,
       }),
     )
     return
   }
 
-  const filepath = path.join(LOCAL_UPLOAD_DIR, key.replace(/^\/+/, ""))
+  const filepath = path.join(LOCAL_UPLOAD_DIR, normalizedKey.replace(/^\/+/, ""))
   if (fs.existsSync(filepath)) fs.unlinkSync(filepath)
+}
+
+export async function deleteFromR2(urlOrKey: string): Promise<void> {
+  await deleteFromStorage(urlOrKey)
+}
+
+function normalizeStorageKey(urlOrKey: string): string {
+  const value = urlOrKey.trim()
+  if (!value) return value
+  const publicBase = process.env.R2_PUBLIC_URL?.replace(/\/+$/, "")
+  if (publicBase && value.startsWith(`${publicBase}/`)) {
+    return value.slice(publicBase.length + 1)
+  }
+  try {
+    const url = new URL(value)
+    return url.pathname.replace(/^\/+/, "")
+  } catch {
+    return value.replace(/^\/+/, "")
+  }
 }
 
 export async function uploadPrivateDocument(buffer: Buffer, key: string): Promise<string> {
@@ -165,13 +185,13 @@ export function getLocalPrivateDocumentPath(key: string): string {
   return path.join(LOCAL_PRIVATE_DIR, key.replace(/^\/+/, ""))
 }
 
-export async function getPrivateDocumentReadUrl(key: string): Promise<string | null> {
+export async function getPrivateDocumentReadUrl(key: string, ttlSeconds = 900): Promise<string | null> {
   if (!hasR2 || !s3) return null
   const command = new GetObjectCommand({
     Bucket: process.env.R2_BUCKET_NAME!,
     Key: key,
   })
-  return getSignedUrl(s3, command, { expiresIn: 300 })
+  return getSignedUrl(s3, command, { expiresIn: ttlSeconds })
 }
 
 export async function testR2Connection(): Promise<boolean> {

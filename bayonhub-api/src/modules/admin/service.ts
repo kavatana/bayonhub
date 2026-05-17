@@ -6,11 +6,11 @@ import { KYCStatus, ListingStatus, PaymentStatus, Prisma, ReportStatus, Role, Ve
 
 import { env } from "../../config/env"
 import { prisma } from "../../lib/prisma"
-import { processAndUpload } from "../../lib/s3"
+import { deleteFromR2, getPrivateDocumentReadUrl, processAndUpload } from "../../lib/s3"
 import { generateUniqueSlug } from "../../lib/slug"
 import { sendTelegramMessage } from "../../lib/telegram"
 import { SAFE_USER_SELECT } from "../auth/service"
-import { createNotification } from "../messages/notifications.service"
+import { createNotification, notifyUser } from "../messages/notifications.service"
 
 export interface ImportListing {
   title: string
@@ -62,6 +62,43 @@ function createHttpError(status: number, message: string): Error & { status: num
   const error = new Error(message) as Error & { status: number }
   error.status = status
   return error
+}
+
+async function notifyListingStatusIfNeeded(listing: {
+  id: string
+  title: string
+  sellerId: string
+  status: ListingStatus
+  seller?: { telegramChatId?: string | null } | null
+}) {
+  if (listing.status !== ListingStatus.ACTIVE && listing.status !== ListingStatus.REJECTED) return
+  const approved = listing.status === ListingStatus.ACTIVE
+  await notifyUser({
+    userId: listing.sellerId,
+    title: approved ? "Your listing was approved" : "Your listing was rejected",
+    body: listing.title,
+    type: "LISTING_STATUS",
+    link: `/listing/${listing.id}`,
+    telegramChatId: listing.seller?.telegramChatId,
+  })
+}
+
+async function signPaymentScreenshot<T extends { screenshotUrl: string | null }>(payment: T): Promise<T> {
+  if (!payment.screenshotUrl) return payment
+  if (payment.screenshotUrl.startsWith("http")) {
+    if (env.nodeEnv === "production") {
+      console.warn("[Payments] Legacy public screenshot URL returned for admin review")
+    }
+    return payment
+  }
+  const signedUrl = await getPrivateDocumentReadUrl(payment.screenshotUrl, 900)
+  if (!signedUrl) {
+    if (env.nodeEnv === "production") {
+      console.warn("[Payments] Could not sign private screenshot URL for admin review")
+    }
+    return payment
+  }
+  return { ...payment, screenshotUrl: signedUrl }
 }
 
 function isPrivateNetworkAddress(address: string): boolean {
@@ -131,10 +168,17 @@ function isPlusActive(user: { isLifetimePlus?: boolean | null; plusUntil?: Date 
 function normalizePaymentStatus(status?: string): PaymentStatus | undefined {
   const upper = status?.trim().toUpperCase()
   if (!upper) return undefined
-  if (upper === PaymentStatus.PENDING || upper === PaymentStatus.APPROVED || upper === PaymentStatus.REJECTED) {
-    return upper
+  if (Object.values(PaymentStatus).includes(upper as PaymentStatus)) {
+    return upper as PaymentStatus
   }
   return undefined
+}
+
+function normalizePageParams(page?: number, limit?: number, defaultLimit = 50, maxLimit = 200) {
+  return {
+    page: Math.max(1, page || 1),
+    limit: Math.min(Math.max(1, limit || defaultLimit), maxLimit),
+  }
 }
 
 function dayKey(date: Date | string): string {
@@ -156,6 +200,10 @@ function denseDailySeries(
 }
 
 async function hardDeleteListingById(id: string) {
+  const images = await prisma.listingImage.findMany({
+    where: { listingId: id },
+    select: { url: true, thumbUrl: true },
+  })
   await prisma.$transaction([
     prisma.listingPromotion.deleteMany({ where: { listingId: id } }),
     prisma.payment.updateMany({ where: { listingId: id }, data: { listingId: null } }),
@@ -163,6 +211,11 @@ async function hardDeleteListingById(id: string) {
     prisma.report.deleteMany({ where: { listingId: id } }),
     prisma.listing.delete({ where: { id } }),
   ])
+  try {
+    await Promise.all(images.flatMap((image) => [image.url, image.thumbUrl].filter(Boolean).map((value) => deleteFromR2(value))))
+  } catch (err) {
+    console.error({ event: "r2_delete_error", listingId: id, err })
+  }
   return { success: true }
 }
 
@@ -183,7 +236,7 @@ export async function getDashboard() {
     prisma.user.count(),
     prisma.user.count({ where: { createdAt: { gte: start } } }),
     prisma.listing.count(),
-    prisma.listing.count({ where: { status: ListingStatus.ACTIVE } }),
+    prisma.listing.count({ where: { status: ListingStatus.ACTIVE, deletedAt: null } }),
     prisma.listing.count({ where: { createdAt: { gte: start } } }),
     prisma.report.count(),
     prisma.report.count({ where: { status: ReportStatus.PENDING } }),
@@ -194,7 +247,7 @@ export async function getDashboard() {
     }),
     prisma.listing.groupBy({
       by: ["categorySlug"],
-      where: { status: ListingStatus.ACTIVE },
+      where: { status: ListingStatus.ACTIVE, deletedAt: null },
       _count: { categorySlug: true },
       orderBy: { _count: { categorySlug: "desc" } },
       take: 8,
@@ -249,7 +302,7 @@ export async function getAdminPayments(filters: { status?: string; page?: number
     prisma.payment.count({ where }),
   ])
   return {
-    data,
+    data: await Promise.all(data.map((payment) => signPaymentScreenshot(payment))),
     total,
     page,
     limit,
@@ -301,7 +354,7 @@ export async function approvePayment(id: string, adminId: string) {
     `✅ You're now BayonHub Plus! Active until ${plusUntil.toISOString().slice(0, 10)}.`,
     `${env.frontendUrl}/account`,
   )
-  return { payment: updated, plusUntil }
+  return { payment: await signPaymentScreenshot(updated), plusUntil }
 }
 
 export async function rejectPayment(id: string, adminId: string, reviewNote: string) {
@@ -336,7 +389,32 @@ export async function rejectPayment(id: string, adminId: string, reviewNote: str
     `Payment not confirmed.\nReason: ${reviewNote.trim()}\nPlease resubmit your Plus payment receipt.`,
     `${env.frontendUrl}/upgrade`,
   )
-  return { payment: updated }
+  return { payment: await signPaymentScreenshot(updated) }
+}
+
+export async function refundPayment(id: string, adminId: string, refundNote: string) {
+  const note = refundNote.trim()
+  if (!note) throw createHttpError(400, "refundNote is required")
+  const payment = await prisma.payment.findUnique({
+    where: { id },
+    include: { user: { select: SAFE_USER_SELECT } },
+  })
+  if (!payment) throw createHttpError(404, "Payment not found")
+  if (payment.status !== PaymentStatus.PAID && payment.status !== PaymentStatus.APPROVED) {
+    throw createHttpError(409, "Only paid or approved payments can be refunded")
+  }
+
+  const updated = await prisma.payment.update({
+    where: { id },
+    data: {
+      status: PaymentStatus.REFUNDED,
+      refundNote: note,
+      refundedAt: new Date(),
+      refundedByAdminId: adminId,
+    },
+    include: { user: { select: SAFE_USER_SELECT } },
+  })
+  return { payment: await signPaymentScreenshot(updated) }
 }
 
 export async function getAdminListingsPage(filters: {
@@ -389,11 +467,13 @@ export async function getAdminListingsPage(filters: {
 }
 
 export async function updateAdminListing(id: string, status: string) {
-  return prisma.listing.update({
+  const listing = await prisma.listing.update({
     where: { id },
     data: { status: toListingStatus(status) },
     include: { images: { take: 1, orderBy: { order: "asc" } }, seller: { select: SAFE_USER_SELECT } },
   })
+  await notifyListingStatusIfNeeded(listing)
+  return listing
 }
 
 export async function hardDeleteListing(id: string) {
@@ -414,6 +494,19 @@ export async function bulkListingAction(ids: string[], action: string) {
     where: { id: { in: uniqueIds } },
     data: { status },
   })
+  if (status === ListingStatus.ACTIVE) {
+    const listings = await prisma.listing.findMany({
+      where: { id: { in: uniqueIds } },
+      select: {
+        id: true,
+        title: true,
+        sellerId: true,
+        status: true,
+        seller: { select: { telegramChatId: true } },
+      },
+    })
+    await Promise.all(listings.map((listing) => notifyListingStatusIfNeeded(listing)))
+  }
   return { success: true, updated: result.count }
 }
 
@@ -674,8 +767,15 @@ export async function banUser(id: string, reason: string, duration?: number | nu
     select: SAFE_USER_SELECT,
   })
   await prisma.listing.updateMany({
-    where: { sellerId: id, status: ListingStatus.ACTIVE },
+    where: { sellerId: id, status: ListingStatus.ACTIVE, deletedAt: null },
     data: { status: ListingStatus.HIDDEN },
+  })
+  await notifyUser({
+    userId: user.id,
+    title: "Account Suspended",
+    body: `Reason: ${reason || "Policy violation"}. Appeal at /appeal`,
+    type: "ACCOUNT_BANNED",
+    link: "/appeal",
   })
   return { user }
 }
@@ -693,7 +793,7 @@ export async function unbanUser(id: string) {
     select: SAFE_USER_SELECT,
   })
   await prisma.listing.updateMany({
-    where: { sellerId: id, status: ListingStatus.HIDDEN },
+    where: { sellerId: id, status: ListingStatus.HIDDEN, deletedAt: null },
     data: { status: ListingStatus.ACTIVE },
   })
   return { user }
@@ -764,15 +864,21 @@ export async function getAnalytics(period?: string) {
   }
 }
 
-export async function getFeaturedListings() {
-  const data = await prisma.featuredListing.findMany({
-    orderBy: { createdAt: "desc" },
-    include: {
-      listing: { include: { images: { take: 1, orderBy: { order: "asc" } }, seller: { select: SAFE_USER_SELECT } } },
-      admin: { select: SAFE_USER_SELECT },
-    },
-  })
-  return { data }
+export async function getFeaturedListings(filters: { page?: number; limit?: number } = {}) {
+  const { page, limit } = normalizePageParams(filters.page, filters.limit)
+  const [data, total] = await Promise.all([
+    prisma.featuredListing.findMany({
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+      include: {
+        listing: { include: { images: { take: 1, orderBy: { order: "asc" } }, seller: { select: SAFE_USER_SELECT } } },
+        admin: { select: SAFE_USER_SELECT },
+      },
+    }),
+    prisma.featuredListing.count(),
+  ])
+  return { data, total, page, limit }
 }
 
 export async function addFeaturedListing(listingId: string, adminId: string) {
@@ -792,13 +898,20 @@ export async function removeFeaturedListing(id: string) {
   return { success: true }
 }
 
-export async function getAppeals() {
-  const data = await prisma.appeal.findMany({
-    where: { status: "pending" },
-    orderBy: { createdAt: "asc" },
-    include: { user: { select: SAFE_USER_SELECT } },
-  })
-  return { data }
+export async function getAppeals(filters: { page?: number; limit?: number } = {}) {
+  const { page, limit } = normalizePageParams(filters.page, filters.limit)
+  const where = { status: "pending" }
+  const [data, total] = await Promise.all([
+    prisma.appeal.findMany({
+      where,
+      orderBy: { createdAt: "asc" },
+      skip: (page - 1) * limit,
+      take: limit,
+      include: { user: { select: SAFE_USER_SELECT } },
+    }),
+    prisma.appeal.count({ where }),
+  ])
+  return { data, total, page, limit }
 }
 
 export async function resolveAppeal(id: string, action: string, adminNote?: string) {
@@ -814,13 +927,20 @@ export async function resolveAppeal(id: string, action: string, adminNote?: stri
   return { appeal }
 }
 
-export async function getVerificationRequests() {
-  const data = await prisma.verificationRequest.findMany({
-    where: { status: "pending" },
-    orderBy: { submittedAt: "asc" },
-    include: { user: { select: SAFE_USER_SELECT } },
-  })
-  return { data }
+export async function getVerificationRequests(filters: { page?: number; limit?: number } = {}) {
+  const { page, limit } = normalizePageParams(filters.page, filters.limit)
+  const where = { status: "pending" }
+  const [data, total] = await Promise.all([
+    prisma.verificationRequest.findMany({
+      where,
+      orderBy: { submittedAt: "asc" },
+      skip: (page - 1) * limit,
+      take: limit,
+      include: { user: { select: SAFE_USER_SELECT } },
+    }),
+    prisma.verificationRequest.count({ where }),
+  ])
+  return { data, total, page, limit }
 }
 
 export async function resolveVerificationRequest(id: string, action: string, adminNote?: string) {
@@ -899,7 +1019,13 @@ export async function getAdminListings(cursor?: string, limit = 20) {
 }
 
 export async function updateListingStatus(id: string, status: ListingStatus) {
-  return prisma.listing.update({ where: { id }, data: { status } })
+  const listing = await prisma.listing.update({
+    where: { id },
+    data: { status },
+    include: { seller: { select: { telegramChatId: true } } },
+  })
+  await notifyListingStatusIfNeeded(listing)
+  return listing
 }
 
 export async function updateListingImageReviewStatus(id: string, status: "approved" | "flagged") {
@@ -974,7 +1100,7 @@ export async function getStats() {
     prisma.user.count(),
     prisma.lead.count(),
     prisma.report.count(),
-    prisma.listing.count({ where: { status: ListingStatus.ACTIVE } }),
+    prisma.listing.count({ where: { status: ListingStatus.ACTIVE, deletedAt: null } }),
     prisma.listing.count({ where: { createdAt: { gte: start } } }),
     prisma.user.count({ where: { createdAt: { gte: start } } }),
   ])
@@ -1019,6 +1145,17 @@ export async function updateKycApplication(id: string, reviewerId: string, statu
     },
     include: { user: { select: SAFE_USER_SELECT } },
   })
+  if (status === KYCStatus.APPROVED || status === KYCStatus.REJECTED) {
+    const approved = status === KYCStatus.APPROVED
+    await notifyUser({
+      userId: application.userId,
+      title: approved ? "KYC Approved" : "KYC Rejected",
+      body: approved ? "Your identity has been verified." : "Your KYC submission was not approved.",
+      type: "KYC_STATUS",
+      link: "/account",
+      telegramChatId: application.user.telegramChatId,
+    })
+  }
   return application
 }
 

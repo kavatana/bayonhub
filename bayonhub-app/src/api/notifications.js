@@ -2,6 +2,13 @@ import client, { hasApiBackend, readStorage, writeStorage } from "./client"
 
 const NOTIFICATIONS_KEY = "bayonhub:notifications"
 
+function unwrapEnvelope(payload) {
+  if (payload && typeof payload === "object" && !Array.isArray(payload) && Object.prototype.hasOwnProperty.call(payload, "data")) {
+    return payload.data
+  }
+  return payload
+}
+
 function mockNotifications() {
   return readStorage(NOTIFICATIONS_KEY, [])
 }
@@ -34,9 +41,10 @@ export async function fetchNotifications({ page = 1, limit = 20, filter = "all" 
   }
   try {
     const response = await client.get("/api/notifications", { params: { page, limit, filter } })
+    const data = unwrapEnvelope(response.data)
     return {
-      ...response.data,
-      data: (response.data.data || []).map(normalizeNotification),
+      ...data,
+      data: (data.data || []).map(normalizeNotification),
     }
   } catch (err) {
     throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
@@ -49,7 +57,7 @@ export async function markAllNotificationsRead() {
     return { success: true }
   }
   const response = await client.patch("/api/notifications/read-all")
-  return response.data
+  return unwrapEnvelope(response.data)
 }
 
 export async function markNotificationRead(id) {
@@ -59,7 +67,7 @@ export async function markNotificationRead(id) {
     return next.find((item) => String(item.id) === String(id)) || null
   }
   const response = await client.patch(`/api/notifications/${id}/read`)
-  return normalizeNotification(response.data)
+  return normalizeNotification(unwrapEnvelope(response.data))
 }
 
 export async function deleteNotification(id) {
@@ -68,17 +76,18 @@ export async function deleteNotification(id) {
     return { success: true }
   }
   const response = await client.delete(`/api/notifications/${id}`)
-  return response.data
+  return unwrapEnvelope(response.data)
 }
 
 export async function fetchVapidPublicKey() {
   if (!hasApiBackend()) return import.meta.env.VITE_VAPID_PUBLIC_KEY || ""
   const response = await client.get("/api/notifications/vapid-public-key")
-  return response.data.publicKey || ""
+  const data = unwrapEnvelope(response.data)
+  return data.publicKey || ""
 }
 
 export async function subscribePush(subscription) {
   if (!hasApiBackend()) return { success: true }
   const response = await client.post("/api/notifications/subscribe", subscription)
-  return response.data
+  return unwrapEnvelope(response.data)
 }

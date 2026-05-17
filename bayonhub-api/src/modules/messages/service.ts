@@ -60,22 +60,26 @@ export async function getMyConversations(userId: string) {
     },
   })
 
-  const withUnread = await Promise.all(
-    conversations.map(async (conversation) => {
-      const unreadCount = await prisma.message.count({
+  const conversationIds = conversations.map((conversation) => conversation.id)
+  const unreadCounts = conversationIds.length
+    ? await prisma.message.groupBy({
+        by: ["conversationId"],
         where: {
-          conversationId: conversation.id,
+          conversationId: { in: conversationIds },
           senderId: { not: userId },
           read: false,
         },
+        _count: { _all: true },
       })
-      return {
-        ...conversation,
-        lastMessage: conversation.messages[0] || null,
-        unreadCount,
-      }
-    }),
+    : []
+  const unreadCountByConversation = new Map(
+    unreadCounts.map((item) => [item.conversationId, item._count._all]),
   )
+  const withUnread = conversations.map((conversation) => ({
+    ...conversation,
+    lastMessage: conversation.messages[0] || null,
+    unreadCount: unreadCountByConversation.get(conversation.id) || 0,
+  }))
 
   return { conversations: withUnread }
 }
@@ -133,21 +137,20 @@ export async function sendMessage(conversationId: string, senderId: string, body
     await recalculateSellerResponseRate(senderId)
   }
 
-  if (conversation.sellerId !== senderId) {
-    const seller = await prisma.user.findUnique({
-      where: { id: conversation.sellerId },
-      select: { telegramChatId: true },
-    })
-    const preview = body.length > 120 ? `${body.slice(0, 117)}...` : body
-    void notifyUser({
-      userId: conversation.sellerId,
-      type: "message",
-      title: "New message on BayonHub",
-      body: preview,
-      link: `/inbox/${conversationId}`,
-      telegramChatId: seller?.telegramChatId,
-    })
-  }
+  const recipientId = conversation.buyerId === senderId ? conversation.sellerId : conversation.buyerId
+  const recipient = await prisma.user.findUnique({
+    where: { id: recipientId },
+    select: { telegramChatId: true },
+  })
+  const preview = body.length > 120 ? `${body.slice(0, 117)}...` : body
+  void notifyUser({
+    userId: recipientId,
+    type: "message",
+    title: "New message on BayonHub",
+    body: preview,
+    link: `/inbox/${conversationId}`,
+    telegramChatId: recipient?.telegramChatId,
+  })
 
   return message
 }

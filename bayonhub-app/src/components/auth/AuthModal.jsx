@@ -409,7 +409,7 @@ export default function AuthModal() {
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/30 dark:bg-blue-900/10">
           <p className="mb-3 text-sm font-semibold leading-6 text-blue-800 dark:text-blue-300">{t("auth.telegramOtpHelp")}</p>
           <a
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2AABEE] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#2298D6]"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-sky-600"
             href={`https://t.me/${telegramBotUsername}`}
             target="_blank"
             rel="noopener noreferrer"
@@ -576,7 +576,7 @@ export default function AuthModal() {
           <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/30 dark:bg-blue-900/10">
             <p className="mb-3 text-sm font-semibold leading-6 text-blue-800 dark:text-blue-300">{t("auth.telegramOtpHelp")}</p>
             <a
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2AABEE] px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-[#2298D6]"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-sky-600"
               href={`https://t.me/${import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "BayonHub_Bot"}`}
               target="_blank"
               rel="noopener noreferrer"

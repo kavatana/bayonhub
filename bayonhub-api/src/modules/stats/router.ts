@@ -17,7 +17,7 @@ router.get("/stats", async (_req, res) => {
     }
 
     const [totalListings, verifiedSellers, weeklyListings] = await Promise.all([
-      prisma.listing.count({ where: { status: ListingStatus.ACTIVE } }),
+      prisma.listing.count({ where: { status: ListingStatus.ACTIVE, deletedAt: null } }),
       prisma.user.count({
         where: {
           verificationTier: { not: VerificationTier.NONE },
@@ -27,6 +27,7 @@ router.get("/stats", async (_req, res) => {
       prisma.listing.count({
         where: {
           status: ListingStatus.ACTIVE,
+          deletedAt: null,
           createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
         },
       }),

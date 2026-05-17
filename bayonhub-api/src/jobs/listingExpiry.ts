@@ -4,6 +4,9 @@ import { prisma } from "../lib/prisma"
 import { ListingStatus } from "@prisma/client"
 import { notifyUser } from "../modules/messages/notifications.service"
 
+let expiryTask: ReturnType<typeof cron.schedule> | null = null
+let digestTask: ReturnType<typeof cron.schedule> | null = null
+
 async function runExpiryAndReminderJob(now: Date) {
   // 1. Archive listings where expiresAt has passed and they are still ACTIVE
   const { count: archivedCount } = await prisma.listing.updateMany({
@@ -122,7 +125,7 @@ async function runDailyDigestJob(now: Date) {
 
 export function startListingExpiryJob(): void {
   // Run daily at 01:00 Asia/Phnom_Penh (UTC+7 = 18:00 UTC previous day)
-  cron.schedule(
+  expiryTask = cron.schedule(
     "0 18 * * *",
     async () => {
       const now = new Date()
@@ -140,7 +143,7 @@ export function startListingExpiryJob(): void {
   console.info("[Cron] Listing expiry job scheduled (daily 01:00 ICT)")
 
   // Run daily digest at 08:00 Asia/Phnom_Penh (UTC+7 = 01:00 UTC).
-  cron.schedule(
+  digestTask = cron.schedule(
     "0 1 * * *",
     async () => {
       const now = new Date()
@@ -155,4 +158,11 @@ export function startListingExpiryJob(): void {
   )
 
   console.info("[Cron] Daily digest job scheduled (daily 08:00 ICT)")
+}
+
+export function stopListingExpiryJob(): void {
+  expiryTask?.stop()
+  digestTask?.stop()
+  expiryTask = null
+  digestTask = null
 }

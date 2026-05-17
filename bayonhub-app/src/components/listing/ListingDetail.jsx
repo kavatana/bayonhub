@@ -86,6 +86,17 @@ function sellerLastSeenText(value, language, t) {
   return t("seller.lastSeenAgo", { time: timeAgo(value, language) })
 }
 
+function conditionLabel(condition, t) {
+  const normalized = String(condition || "").trim().toLowerCase()
+  if (normalized === "new") return t("condition.new")
+  if (normalized === "used") return t("condition.used")
+  if (normalized === "like new") return t("condition.likeNew")
+  if (normalized === "good") return t("condition.good")
+  if (normalized === "refurbished") return t("condition.refurbished")
+  if (normalized === "for rent") return t("condition.forRent")
+  return condition
+}
+
 export default function ListingDetail({ listing }) {
   const { t, language } = useTranslation()
   const images = useMemo(() => normalizeImages(listing), [listing])
@@ -165,6 +176,7 @@ export default function ListingDetail({ listing }) {
   const sellerResponseRate = Number(listing.seller?.responseRate ?? listing.responseRate ?? 0)
   const sellerConversationCount = Number(listing.seller?.totalSellerConversations || listing.totalSellerConversations || 0)
   const sellerLastSeen = sellerLastSeenText(listing.seller?.lastSeen || listing.lastSeen, language, t)
+  const hasListingCoordinates = listing.lat != null && listing.lng != null
   const category = findCategoryForListing(listing)
   const subcategory = category?.subcategories.find((item) => item.label.en === listing.subcategory)
   const isVehicleListing =
@@ -498,7 +510,7 @@ export default function ListingDetail({ listing }) {
         <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
           <div className="mb-3 flex flex-wrap gap-2">
             {listing.negotiable ? <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-black text-primary">{t("listing.negotiable")}</span> : null}
-            {listing.condition ? <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-black text-neutral-700">{listing.condition}</span> : null}
+            {listing.condition ? <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-black text-neutral-700">{conditionLabel(listing.condition, t)}</span> : null}
           </div>
           <h1 className="font-sans text-2xl font-semibold leading-tight text-neutral-950">{sanitizeText(listing.title)}</h1>
           {listing.previousPrice && Number(listing.previousPrice) > Number(listing.price) ? (
@@ -603,23 +615,25 @@ export default function ListingDetail({ listing }) {
         ) : null}
 
         <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <h2 className="text-xl font-black text-neutral-900">{t("listing.map")}</h2>
-          <Suspense fallback={<div className="mt-4 h-48 w-full animate-pulse rounded-xl bg-neutral-100" />}>
-            <MapView
-              className="mt-4 h-48 w-full rounded-xl"
-              interactive={false}
-              lat={listing.lat || 11.5564}
-              lng={listing.lng || 104.9282}
-              markers={listing.lat && listing.lng ? [{ id: listing.id, lat: listing.lat, lng: listing.lng, popup: listing.location }] : []}
-              zoom={listing.lat && listing.lng ? 15 : 7}
-            />
-          </Suspense>
+          <h2 className="text-xl font-black text-neutral-900">{hasListingCoordinates ? t("map.listingLocation") : t("listing.map")}</h2>
+          {hasListingCoordinates ? (
+            <Suspense fallback={<div className="mt-4 h-[220px] w-full animate-pulse rounded-xl bg-neutral-100 sm:h-[300px]" />}>
+              <MapView
+                className="mt-4 h-[220px] w-full rounded-xl sm:h-[300px]"
+                interactive={false}
+                lat={listing.lat}
+                lng={listing.lng}
+                markers={[{ id: listing.id, lat: listing.lat, lng: listing.lng, popup: listing.title }]}
+                zoom={15}
+              />
+            </Suspense>
+          ) : null}
           <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-neutral-500">
             <MapPin className="h-4 w-4 text-primary" aria-hidden="true" />
             {listing.location}
             {listing.district ? `, ${listing.district}` : ""}
           </p>
-          <p className="mt-1 text-xs font-semibold text-neutral-400">{t("listing.approximateLocation")}</p>
+          {hasListingCoordinates ? <p className="mt-1 text-xs font-semibold text-neutral-400">{t("listing.approximateLocation")}</p> : null}
         </section>
       </section>
 
@@ -836,7 +850,7 @@ export default function ListingDetail({ listing }) {
       <Modal open={shareOpen} onClose={() => setShareOpen(false)} title={t("listing.share")} size="md">
         <div className="grid gap-4">
           <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
-            <img alt={listing.title} className="aspect-video w-full object-cover" src={activeImageUrl} />
+            <img alt={listing.title} className="aspect-video w-full object-cover" loading="lazy" src={activeImageUrl} />
             <div className="p-4">
               <p className="text-xs font-black uppercase tracking-widest text-primary">{t("app.name")}</p>
               <h3 className="mt-1 text-lg font-black text-neutral-900">{sanitizeText(listing.title)}</h3>

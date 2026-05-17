@@ -9,8 +9,10 @@ import {
   refreshAuthTokens,
   registerUser,
   resetPassword as resetPasswordService,
+  sendAdminTwoFactorOTP,
   sendPhoneOTP,
   sendOTP,
+  verifyAdminTwoFactorOTP,
   verifyPhoneOTP,
   verifyOTP,
 } from "./service"
@@ -62,6 +64,40 @@ export const sendPhoneOtp: RequestHandler = async (req, res, next) => {
 export const verifyPhoneOtp: RequestHandler = async (req, res, next) => {
   try {
     const result = await verifyPhoneOTP(req.user?.id, req.body.phone, req.body.code)
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+}
+
+function requireAdminUser(req: Parameters<RequestHandler>[0]) {
+  if (!req.user?.isAdmin) {
+    const error = new Error("Forbidden") as Error & { status: number }
+    error.status = 403
+    throw error
+  }
+}
+
+export const sendAdminTwoFactor: RequestHandler = async (req, res, next) => {
+  try {
+    requireAdminUser(req)
+    const result = await sendAdminTwoFactorOTP(req.user!.id)
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const verifyAdminTwoFactor: RequestHandler = async (req, res, next) => {
+  try {
+    requireAdminUser(req)
+    const code = typeof req.body.code === "string" ? req.body.code : ""
+    if (!/^\d{6}$/.test(code)) {
+      const error = new Error("OTP must be 6 digits") as Error & { status: number }
+      error.status = 400
+      throw error
+    }
+    const result = await verifyAdminTwoFactorOTP(req.user!.id, code)
     res.status(200).json(result)
   } catch (error) {
     next(error)

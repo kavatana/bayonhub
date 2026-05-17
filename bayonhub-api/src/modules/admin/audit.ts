@@ -3,8 +3,8 @@
  *
  * logAdminAction() records every sensitive admin operation to the database.
  * All writes are fire-and-forget (errors are swallowed so they never block
- * the actual admin action). If AdminAuditLog is not in the Prisma schema yet,
- * logs are written to console.warn as a fallback until the migration runs.
+ * the actual admin action). If the database write fails, logs are written to
+ * console as a fallback.
  *
  * Call this AFTER the action has succeeded so failed operations are not logged
  * as completed.
@@ -14,14 +14,18 @@ import { prisma } from "../../lib/prisma"
 export type AdminAuditAction =
   | "payment.approve"
   | "payment.reject"
+  | "payment.refund"
   | "plus.gift"
   | "plus.revoke"
   | "verification.approve"
   | "verification.reject"
   | "kyc.approve"
   | "kyc.reject"
+  | "kyc.needs_resubmit"
   | "listing.delete"
   | "listing.status_change"
+  | "listing.bulk_action"
+  | "listing.image_review"
   | "user.ban"
   | "user.warn"
   | "user.unban"
@@ -40,25 +44,22 @@ export interface AdminAuditEntry {
 
 export async function logAdminAction(entry: AdminAuditEntry): Promise<void> {
   try {
-    // Attempt to write to the AdminAuditLog table (requires Prisma migration).
-    // If the model doesn't exist yet, fall through to the console fallback.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const model = (prisma as any).adminAuditLog
-    if (model && typeof model.create === "function") {
-      await model.create({
-        data: {
-          adminId: entry.adminId,
-          action: entry.action,
-          targetId: entry.targetId ?? null,
-          targetType: entry.targetType ?? null,
-          note: entry.note ?? null,
-          meta: entry.meta ?? undefined,
-        },
-      })
-      return
+    const meta = {
+      ...(entry.meta ?? {}),
+      ...(entry.note ? { note: entry.note } : {}),
     }
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId: entry.adminId,
+        action: entry.action,
+        targetId: entry.targetId ?? null,
+        targetType: entry.targetType ?? null,
+        meta: Object.keys(meta).length ? meta : undefined,
+      },
+    })
+    return
   } catch {
-    // Table not yet migrated — fall through to console fallback
+    // Fall through to console fallback
   }
 
   // Fallback: structured console log so logs are still captured by log aggregators

@@ -6,6 +6,7 @@ import { getPresignedUploadUrl, processAndUpload } from "../../lib/s3"
 import { createHttpError } from "../../lib/errors"
 import { validateMagicBytes } from "../../middleware/upload"
 import { maskPhone, withoutEmail } from "../../utils/safeUser"
+import { listingSchema } from "./validators"
 import {
   bumpListing as bumpListingService,
   createLead as createLeadService,
@@ -51,6 +52,23 @@ function getFiles(req: Parameters<RequestHandler>[0]): Express.Multer.File[] {
   return Array.isArray(req.files) ? req.files : []
 }
 
+function normalizeListingRequestBody(input: unknown) {
+  const data = { ...((input as Record<string, unknown>) || {}) }
+  if (data.categoryId && !data.categorySlug) data.categorySlug = data.categoryId
+  if (data.location && !data.province) data.province = data.location
+  if (data.metadata !== undefined && data.facets === undefined) data.facets = data.metadata
+  if (data.price !== undefined && Number(data.price) === 0 && data.negotiable === undefined) {
+    data.negotiable = true
+  }
+  return data
+}
+
+function validateListingRequestBody(input: unknown, partial = false) {
+  const normalized = normalizeListingRequestBody(input)
+  const parsed = partial ? listingSchema.partial().parse(normalized) : listingSchema.parse(normalized)
+  return { ...normalized, ...parsed }
+}
+
 export const getListings: RequestHandler = async (req, res, next) => {
   try {
     const result = await getListingsService({
@@ -80,6 +98,7 @@ export const searchListings: RequestHandler = async (req, res, next) => {
       priceMin: parseNumber(req.query.priceMin ?? req.query.minPrice),
       priceMax: parseNumber(req.query.priceMax ?? req.query.maxPrice),
       condition: req.query.condition as string | undefined,
+      negotiable: parseBoolean(req.query.negotiable),
       sortBy: (req.query.sortBy || req.query.sort) as string | undefined,
       page: parseNumber(req.query.page),
       limit: parseNumber(req.query.limit),
@@ -138,7 +157,8 @@ export const createListing: RequestHandler = async (req, res, next) => {
         throw createHttpError(400, `Invalid image format for file: ${file.originalname}`)
       }
     }
-    const listing = await createListingService(req.user.id, req.body, files)
+    const body = validateListingRequestBody(req.body)
+    const listing = await createListingService(req.user.id, body, files)
     res.status(201).json(listing)
   } catch (error) {
     next(error)
@@ -154,11 +174,12 @@ export const updateListing: RequestHandler = async (req, res, next) => {
         throw createHttpError(400, `Invalid image format for file: ${file.originalname}`)
       }
     }
+    const body = validateListingRequestBody(req.body, true)
     const listing = await updateListingService(
       req.user.id,
       req.user.role,
       getParamId(req.params.id),
-      req.body,
+      body,
       files,
     )
     res.status(200).json(listing)
@@ -176,7 +197,9 @@ export const saveDraft: RequestHandler = async (req, res, next) => {
         throw createHttpError(400, `Invalid image format for file: ${file.originalname}`)
       }
     }
-    const listing = await saveDraftService(req.user.id, req.user.role, req.body, files)
+    const normalizedBody = normalizeListingRequestBody(req.body)
+    const body = validateListingRequestBody(normalizedBody, typeof normalizedBody.id === "string")
+    const listing = await saveDraftService(req.user.id, req.user.role, body, files)
     res.status(200).json(listing)
   } catch (error) {
     next(error)
@@ -205,18 +228,21 @@ export const deleteListing: RequestHandler = async (req, res, next) => {
 
 export const reportListing: RequestHandler = async (req, res, next) => {
   try {
-    const reporterId = req.user?.id || (req.body.userId as string | undefined)
-    if (!reporterId) throw createHttpError(400, "Reporter user id is required")
+    const reporterId = req.user?.id
+    if (!reporterId) throw createHttpError(401, "Authentication required to report a listing")
     const reason = req.body.reason as ReportReason
     if (!Object.values(ReportReason).includes(reason)) {
       throw createHttpError(400, "Invalid report reason")
     }
-    const report = await reportListingService(
-      reporterId,
-      getParamId(req.params.id),
-      reason,
-      req.body,
-    )
+    const { detail, evidenceUrl, contactEmail, userAgent, reporterSessionId, listingTitle } = req.body
+    const report = await reportListingService(reporterId, getParamId(req.params.id), reason, {
+      detail,
+      evidenceUrl,
+      contactEmail,
+      userAgent,
+      reporterSessionId,
+      listingTitle,
+    })
     res.status(201).json({ success: true, report })
   } catch (error) {
     next(error)

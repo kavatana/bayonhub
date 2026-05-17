@@ -1,7 +1,7 @@
-import { Router } from "express"
+import { Router, type RequestHandler } from "express"
 
 import { optionalAuth, requireAuth } from "../../middleware/auth"
-import { contactLimiter, postingLimiter, uploadLimiter } from "../../middleware/rateLimiter"
+import { contactLimiter, postingLimiter, reportLimiter, uploadLimiter } from "../../middleware/rateLimiter"
 import { upload } from "../../middleware/upload"
 import {
   bumpListing,
@@ -32,6 +32,25 @@ import {
 
 const router = Router()
 
+const responseEnvelope: RequestHandler = (_req, res, next) => {
+  const originalJson = res.json.bind(res)
+  res.json = (body?: unknown) => {
+    if (res.statusCode >= 400) {
+      const errorBody = body && typeof body === "object" ? body as { message?: unknown; error?: unknown } : {}
+      const message = typeof errorBody.message === "string"
+        ? errorBody.message
+        : typeof errorBody.error === "string"
+          ? errorBody.error
+          : "An error occurred"
+      return originalJson({ error: true, message })
+    }
+    return originalJson({ data: body ?? null })
+  }
+  next()
+}
+
+router.use(responseEnvelope)
+
 router.get("/", optionalAuth, getListings)
 router.get("/search", searchListings)
 router.get("/featured", getFeaturedListings)
@@ -52,7 +71,7 @@ router.patch("/:id/publish", requireAuth, publishDraft)
 router.patch("/:id/sold", requireAuth, markAsSold)
 router.post("/:id/bump", requireAuth, bumpListing)
 router.delete("/:id", requireAuth, deleteListing)
-router.post("/:id/report", optionalAuth, reportListing)
+router.post("/:id/report", optionalAuth, reportLimiter, reportListing)
 router.post("/:id/lead", optionalAuth, contactLimiter, createLead)
 router.post("/:id/save", requireAuth, saveListing)
 router.delete("/:id/save", requireAuth, unsaveListing)

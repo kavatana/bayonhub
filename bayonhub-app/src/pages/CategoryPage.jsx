@@ -570,7 +570,7 @@ export default function CategoryPage() {
           lng: listing.lng,
           popup: (
             <div className="w-44">
-              <img alt={listing.title} className="mb-2 h-20 w-full rounded-lg object-cover" onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.onerror = null }} src={getListingImage(listing)} />
+              <img alt={listing.title} className="mb-2 h-20 w-full rounded-lg object-cover" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.onerror = null }} src={getListingImage(listing)} />
               <Link className="block text-sm font-black text-neutral-900 hover:text-primary" to={listingUrl(listing)}>
                 {listing.title}
               </Link>

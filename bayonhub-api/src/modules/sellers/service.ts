@@ -28,7 +28,7 @@ export async function getSellerAnalytics(userId: string) {
 
   const [totalListings, activeListings, allListings, leadsThisWeek, leadsByTypeRaw] = await Promise.all([
     prisma.listing.count({ where: { sellerId: userId } }),
-    prisma.listing.count({ where: { sellerId: userId, status: ListingStatus.ACTIVE } }),
+    prisma.listing.count({ where: { sellerId: userId, status: ListingStatus.ACTIVE, deletedAt: null } }),
     prisma.listing.findMany({
       where: { sellerId: userId },
       select: {
@@ -115,7 +115,7 @@ export async function getSellerProfile(id: string) {
       phoneVerifiedAt: true,
       _count: {
         select: {
-          listings: { where: { status: ListingStatus.ACTIVE } },
+          listings: { where: { status: ListingStatus.ACTIVE, deletedAt: null } },
         },
       },
     },
@@ -127,7 +127,7 @@ export async function getSellerProfile(id: string) {
 export async function getSellerListings(id: string, cursor?: string, limit = 20) {
   const take = Math.min(limit, 50)
   const listings = await prisma.listing.findMany({
-    where: { sellerId: id, status: ListingStatus.ACTIVE },
+    where: { sellerId: id, status: ListingStatus.ACTIVE, deletedAt: null },
     take,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     orderBy: { createdAt: "desc" },

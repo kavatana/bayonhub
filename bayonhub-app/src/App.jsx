@@ -20,6 +20,7 @@ const ConversationPage = lazy(() => import("./pages/ConversationPage"))
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"))
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"))
 const PostListingPage = lazy(() => import("./pages/PostListingPage"))
+const PostingRulesPage = lazy(() => import("./pages/PostingRulesPage"))
 const PricingPage = lazy(() => import("./pages/PricingPage"))
 const PrivacyPage = lazy(() => import("./pages/PrivacyPage"))
 const RecentlyViewedPage = lazy(() => import("./pages/RecentlyViewedPage"))
@@ -98,6 +99,7 @@ function App() {
           <Route element={<ListingPage />} path="/buy/:province/:categorySlug/:titleSlug-:id" />
           <Route element={<ListingPage />} path="/l/:categorySlug/:province/:titleSlug-:id" />
           <Route element={<PostListingPage />} path="/post" />
+          <Route element={routePage(PostingRulesPage)} path="/posting-rules" />
           <Route element={<MyListingsPage />} path="/my-listings" />
           <Route element={<NotificationsPage />} path="/notifications" />
           <Route element={<PricingPage />} path="/pricing" />

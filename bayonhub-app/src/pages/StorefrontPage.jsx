@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { useLocation, useNavigate, useParams } from "react-router-dom"
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { Helmet } from "react-helmet-async"
 import { 
   Calendar, 
@@ -156,6 +156,8 @@ export default function StorefrontPage() {
   if (!seller && !loading) return <NotFoundPage message={t("seller.notFound")} />
 
   const merchant = seller.merchantProfile || {}
+  const sellerName = sanitizeText(merchant.storeName || seller.name || t("seo.sellerFallback"))
+  const storefrontUrl = typeof window !== "undefined" ? window.location.href : ""
   const isFollowing = following.includes(seller.id)
   const followersCount = followerCounts[seller.id] ?? seller.followersCount ?? seller._count?.sellerFollowers ?? 0
   const banner = merchant.bannerKey || seller.bannerUrl || ""
@@ -163,6 +165,7 @@ export default function StorefrontPage() {
   const memberYear = new Date(seller.createdAt).getFullYear()
   const sellerVerified = Boolean(seller.isVerifiedSeller || seller.verificationTier === "IDENTITY")
   const sellerIsPlusMember = Boolean(seller.isPlusMember || seller.isLifetimePlus)
+  const isOwnStorefront = String(seller.id) === String(user?.id)
   const responseRate = Number(seller.responseRate || 0)
   const sellerConversationCount = Number(seller._count?.sellerConversations || seller.sellerConversations?.length || seller.conversationCount || 0)
   const responseRateLabel = sellerConversationCount >= 3
@@ -189,7 +192,12 @@ export default function StorefrontPage() {
   return (
     <PageTransition>
       <Helmet>
-        <title>{t("seo.sellerTitle", { seller: seller.name })}</title>
+        <title>{t("seo.sellerTitle", { seller: sellerName })}</title>
+        <meta name="description" content={t("seo.storefrontDescription", { seller: sellerName })} />
+        <meta property="og:title" content={t("seo.sellerTitle", { seller: sellerName })} />
+        <meta property="og:description" content={t("seo.storefrontOgDescription", { seller: sellerName })} />
+        {logo ? <meta property="og:image" content={logo} /> : null}
+        <meta property="og:url" content={storefrontUrl} />
       </Helmet>
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -226,7 +234,7 @@ export default function StorefrontPage() {
                     )}
                   </div>
                   {sellerVerified && (
-                    <div className="absolute -bottom-1 -right-1 flex h-10 w-10 items-center justify-center rounded-full border-4 border-white bg-blue-500 shadow-lg">
+                    <div className="absolute -bottom-1 -right-1 flex h-10 w-10 items-center justify-center rounded-full border-4 border-white bg-primary shadow-lg">
                       <Shield className="h-5 w-5 text-white" />
                     </div>
                   )}
@@ -364,7 +372,23 @@ export default function StorefrontPage() {
                     </span>
                   </div>
                 </div>
-                <ListingGrid listings={filteredListings} loading={false} />
+                {seller.listings?.length ? (
+                  <ListingGrid listings={filteredListings} loading={false} />
+                ) : (
+                  <div className="grid min-h-64 place-items-center rounded-3xl border border-dashed border-neutral-200 bg-neutral-50 p-8 text-center">
+                    <div>
+                      <MessageCircle className="mx-auto h-12 w-12 text-neutral-300" aria-hidden="true" />
+                      <p className="mt-4 text-lg font-black text-neutral-900">
+                        {isOwnStorefront ? t("storefront.emptyOwn") : t("storefront.emptyOther")}
+                      </p>
+                      {isOwnStorefront ? (
+                        <Link className="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 py-2 text-sm font-black text-white transition hover:bg-primary-dark" to="/post">
+                          {t("storefront.postFirstListing")}
+                        </Link>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -378,7 +402,7 @@ export default function StorefrontPage() {
                           <div className="flex items-center gap-4">
                             <div className="h-12 w-12 rounded-full overflow-hidden bg-neutral-100">
                               {review.reviewer?.avatarUrl ? (
-                                <img src={review.reviewer.avatarUrl} alt={review.reviewer.name} className="h-full w-full object-cover" />
+                                <img src={review.reviewer.avatarUrl} alt={review.reviewer.name} className="h-full w-full object-cover" loading="lazy" />
                               ) : (
                                 <div className="h-full w-full grid place-items-center bg-neutral-200 text-neutral-500 font-bold">
                                   {review.reviewer?.name?.slice(0, 1).toUpperCase()}
@@ -435,7 +459,7 @@ export default function StorefrontPage() {
                         <div key={s} className="flex items-center gap-3">
                           <span className="w-3 text-xs font-black text-neutral-500">{s}</span>
                           <div className="flex-1 h-2 bg-neutral-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-amber-400 transition-all duration-500" style={{ width: `${percent}%` }} />
+                            <div className="h-full bg-primary transition-all duration-500" style={{ width: `${percent}%` }} />
                           </div>
                           <span className="w-8 text-xs font-black text-neutral-400 text-right">{count}</span>
                         </div>

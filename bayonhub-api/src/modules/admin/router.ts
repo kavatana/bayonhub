@@ -6,6 +6,7 @@ import { z } from "zod"
 import { getLocalPrivateDocumentPath, getPrivateDocumentReadUrl } from "../../lib/s3"
 import { createHttpError } from "../../lib/errors"
 import { requireAdmin, requireAuth } from "../../middleware/auth"
+import { adminIpAllowlist, requireAdmin2FA } from "../../middleware/adminAuth"
 import { logAdminAction } from "./audit"
 import {
   addFeaturedListing,
@@ -32,6 +33,7 @@ import {
   hardDeleteListing,
   importListings,
   removeFeaturedListing,
+  refundPayment,
   revokePlus,
   rejectPayment,
   resolveAppeal,
@@ -66,7 +68,7 @@ const importListingsSchema = z.object({
   listings: z.array(z.record(z.string(), z.unknown())).min(1).max(100),
 })
 
-router.use(requireAuth, requireAdmin)
+router.use(requireAuth, adminIpAllowlist, requireAdmin, requireAdmin2FA)
 
 router.get("/dashboard", async (_req, res, next) => {
   try {
@@ -108,6 +110,23 @@ router.post("/payments/:id/reject", async (req, res, next) => {
     const result = await rejectPayment(getParam(req.params.id, "payment id"), req.user!.id, reviewNote)
     // F4.4 — audit log
     logAdminAction({ adminId: req.user!.id, action: "payment.reject", targetId: req.params.id, targetType: "payment", note: reviewNote })
+    res.status(200).json(result)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.post("/payments/:id/refund", async (req, res, next) => {
+  try {
+    const refundNote = typeof req.body.refundNote === "string" ? req.body.refundNote : ""
+    const result = await refundPayment(getParam(req.params.id, "payment id"), req.user!.id, refundNote)
+    logAdminAction({
+      adminId: req.user!.id,
+      action: "payment.refund",
+      targetId: req.params.id,
+      targetType: "payment",
+      note: refundNote,
+    })
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -252,6 +271,15 @@ router.put("/kyc/:id", async (req, res, next) => {
       status,
       typeof req.body.note === "string" ? req.body.note : undefined,
     )
+    const auditAction = status === KYCStatus.APPROVED ? "kyc.approve" : status === KYCStatus.REJECTED ? "kyc.reject" : "kyc.needs_resubmit"
+    logAdminAction({
+      adminId: req.user!.id,
+      action: auditAction,
+      targetId: req.params.id,
+      targetType: "kyc",
+      note: typeof req.body.note === "string" ? req.body.note : undefined,
+      meta: { status },
+    })
     res.status(200).json({ application })
   } catch (error) {
     next(error)
@@ -284,6 +312,13 @@ router.patch("/listings/:id", async (req, res, next) => {
   try {
     const status = typeof req.body.status === "string" ? req.body.status : ""
     const listing = await updateAdminListing(getParam(req.params.id, "listing id"), status)
+    logAdminAction({
+      adminId: req.user!.id,
+      action: "listing.status_change",
+      targetId: req.params.id,
+      targetType: "listing",
+      meta: { status: listing.status },
+    })
     res.status(200).json(listing)
   } catch (error) {
     next(error)
@@ -306,6 +341,12 @@ router.post("/listings/bulk", async (req, res, next) => {
     const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((id: unknown): id is string => typeof id === "string") : []
     const action = typeof req.body.action === "string" ? req.body.action : ""
     const result = await bulkListingAction(ids, action)
+    logAdminAction({
+      adminId: req.user!.id,
+      action: "listing.bulk_action",
+      targetType: "listing",
+      meta: { action, ids, result },
+    })
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -319,6 +360,13 @@ router.put("/listings/:id/status", async (req, res, next) => {
       throw createHttpError(400, "Invalid listing status")
     }
     const listing = await updateListingStatus(getParam(req.params.id, "listing id"), status)
+    logAdminAction({
+      adminId: req.user!.id,
+      action: "listing.status_change",
+      targetId: req.params.id,
+      targetType: "listing",
+      meta: { status: listing.status },
+    })
     res.status(200).json(listing)
   } catch (error) {
     next(error)
@@ -332,6 +380,13 @@ router.patch("/listings/:id/image-review", async (req, res, next) => {
       throw createHttpError(400, "Invalid image review status")
     }
     const listing = await updateListingImageReviewStatus(getParam(req.params.id, "listing id"), status)
+    logAdminAction({
+      adminId: req.user!.id,
+      action: "listing.image_review",
+      targetId: req.params.id,
+      targetType: "listing",
+      meta: { status: listing.imageReviewStatus },
+    })
     res.status(200).json(listing)
   } catch (error) {
     next(error)
@@ -476,9 +531,12 @@ router.get("/analytics", async (req, res, next) => {
   }
 })
 
-router.get("/featured", async (_req, res, next) => {
+router.get("/featured", async (req, res, next) => {
   try {
-    const result = await getFeaturedListings()
+    const result = await getFeaturedListings({
+      page: Number(req.query.page || 1),
+      limit: Number(req.query.limit || 50),
+    })
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -506,9 +564,12 @@ router.delete("/featured/:id", async (req, res, next) => {
   }
 })
 
-router.get("/appeals", async (_req, res, next) => {
+router.get("/appeals", async (req, res, next) => {
   try {
-    const result = await getAppeals()
+    const result = await getAppeals({
+      page: Number(req.query.page || 1),
+      limit: Number(req.query.limit || 50),
+    })
     res.status(200).json(result)
   } catch (error) {
     next(error)
@@ -529,9 +590,12 @@ router.patch("/appeals/:id", async (req, res, next) => {
   }
 })
 
-router.get("/verifications", async (_req, res, next) => {
+router.get("/verifications", async (req, res, next) => {
   try {
-    const result = await getVerificationRequests()
+    const result = await getVerificationRequests({
+      page: Number(req.query.page || 1),
+      limit: Number(req.query.limit || 50),
+    })
     res.status(200).json(result)
   } catch (error) {
     next(error)

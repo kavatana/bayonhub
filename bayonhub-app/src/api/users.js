@@ -33,6 +33,18 @@ function followingIds() {
   return readStorage("bayonhub:following", []).map((id) => String(id))
 }
 
+function authTokenConfig() {
+  const token = readStorage(STORAGE_KEYS.authToken, null)
+  return token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+}
+
+function unwrapEnvelope(payload) {
+  if (payload && typeof payload === "object" && !Array.isArray(payload) && Object.prototype.hasOwnProperty.call(payload, "data")) {
+    return payload.data
+  }
+  return payload
+}
+
 function normalizeSavedResponse(data) {
   if (Array.isArray(data)) return data.map(normalizeListing)
   if (Array.isArray(data.listings)) return data.listings.map(normalizeListing)
@@ -49,7 +61,7 @@ export async function getSavedListings() {
   if (!hasApiBackend()) return mockGetSaved()
   try {
     const response = await client.get("/api/users/me/saved")
-    return normalizeSavedResponse(response.data)
+    return normalizeSavedResponse(unwrapEnvelope(response.data))
   } catch (err) {
     throw new Error(err?.response?.data?.error || err?.message || "users.loadError", { cause: err })
   }
@@ -59,7 +71,8 @@ export async function fetchMe() {
   if (!hasApiBackend()) return mockProfile()
   try {
     const response = await client.get("/api/users/me")
-    return response.data.user || response.data
+    const data = unwrapEnvelope(response.data)
+    return data.user || data
   } catch (err) {
     throw new Error(err?.response?.data?.error || err?.message || "users.loadError", { cause: err })
   }
@@ -76,7 +89,8 @@ export async function updateProfile(data) {
       language: data.language,
       province: data.province,
     })
-    return response.data.user || response.data
+    const responseData = unwrapEnvelope(response.data)
+    return responseData.user || responseData
   } catch (err) {
     throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
   }
@@ -90,7 +104,7 @@ export async function deleteAccount() {
   }
   try {
     const response = await client.delete("/api/users/me")
-    return response.data
+    return unwrapEnvelope(response.data)
   } catch (err) {
     throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
   }
@@ -136,7 +150,7 @@ export async function uploadAvatar(file) {
     const response = await client.post("/api/users/me/avatar", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     })
-    return response.data
+    return unwrapEnvelope(response.data)
   } catch (err) {
     throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
   }
@@ -164,7 +178,7 @@ export async function verifyPhoneOTP(phone, code) {
     return { success: true, user }
   }
   try {
-    const response = await client.post("/api/auth/otp/verify", { phone, code })
+    const response = await client.post("/api/auth/otp/verify", { phone, code }, authTokenConfig())
     return response.data
   } catch (err) {
     throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
@@ -175,7 +189,7 @@ export async function fetchSellerVerification() {
   if (!hasApiBackend()) return { status: "not_submitted", adminNote: null }
   try {
     const response = await client.get("/api/users/me/verify-seller")
-    return response.data
+    return unwrapEnvelope(response.data)
   } catch (err) {
     throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
   }
@@ -197,7 +211,7 @@ export async function submitSellerVerification({ idFront, idBack }) {
     const response = await client.post("/api/users/me/verify-seller", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     })
-    return response.data
+    return unwrapEnvelope(response.data)
   } catch (err) {
     throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
   }
@@ -207,7 +221,7 @@ export async function connectTelegram() {
   if (!hasApiBackend()) return { link: "https://t.me/BayonHub_Bot", botUsername: "BayonHub_Bot" }
   try {
     const response = await client.post("/api/users/me/connect-telegram")
-    return response.data
+    return unwrapEnvelope(response.data)
   } catch (err) {
     throw new Error(err?.response?.data?.error || err?.message || "ui.error", { cause: err })
   }
@@ -224,7 +238,7 @@ export async function fetchReferral() {
     }
   }
   const response = await client.get("/api/users/me/referral")
-  return response.data
+  return unwrapEnvelope(response.data)
 }
 
 export async function generateReferral() {
@@ -236,7 +250,7 @@ export async function generateReferral() {
     return { referralCode }
   }
   const response = await client.post("/api/users/me/referral/generate")
-  return response.data
+  return unwrapEnvelope(response.data)
 }
 
 export async function followSeller(id) {
@@ -246,7 +260,7 @@ export async function followSeller(id) {
     return { success: true, followersCount: next.length }
   }
   const response = await client.post(`/api/users/${id}/follow`)
-  return response.data
+  return unwrapEnvelope(response.data)
 }
 
 export async function unfollowSeller(id) {
@@ -256,7 +270,7 @@ export async function unfollowSeller(id) {
     return { success: true, followersCount: next.length }
   }
   const response = await client.delete(`/api/users/${id}/follow`)
-  return response.data
+  return unwrapEnvelope(response.data)
 }
 
 export async function fetchFollowing() {
@@ -281,7 +295,7 @@ export async function fetchFollowing() {
     return { following }
   }
   const response = await client.get("/api/users/me/following")
-  return response.data
+  return unwrapEnvelope(response.data)
 }
 
 export async function fetchFollowers(id) {
@@ -289,5 +303,5 @@ export async function fetchFollowers(id) {
     return { followersCount: followingIds().filter((sellerId) => sellerId === String(id)).length }
   }
   const response = await client.get(`/api/users/${id}/followers`)
-  return response.data
+  return unwrapEnvelope(response.data)
 }

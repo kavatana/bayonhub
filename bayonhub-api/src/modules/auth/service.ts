@@ -59,6 +59,34 @@ function createHttpError(status: number, message: string): Error & { status: num
   return error
 }
 
+function createStatusCodeError(statusCode: number, message: string): Error & { statusCode: number } {
+  const error = new Error(message) as Error & { statusCode: number }
+  error.statusCode = statusCode
+  return error
+}
+
+const DB_OTP_ATTEMPT_TTL = 15 * 60
+const MAX_DB_OTP_VERIFY_ATTEMPTS = 5
+const DB_OTP_ATTEMPTS_KEY = (phone: string) => `otp:db:attempts:${phone}`
+
+async function recordFailedDbOtpAttempt(phone: string): Promise<void> {
+  const key = DB_OTP_ATTEMPTS_KEY(phone)
+  const attempts = await redis.incr(key)
+  const ttl = await redis.ttl(key)
+  if (ttl === -1) await redis.expire(key, DB_OTP_ATTEMPT_TTL)
+  if (attempts >= MAX_DB_OTP_VERIFY_ATTEMPTS) {
+    await prisma.phoneOTP.updateMany({
+      where: {
+        phone,
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
+      data: { used: true },
+    })
+    throw createStatusCodeError(429, "Too many attempts. Request a new code.")
+  }
+}
+
 export function setAuthCookies(
   res: Response,
   tokens: { accessToken: string; refreshToken: string },
@@ -203,8 +231,12 @@ export async function verifyPhoneOTP(
     },
     orderBy: { createdAt: "desc" },
   })
-  if (!otp) throw createHttpError(400, "Invalid or expired OTP")
+  if (!otp) {
+    await recordFailedDbOtpAttempt(phone)
+    throw createHttpError(400, "Invalid or expired OTP")
+  }
 
+  await redis.del(DB_OTP_ATTEMPTS_KEY(phone))
   await prisma.phoneOTP.update({ where: { id: otp.id }, data: { used: true } })
   if (!userId) return { success: true }
 
@@ -237,6 +269,42 @@ export async function verifyOTP(phone: string, code: string): Promise<SafeUser> 
     },
     select: SAFE_USER_SELECT,
   })
+}
+
+function isRealVerifiedPhone(user: { phone: string; phoneVerified?: boolean | null; phoneVerifiedAt?: Date | null }): boolean {
+  return Boolean(
+    user.phoneVerified &&
+    user.phoneVerifiedAt &&
+    !user.phone.startsWith("google-") &&
+    !user.phone.startsWith("facebook-"),
+  )
+}
+
+export async function sendAdminTwoFactorOTP(userId: string): Promise<{ success: true }> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, phone: true, phoneVerified: true, phoneVerifiedAt: true, isAdmin: true },
+  })
+  if (!user || !user.isAdmin) throw createHttpError(403, "Forbidden")
+  if (!isRealVerifiedPhone(user)) throw createHttpError(400, "Verified phone required for admin 2FA")
+
+  const code = await generateAndStoreOTP(user.phone)
+  await sendLocalSms(user.phone, code)
+  return { success: true }
+}
+
+export async function verifyAdminTwoFactorOTP(userId: string, code: string): Promise<{ success: true }> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, phone: true, phoneVerified: true, phoneVerifiedAt: true, isAdmin: true },
+  })
+  if (!user || !user.isAdmin) throw createHttpError(403, "Forbidden")
+  if (!isRealVerifiedPhone(user)) throw createHttpError(400, "Verified phone required for admin 2FA")
+
+  const valid = await verifyAndConsumeOTP(user.phone, code)
+  if (!valid) throw createHttpError(400, "Invalid or expired OTP")
+  await redis.set(`admin:2fa:${user.id}`, "1", "EX", 43_200)
+  return { success: true }
 }
 
 export async function resetPassword(
@@ -278,7 +346,7 @@ export async function loginUser(
 ): Promise<{ user: SafeUser; accessToken: string }> {
   const user = await prisma.user.findUnique({ where: { phone } })
   if (!user) {
-    if (ip) recordLoginFailure(ip)
+    if (ip) await recordLoginFailure(ip)
     throw createHttpError(401, "Invalid credentials")
   }
   const banned = user.banReason && (!user.bannedUntil || user.bannedUntil > new Date())
@@ -286,11 +354,11 @@ export async function loginUser(
 
   const match = await bcrypt.compare(password, user.passwordHash)
   if (!match) {
-    if (ip) recordLoginFailure(ip)
+    if (ip) await recordLoginFailure(ip)
     throw createHttpError(401, "Invalid credentials")
   }
 
-  if (ip) clearLoginFailures(ip)
+  if (ip) await clearLoginFailures(ip)
   const tokens = await generateTokens(user.id, user.role, user.verificationTier)
   setAuthCookies(res, tokens)
   return { user: safeUser(user), accessToken: tokens.accessToken }
@@ -322,7 +390,12 @@ export async function refreshAuthTokens(
     userId: string
   }
   const stored = await findStoredRefreshToken(payload.userId, refreshTokenFromCookie)
-  if (!stored || stored.expiresAt < new Date()) {
+  if (!stored) {
+    // TODO: implement token family tracking for full replay protection
+    throw createHttpError(401, "Invalid refresh token")
+  }
+  if (stored.expiresAt < new Date()) {
+    await prisma.refreshToken.delete({ where: { id: stored.id } })
     throw createHttpError(401, "Invalid refresh token")
   }
 

@@ -15,8 +15,20 @@ import { Tag } from "lucide-react"
 
 const statuses = ["active", "sold", "expired", "draft"]
 const perPage = 10
+const HOUR_MS = 60 * 60 * 1000
+const DAY_MS = 24 * HOUR_MS
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 const weekAgoTimestamp = new Date(Date.now() - WEEK_MS).getTime()
+
+function expiryCountdown(expiresAt, t) {
+  if (!expiresAt) return ""
+  const expiresAtTime = new Date(expiresAt).getTime()
+  if (!Number.isFinite(expiresAtTime)) return ""
+  const remaining = expiresAtTime - Date.now()
+  if (remaining <= 0) return ""
+  if (remaining > DAY_MS) return t("myAds.expiresInDays", { count: Math.ceil(remaining / DAY_MS) })
+  return t("myAds.expiresInHours", { count: Math.max(1, Math.ceil(remaining / HOUR_MS)) })
+}
 
 export default function MyAdsTab() {
   const { t, language } = useTranslation()
@@ -192,6 +204,7 @@ export default function MyAdsTab() {
                   const promotionState = getPromotionState(listing)
                   const promotionLabel = PROMOTION_LABELS[promotionState]?.[language]
                   const promoted = isPromotedListing(listing)
+                  const expiryText = expiryCountdown(listing.expiresAt, t)
                   return (
                     <tr key={listing.id}>
                       <td className="p-3">
@@ -201,6 +214,7 @@ export default function MyAdsTab() {
                         <Link className="hover:text-primary hover:underline" to={listingUrl(listing)}>
                           {listing.title}
                         </Link>
+                        {expiryText ? <p className="mt-1 text-xs font-black text-amber-600">{expiryText}</p> : null}
                       </td>
                       <td className="p-3 font-black text-primary">{formatPrice(listing.price, listing.currency)}</td>
                       <td className="p-3 text-neutral-600">{Number(listing.views || 0).toLocaleString()}</td>
@@ -248,12 +262,14 @@ export default function MyAdsTab() {
               const promotionState = getPromotionState(listing)
               const promotionLabel = PROMOTION_LABELS[promotionState]?.[language]
               const promoted = isPromotedListing(listing)
+              const expiryText = expiryCountdown(listing.expiresAt, t)
               return (
                 <article className="rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm" key={listing.id}>
                   <div className="flex gap-3">
                     <img alt={listing.title} className="h-20 w-24 rounded-xl object-cover" onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.onerror = null }} src={getListingImage(listing)} />
                     <div className="min-w-0">
                       <h3 className="line-clamp-2 font-black text-neutral-900">{listing.title}</h3>
+                      {expiryText ? <p className="mt-1 text-xs font-black text-amber-600">{expiryText}</p> : null}
                       <p className="mt-1 font-black text-primary">{formatPrice(listing.price, listing.currency)}</p>
                       <p className="mt-1 text-xs font-semibold text-neutral-500">{timeAgo(listing.postedAt, language)}</p>
                       <span className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-black ${promoted ? "bg-primary/10 text-primary" : "bg-neutral-100 text-neutral-700"}`}>

@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express"
+import type { RequestHandler } from "express"
 import { Router } from "express"
 import rateLimit from "express-rate-limit"
 
@@ -39,6 +40,29 @@ const telegramWebhookRateLimiter = rateLimit({
 function getQueryString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined
 }
+
+const responseEnvelope: RequestHandler = (req, res, next) => {
+  if (req.path === "/telegram-webhook") {
+    next()
+    return
+  }
+  const originalJson = res.json.bind(res)
+  res.json = (body?: unknown) => {
+    if (res.statusCode >= 400) {
+      const errorBody = body && typeof body === "object" ? body as { message?: unknown; error?: unknown } : {}
+      const message = typeof errorBody.message === "string"
+        ? errorBody.message
+        : typeof errorBody.error === "string"
+          ? errorBody.error
+          : "An error occurred"
+      return originalJson({ error: true, message })
+    }
+    return originalJson({ data: body ?? null })
+  }
+  next()
+}
+
+router.use(responseEnvelope)
 
 function verifyTelegramWebhook(req: Request, res: Response, next: NextFunction) {
   const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET

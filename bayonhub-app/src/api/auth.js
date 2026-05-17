@@ -23,7 +23,9 @@ function mockLogin(phone, password) {
 }
 
 function mockSendOtp(phone) {
-  console.log("[DEV OTP] Mock OTP sent to:", phone)
+  if (import.meta.env.DEV) {
+    console.log("[DEV OTP] Mock OTP sent to:", phone)
+  }
   const user = readStorage(STORAGE_KEYS.authUser, { phone })
   writeStorage(STORAGE_KEYS.authUser, { ...user, phone })
   return { ok: true, success: true }

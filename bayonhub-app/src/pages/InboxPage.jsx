@@ -6,6 +6,7 @@ import { getListingImage, timeAgo } from "../lib/utils"
 import { useAuthStore } from "../store/useAuthStore"
 import { useMessageStore } from "../store/useMessageStore"
 import { useUIStore } from "../store/useUIStore"
+import Button from "../components/ui/Button"
 
 function SkeletonListItem() {
   return (
@@ -41,6 +42,7 @@ export default function InboxPage() {
   const user = useAuthStore((state) => state.user)
   const conversations = useMessageStore((state) => state.conversations)
   const loading = useMessageStore((state) => state.loading)
+  const error = useMessageStore((state) => state.error)
   const fetchConversations = useMessageStore((state) => state.fetchConversations)
   const hasRedirected = useRef(false)
 
@@ -72,6 +74,25 @@ export default function InboxPage() {
           <SkeletonListItem />
           <SkeletonListItem />
           <SkeletonListItem />
+        </div>
+      </div>
+    )
+  }
+
+  if (error && sortedConversations.length === 0) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-8">
+        <h1 className="mb-6 text-2xl font-black text-neutral-900 dark:text-white">
+          {t("messaging.inbox")}
+        </h1>
+        <div className="grid place-items-center gap-4 rounded-2xl border border-red-100 bg-red-50 p-12 text-center dark:border-red-900/30 dark:bg-red-900/10">
+          <MessageCircle className="h-12 w-12 text-red-300" />
+          <p className="text-lg font-black text-red-700 dark:text-red-300">
+            {t("messaging.loadError")}
+          </p>
+          <Button onClick={fetchConversations} type="button" variant="secondary">
+            {t("ui.retry")}
+          </Button>
         </div>
       </div>
     )

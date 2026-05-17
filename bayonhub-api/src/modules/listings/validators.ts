@@ -2,6 +2,8 @@ import { z } from "zod"
 import DOMPurify from "dompurify"
 import { JSDOM } from "jsdom"
 
+import { isValidCambodiaProvince } from "../../lib/cambodiaProvinces"
+
 const window = new JSDOM("").window
 const purify = DOMPurify(window)
 
@@ -20,13 +22,17 @@ export const listingSchema = z.object({
   currency: z.string().default("USD"),
   categorySlug: z.string().min(1).transform(sanitize),
   subcategorySlug: z.string().transform(sanitize).optional().nullable(),
-  province: z.string().min(1).transform(sanitize),
+  province: z.string().min(1).transform(sanitize).refine(isValidCambodiaProvince, { message: "Invalid province" }),
   district: z.string().transform(sanitize).optional().nullable(),
   addressDetail: z.string().transform(sanitize).optional().nullable(),
   condition: z.string().transform(sanitize).optional().nullable(),
   negotiable: z.union([z.boolean(), z.string()]).optional().default(false).transform((val: boolean | string) => val === true || val === "true"),
-  lat: z.union([z.string(), z.number()]).optional().nullable().transform((val: string | number | null | undefined) => val ? Number(val) : null),
-  lng: z.union([z.string(), z.number()]).optional().nullable().transform((val: string | number | null | undefined) => val ? Number(val) : null),
+  lat: z.union([z.string(), z.number()]).optional().nullable()
+    .transform((val: string | number | null | undefined) => val ? Number(val) : null)
+    .refine((val) => val === null || (Number.isFinite(val) && val >= 10.4 && val <= 14.7), { message: "Invalid location" }),
+  lng: z.union([z.string(), z.number()]).optional().nullable()
+    .transform((val: string | number | null | undefined) => val ? Number(val) : null)
+    .refine((val) => val === null || (Number.isFinite(val) && val >= 102.3 && val <= 107.6), { message: "Invalid location" }),
 })
 
 export type ListingInputValidated = z.infer<typeof listingSchema>

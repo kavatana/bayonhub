@@ -3,7 +3,18 @@ import dotenv from "dotenv"
 dotenv.config()
 
 const nodeEnv = process.env.NODE_ENV || "development"
-const productionRequired = ["FRONTEND_URL", "JWT_SECRET", "DATABASE_URL", "REDIS_URL"] as const
+const productionRequired = [
+  "FRONTEND_URL",
+  "JWT_SECRET",
+  "JWT_REFRESH_SECRET",
+  "DATABASE_URL",
+  "REDIS_URL",
+  "ABA_WEBHOOK_SECRET",
+  "R2_ACCOUNT_ID",
+  "R2_ACCESS_KEY_ID",
+  "R2_SECRET_ACCESS_KEY",
+  "R2_BUCKET_NAME",
+] as const
 
 if (nodeEnv === "production") {
   productionRequired.forEach((key) => {
@@ -44,6 +55,8 @@ export const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN!,
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN!,
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
+  frontendUrlWww: process.env.FRONTEND_URL_WWW || null,
+  apiBaseUrl: process.env.API_BASE_URL || "https://api.bayonhub.com",
   port: Number(process.env.PORT),
   nodeEnv,
   r2AccountId: optionalEnv("R2_ACCOUNT_ID"),
@@ -61,6 +74,7 @@ export const env = {
   adminEmail: optionalEnv("ADMIN_EMAIL"),
   adminTelegramChatId: optionalEnv("ADMIN_TELEGRAM_CHAT_ID"),
   adminPanelUrl: process.env.ADMIN_PANEL_URL || `${process.env.FRONTEND_URL || "http://localhost:5173"}/admin/payments`,
+  adminIpAllowlist: process.env.ADMIN_IP_ALLOWLIST || "",
   resendApiKey: optionalEnv("RESEND_API_KEY"),
   vapidPublicKey: optionalEnv("VAPID_PUBLIC_KEY"),
   vapidPrivateKey: optionalEnv("VAPID_PRIVATE_KEY"),

@@ -61,6 +61,54 @@ if (import.meta.env.DEV && import.meta.env.VITE_API_URL) {
 let isRefreshing = false
 let refreshQueue = []
 
+const ENVELOPE_PATH_PREFIXES = [
+  "/api/listings",
+  "/api/kyc",
+  "/api/users",
+  "/api/conversations",
+  "/api/notifications",
+  "/api/payments",
+  "/api/storefront",
+]
+const ENVELOPE_PATH_EXCLUSIONS = new Set([
+  "/api/users/telegram-webhook",
+  "/api/payments/aba-webhook",
+  "/api/payments/khqr/webhook",
+])
+
+function requestPath(url = "") {
+  try {
+    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost"
+    return new URL(url, origin).pathname
+  } catch {
+    return url
+  }
+}
+
+function shouldUnwrapEnvelope(response) {
+  const pathname = requestPath(response.config?.url || "")
+  if (ENVELOPE_PATH_EXCLUSIONS.has(pathname)) return false
+  return ENVELOPE_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+}
+
+function normalizeResponseEnvelope(response) {
+  if (!shouldUnwrapEnvelope(response)) return response
+  const body = response.data
+  if (body && typeof body === "object" && !Array.isArray(body) && body.error !== true && Object.prototype.hasOwnProperty.call(body, "data")) {
+    response.data = body.data
+  }
+  return response
+}
+
+function normalizeErrorEnvelope(error) {
+  if (!shouldUnwrapEnvelope(error.response || {})) return error
+  const body = error.response?.data
+  if (body?.error === true && typeof body.message === "string") {
+    error.response.data = { ...body, error: body.message }
+  }
+  return error
+}
+
 function resolveRefreshQueue() {
   refreshQueue.forEach((pending) => pending.resolve())
   refreshQueue = []
@@ -88,8 +136,9 @@ client.interceptors.request.use((config) => {
 })
 
 client.interceptors.response.use(
-  (response) => response,
+  (response) => normalizeResponseEnvelope(response),
   async (error) => {
+    normalizeErrorEnvelope(error)
     const originalRequest = error.config || {}
 
     if (!error.response) {

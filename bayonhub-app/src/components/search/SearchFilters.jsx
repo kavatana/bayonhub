@@ -76,7 +76,7 @@ function FilterFields({ schema, filters, priceDraft, locations = [], onFilterCha
           onChange={(event) => onFilterChange("province", event.target.value)}
           value={filters.province || ""}
         >
-          <option value="">{t("nav.allCambodia")}</option>
+          <option value="">{t("filter.allProvinces")}</option>
           {locationOptions.map((location) => (
             <option key={location.value} value={location.value}>
               {location.label[language] || location.label.en || location.value}

@@ -44,14 +44,14 @@ function normalizeMessage(message, userId) {
 }
 
 function normalizeConversation(conversation, userId) {
-  const partner = conversation.partner || {}
+  const partner = conversation.partner || (String(conversation.buyerId) === String(userId) ? conversation.seller : conversation.buyer) || {}
   const lastMessage = conversation.lastMessage
   return {
-    id: partner.id || conversation.id,
+    id: conversation.id,
     partnerId: partner.id,
     name: partner.name,
     unread: conversation.unreadCount || conversation.unread || 0,
-    listingId: lastMessage?.listingId,
+    listingId: conversation.listingId || lastMessage?.listingId,
     messages: lastMessage ? [normalizeMessage(lastMessage, userId)] : [],
   }
 }
@@ -88,9 +88,9 @@ export default function MessagesTab() {
   }, [user?.id])
 
   useEffect(() => {
-    if (!API_BASE_URL || !active?.partnerId || !user?.id) return undefined
+    if (!API_BASE_URL || !active?.id || !user?.id) return undefined
     let cancelled = false
-    getThread(active.partnerId)
+    getThread(active.id)
       .then((result) => {
         if (cancelled) return
         const messages = (result.messages || []).map((message) => normalizeMessage(message, user.id))
@@ -104,7 +104,7 @@ export default function MessagesTab() {
     return () => {
       cancelled = true
     }
-  }, [active?.id, active?.partnerId, user?.id])
+  }, [active?.id, user?.id])
 
   useEffect(() => {
     if (!API_BASE_URL || !user?.id) return undefined

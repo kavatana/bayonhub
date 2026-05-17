@@ -54,7 +54,7 @@ function InnerMapView({
     <div className={cn("overflow-hidden rounded-xl bg-neutral-100", className)}>
       <MapContainer
         aria-label={t("map.ariaLabel")}
-        attributionControl={interactive}
+        attributionControl
         boxZoom={interactive}
         center={center}
         className="h-full w-full"
@@ -66,7 +66,7 @@ function InnerMapView({
         zoom={zoom}
         zoomControl={interactive}
       >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <TileLayer attribution="© OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         {interactive ? <MapClickHandler onLocationSelect={onLocationSelect} /> : null}
         {markers.map((marker) => (
           <Marker

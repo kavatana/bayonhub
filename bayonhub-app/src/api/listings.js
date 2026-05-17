@@ -7,6 +7,13 @@ import { useAuthStore } from "../store/useAuthStore"
 const fallbackImage =
   "https://images.unsplash.com/photo-1607082349566-187342175e2f?auto=format&fit=crop&w=1200&q=80"
 
+function unwrapEnvelope(payload) {
+  if (payload && typeof payload === "object" && !Array.isArray(payload) && Object.prototype.hasOwnProperty.call(payload, "data")) {
+    return payload.data
+  }
+  return payload
+}
+
 const seedListings = [
   {
     id: 1001,
@@ -683,14 +690,15 @@ export async function getListings(params = {}) {
   if (hasApiBackend()) {
     try {
       const response = await client.get("/api/listings", { params: toBackendParams(params) })
+      const data = unwrapEnvelope(response.data)
       return {
-        listings: (response.data.listings || []).map(normalizeListing),
-        total: response.data.total || 0,
-        nextCursor: response.data.nextCursor || null,
-        featured: (response.data.featured || []).map(normalizeListing),
-        recent: (response.data.recent || []).map(normalizeListing),
-        newToday: response.data.newToday || 0,
-        trending: response.data.trending || [],
+        listings: (data.listings || []).map(normalizeListing),
+        total: data.total || 0,
+        nextCursor: data.nextCursor || null,
+        featured: (data.featured || []).map(normalizeListing),
+        recent: (data.recent || []).map(normalizeListing),
+        newToday: data.newToday || 0,
+        trending: data.trending || [],
       }
     } catch {
       console.warn("[listings] GET failed, using localStorage fallback")
@@ -704,9 +712,10 @@ export async function getFeaturedListings() {
   if (!hasApiBackend()) return []
   try {
     const response = await client.get("/api/listings/featured")
-    const listings = Array.isArray(response.data)
-      ? response.data
-      : response.data.data || response.data.listings || []
+    const data = unwrapEnvelope(response.data)
+    const listings = Array.isArray(data)
+      ? data
+      : data.data || data.listings || []
     return listings.map(normalizeListing)
   } catch {
     return []
@@ -747,12 +756,13 @@ export async function searchListings(params = {}) {
         }
       })
       const response = await client.get(`/api/listings/search?${query.toString()}`)
+      const data = unwrapEnvelope(response.data)
       return {
-        data: (response.data.data || []).map(normalizeListing),
-        total: response.data.total || 0,
-        page: response.data.page || 1,
-        limit: response.data.limit || 20,
-        totalPages: response.data.totalPages || 1,
+        data: (data.data || []).map(normalizeListing),
+        total: data.total || 0,
+        page: data.page || 1,
+        limit: data.limit || 20,
+        totalPages: data.totalPages || 1,
       }
     } catch {
       console.warn("[listings] Search GET failed, using localStorage fallback")
@@ -775,7 +785,8 @@ export async function fetchLocations() {
   if (hasApiBackend()) {
     try {
       const response = await client.get("/api/listings/locations")
-      return Array.isArray(response.data) ? response.data : []
+      const data = unwrapEnvelope(response.data)
+      return Array.isArray(data) ? data : []
     } catch {
       console.warn("[listings] Locations GET failed, using localStorage fallback")
     }
@@ -793,7 +804,7 @@ export async function getListingById(id) {
   if (hasApiBackend()) {
     try {
       const response = await client.get(`/api/listings/${id}`)
-      return normalizeListing(response.data)
+      return normalizeListing(unwrapEnvelope(response.data))
     } catch (error) {
       if (error.response?.status === 404) return null
       console.warn("[listings] Detail GET failed, using localStorage fallback")
@@ -815,7 +826,7 @@ export async function createListing(data) {
       const response = await client.post("/api/listings", body, {
         headers: { "Content-Type": "multipart/form-data" },
       })
-      return normalizeListing(response.data)
+      return normalizeListing(unwrapEnvelope(response.data))
     } catch (error) {
       if (error.response?.status === 403 && error.response?.data?.error === "Phone verification required to post listings") {
         throw new Error("verify.phoneRequired", { cause: error })
@@ -869,7 +880,7 @@ export async function updateListing(id, data) {
     const response = await client.patch(`/api/listings/${id}`, listingFormData(data), {
       headers: { "Content-Type": "multipart/form-data" },
     })
-    return normalizeListing(response.data)
+    return normalizeListing(unwrapEnvelope(response.data))
   }
   const listings = getMockListings()
   const updated = listings.map((listing) =>
@@ -883,9 +894,10 @@ export async function bumpListing(id) {
   if (hasApiBackend()) {
     try {
       const response = await client.post(`/api/listings/${id}/bump`)
+      const data = unwrapEnvelope(response.data)
       return {
-        ...response.data,
-        listing: response.data.listing ? normalizeListing(response.data.listing) : undefined,
+        ...data,
+        listing: data.listing ? normalizeListing(data.listing) : undefined,
       }
     } catch (error) {
       throw new Error(error.response?.data?.error || error.response?.data?.message || "ui.error", { cause: error })
@@ -903,7 +915,7 @@ export async function bumpListing(id) {
 export async function deleteListing(id) {
   if (hasApiBackend()) {
     const response = await client.delete(`/api/listings/${id}`)
-    return response.data
+    return unwrapEnvelope(response.data)
   }
   const updated = getMockListings().filter((listing) => String(listing.id) !== String(id))
   storage.set(STORAGE_KEYS.listings, updated)
@@ -919,7 +931,7 @@ export async function saveDraft(data) {
     const response = await client.post("/api/listings/draft", listingFormData(data), {
       headers: { "Content-Type": "multipart/form-data" },
     })
-    return normalizeListing(response.data)
+    return normalizeListing(unwrapEnvelope(response.data))
   }
   const payload = objectFromPayload(data)
   const listings = getMockListings()
@@ -940,7 +952,7 @@ export async function saveDraft(data) {
 export async function publishDraft(id) {
   if (hasApiBackend()) {
     const response = await client.patch(`/api/listings/${id}/publish`)
-    return normalizeListing(response.data)
+    return normalizeListing(unwrapEnvelope(response.data))
   }
   return updateListing(id, { status: "active" })
 }
@@ -954,14 +966,14 @@ export async function uploadImage(file) {
   const response = await client.post("/api/listings/upload-image", body, {
     headers: { "Content-Type": "multipart/form-data" },
   })
-  return response.data
+  return unwrapEnvelope(response.data)
 }
 
 export async function reportListing(id, reason, detail = "", extra = {}) {
   const payload = typeof reason === "object" && reason !== null ? reason : { reason, detail, ...extra }
   if (hasApiBackend()) {
     const response = await client.post(`/api/listings/${id}/report`, payload)
-    return response.data
+    return unwrapEnvelope(response.data)
   }
   const reports = storage.get(STORAGE_KEYS.reports, [])
   const report = {
@@ -1023,7 +1035,7 @@ export async function createLead(id, type, data = {}, metadata = {}) {
 export async function saveListing(id) {
   if (hasApiBackend()) {
     const response = await client.post(`/api/listings/${id}/save`)
-    return response.data
+    return unwrapEnvelope(response.data)
   }
   return { success: true }
 }
@@ -1031,7 +1043,7 @@ export async function saveListing(id) {
 export async function unsaveListing(id) {
   if (hasApiBackend()) {
     const response = await client.delete(`/api/listings/${id}/save`)
-    return response.data
+    return unwrapEnvelope(response.data)
   }
   return { success: true }
 }
@@ -1039,7 +1051,8 @@ export async function unsaveListing(id) {
 export async function fetchSavedListings() {
   if (hasApiBackend()) {
     const response = await client.get("/api/listings/saved")
-    return (response.data.data || response.data.listings || []).map(normalizeListing)
+    const data = unwrapEnvelope(response.data)
+    return (data.data || data.listings || []).map(normalizeListing)
   }
   const savedIds = storage.get(STORAGE_KEYS.saved, [])
   const snapshots = storage.get(STORAGE_KEYS.savedSnapshots, {})
@@ -1056,7 +1069,8 @@ export async function getRelated(id, limit = 4) {
   if (hasApiBackend()) {
     try {
       const response = await client.get(`/api/listings/${id}/related`, { params: { limit } })
-      return (response.data.listings || []).map(normalizeListing)
+      const data = unwrapEnvelope(response.data)
+      return (data.listings || []).map(normalizeListing)
     } catch {
       return []
     }
@@ -1072,7 +1086,8 @@ export async function fetchSimilarListings(id) {
   if (hasApiBackend()) {
     try {
       const response = await client.get(`/api/listings/${id}/similar`)
-      return (response.data.data || []).map(normalizeListing)
+      const data = unwrapEnvelope(response.data)
+      return (data.data || []).map(normalizeListing)
     } catch {
       return []
     }
@@ -1102,7 +1117,7 @@ export const markListingAsSold = async (id) => {
   }
   try {
     const res = await client.patch(`/api/listings/${id}/sold`)
-    return res.data
+    return unwrapEnvelope(res.data)
   } catch (err) {
     throw err?.response?.data || err
   }
@@ -1119,7 +1134,7 @@ export const fetchMyListings = async (status) => {
   }
   try {
     const res = await client.get("/api/listings/mine", { params: status ? { status } : {} })
-    return res.data
+    return unwrapEnvelope(res.data)
   } catch (err) {
     throw err?.response?.data || err
   }
@@ -1133,7 +1148,7 @@ export async function incrementView(id, sessionId) {
   if (!hasApiBackend()) return
   try {
     const response = await client.post(`/api/listings/${id}/view`, { sessionId })
-    return response.data
+    return unwrapEnvelope(response.data)
   } catch {
     // Silent — non-critical
     return null

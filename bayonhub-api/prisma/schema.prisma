@@ -32,6 +32,8 @@ model User {
   telegramChatId      String?
   referralCode        String?              @unique
   plusUntil           DateTime?
+  plusExpiredNotifiedAt   DateTime?
+  plusExpiringNotifiedAt  DateTime?
   isLifetimePlus      Boolean              @default(false)
   phoneVerifiedAt     DateTime?
   idVerifiedAt        DateTime?
@@ -46,6 +48,7 @@ model User {
   leads               Lead[]
   refreshTokens       RefreshToken[]
   payments            Payment[]
+  notifications       Notification[]
   kycApplication      KYCApplication?
   merchantProfile     MerchantProfile?
   reviewsGiven        Review[]             @relation("ReviewsGiven")
@@ -59,6 +62,7 @@ model User {
   referralsGiven      Referral[]           @relation("ReferralsGiven")
   referralReceived    Referral?            @relation("ReferralReceived")
   plusGifts           PlusGift[]
+  adminAuditLogs      AdminAuditLog[]
 }
 
 enum Role {
@@ -118,6 +122,7 @@ model Listing {
   payments          Payment[]
   promotions        ListingPromotion[]
   featuredListing   FeaturedListing?
+  reviews           Review[]
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
   searchVector      Unsupported("tsvector")? @map("search_vector")
@@ -129,6 +134,14 @@ model Listing {
   @@index([bumpedAt])
   @@index([createdAt])
   @@index([sellerId])
+  @@index([status, deletedAt, createdAt])
+  @@index([status, deletedAt, categorySlug, createdAt])
+  @@index([status, deletedAt, province, createdAt])
+  @@index([status, deletedAt, promoted, createdAt])
+  @@index([status, deletedAt, province, district])
+  @@index([district])
+  @@index([price])
+  @@index([viewCount])
 }
 
 enum ListingStatus {
@@ -231,6 +244,7 @@ model VerificationRequest {
 model Notification {
   id        String   @id @default(uuid())
   userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   type      String
   title     String
   body      String
@@ -294,10 +308,10 @@ model PlusGift {
 
 model Lead {
   id         String   @id @default(uuid())
-  listingId  String
-  listing    Listing  @relation(fields: [listingId], references: [id])
+  listingId  String?
+  listing    Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
   userId     String?
-  user       User?    @relation(fields: [userId], references: [id])
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   type       LeadType
   phone      String?
   message    String?
@@ -317,9 +331,9 @@ model Conversation {
   id        String    @id @default(uuid())
   listingId String?
   buyerId   String
-  buyer     User      @relation("BuyerConversations", fields: [buyerId], references: [id])
+  buyer     User      @relation("BuyerConversations", fields: [buyerId], references: [id], onDelete: Cascade)
   sellerId  String
-  seller    User      @relation("SellerConversations", fields: [sellerId], references: [id])
+  seller    User      @relation("SellerConversations", fields: [sellerId], references: [id], onDelete: Cascade)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   messages  Message[]
@@ -332,7 +346,7 @@ model Conversation {
 model Message {
   id             String       @id @default(uuid())
   conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   senderId       String
   sender         User         @relation("SentMessages", fields: [senderId], references: [id])
   body           String
@@ -390,9 +404,9 @@ model Payment {
   id             String            @id @default(uuid())
   reference      String            @unique
   userId         String
-  user           User              @relation(fields: [userId], references: [id])
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   listingId      String?
-  listing        Listing?          @relation(fields: [listingId], references: [id])
+  listing        Listing?          @relation(fields: [listingId], references: [id], onDelete: SetNull)
   promotion      ListingPromotion?
   plan           PromotionPlan
   amount         Decimal           @db.Decimal(10, 2)
@@ -406,6 +420,9 @@ model Payment {
   khqrPayload    String?
   webhookPayload Json?
   paidAt         DateTime?
+  refundNote     String?
+  refundedAt     DateTime?
+  refundedByAdminId String?
   expiresAt      DateTime
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
@@ -431,6 +448,21 @@ enum PaymentStatus {
   FAILED
 }
 
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String
+  targetType String?
+  targetId   String?
+  meta       Json?
+  createdAt  DateTime @default(now())
+  admin      User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+}
+
 model ListingPromotion {
   id        String        @id @default(uuid())
   listingId String
@@ -449,7 +481,7 @@ model ListingPromotion {
 model KYCApplication {
   id          String    @id @default(uuid())
   userId      String    @unique
-  user        User      @relation(fields: [userId], references: [id])
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   fullName    String
   idType      IDType
   idNumber    String
@@ -482,7 +514,7 @@ enum KYCStatus {
 model MerchantProfile {
   id             String   @id @default(uuid())
   userId         String   @unique
-  user           User     @relation(fields: [userId], references: [id])
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   storeName      String
   storeNameKm    String?
   tagline        String?
@@ -511,6 +543,7 @@ model Review {
   sellerId   String
   seller     User     @relation("ReviewsReceived", fields: [sellerId], references: [id])
   listingId  String?
+  listing    Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

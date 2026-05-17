@@ -212,6 +212,7 @@ export default function UpgradePage() {
                 <img
                   alt={t("payment.qrAlt")}
                   className={`${qrImageFailed ? "hidden" : "mx-auto aspect-square w-full max-w-56 rounded-xl object-cover"}`}
+                  loading="lazy"
                   onError={() => setQrImageFailed(true)}
                   src={paymentRef.qrImageUrl || "/assets/aba-qr.png"}
                 />
@@ -236,6 +237,12 @@ export default function UpgradePage() {
           <Button className="mt-5 w-full" disabled={isPlusMember || isGenerating || isPending} loading={isGenerating || polling} onClick={() => handleUpgrade(PLUS_PLAN)} size="lg">
             {isPlusMember ? t("plus.active") : isPending ? t("payment.underReview") : t("plus.upgradeCta")}
           </Button>
+          {isPending ? (
+            <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm font-bold leading-7 text-neutral-700">
+              <p className="text-primary">{t("payment.reviewMessage")}</p>
+              <p className="mt-1">{t("payment.reviewNextSteps")}</p>
+            </div>
+          ) : null}
           {paymentStatus === "success" ? <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-700">{t("payment.success")}</p> : null}
           {paymentStatus === "expired" ? <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{t("payment.expired")}</p> : null}
         </div>

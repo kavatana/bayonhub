@@ -10,12 +10,17 @@ import {
 } from "@prisma/client"
 
 import { prisma } from "../../lib/prisma"
-import { processAndUpload } from "../../lib/s3"
+import { redis } from "../../config/redis"
+import { deleteFromR2, processAndUpload } from "../../lib/s3"
 import { generateUniqueSlug } from "../../lib/slug"
 import { stripTags, allowBasicHtml } from "../../lib/sanitize"
+import { normalizeProvinceFilter } from "../../lib/cambodiaProvinces"
 import { notifyUser } from "../messages/notifications.service"
 import { isUserPlus } from "../users/service"
 import { listingSchema } from "./validators"
+
+// Soft delete rule: seller-deleted listings set status=REMOVED
+// AND deletedAt=now. All public queries MUST filter deletedAt=null.
 
 export const SAFE_LISTING_INCLUDE = {
   images: { take: 1, orderBy: { order: "asc" as const } },
@@ -59,7 +64,6 @@ const FULL_LISTING_INCLUDE = {
   },
 } satisfies Prisma.ListingInclude
 
-const viewedSessions = new Set<string>()
 const FEATURED_CACHE_KEY = "featured"
 const FEATURED_CACHE_TTL_MS = 60_000
 const FEATURED_ROTATION_POOL_SIZE = 64
@@ -129,6 +133,7 @@ export interface ListingSearchFilters {
   priceMin?: number
   priceMax?: number
   condition?: string
+  negotiable?: boolean
   sortBy?: string
   page?: number
   limit?: number
@@ -354,7 +359,7 @@ async function notifyPriceDrop(listingId: string, title: string, oldPrice: unkno
 
 async function rewardReferralIfFirstListing(userId: string) {
   const activeListingCount = await prisma.listing.count({
-    where: { sellerId: userId, status: ListingStatus.ACTIVE },
+    where: { sellerId: userId, status: ListingStatus.ACTIVE, deletedAt: null },
   })
   if (activeListingCount !== 1) return
 
@@ -398,6 +403,7 @@ async function notifyFollowersOfNewListing(listing: Prisma.ListingGetPayload<{ i
     where: {
       sellerId: listing.sellerId,
       status: ListingStatus.ACTIVE,
+      deletedAt: null,
       createdAt: { gte: todayStart },
     },
   })
@@ -454,6 +460,7 @@ async function autoFlagNewAccountSpam(
 function buildWhere(filters: ListingFilters, includeCursor: boolean): Prisma.ListingWhereInput {
   const where: Prisma.ListingWhereInput = {
     status: ListingStatus.ACTIVE,
+    deletedAt: null,
     OR: [
       { expiresAt: null },
       { expiresAt: { gt: new Date() } },
@@ -461,7 +468,8 @@ function buildWhere(filters: ListingFilters, includeCursor: boolean): Prisma.Lis
   }
   if (filters.category) where.categorySlug = filters.category
   if (filters.subcategory) where.subcategorySlug = filters.subcategory
-  if (filters.province) where.province = filters.province
+  const province = normalizeProvinceFilter(filters.province)
+  if (province) where.province = province
   if (filters.district) where.district = filters.district
   if (filters.promoted !== undefined) where.promoted = filters.promoted
   if (filters.cursor && includeCursor) where.id = { lt: filters.cursor }
@@ -490,6 +498,7 @@ function buildSearchWhere(filters: ListingSearchFilters): Prisma.ListingWhereInp
   const q = filters.q?.trim()
   const where: Prisma.ListingWhereInput = {
     status: ListingStatus.ACTIVE,
+    deletedAt: null,
   }
 
   if (q) {
@@ -499,8 +508,10 @@ function buildSearchWhere(filters: ListingSearchFilters): Prisma.ListingWhereInp
     ]
   }
   if (filters.category) Object.assign(where, normalizeSearchCategory(filters.category))
-  if (filters.location) where.province = filters.location
+  const location = normalizeProvinceFilter(filters.location)
+  if (location) where.province = location
   if (filters.condition) where.condition = { equals: filters.condition, mode: "insensitive" }
+  if (filters.negotiable !== undefined) where.negotiable = filters.negotiable
   if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
     where.price = {
       gte: filters.priceMin,
@@ -519,7 +530,7 @@ function searchOrderBy(sortBy = "newest"): Prisma.ListingOrderByWithRelationInpu
 }
 
 function buildSearchSqlWhere(filters: ListingSearchFilters) {
-  const clauses: Prisma.Sql[] = [Prisma.sql`l.status = 'ACTIVE'`]
+  const clauses: Prisma.Sql[] = [Prisma.sql`l.status = 'ACTIVE'`, Prisma.sql`l."deletedAt" IS NULL`]
   const q = filters.q?.trim()
   if (q) {
     clauses.push(Prisma.sql`(l.search_vector @@ websearch_to_tsquery('english', ${q}) OR l.title % ${q})`)
@@ -529,8 +540,10 @@ function buildSearchSqlWhere(filters: ListingSearchFilters) {
     if (category.categorySlug) clauses.push(Prisma.sql`l."categorySlug" = ${category.categorySlug}`)
     if (category.subcategorySlug) clauses.push(Prisma.sql`l."subcategorySlug" = ${category.subcategorySlug}`)
   }
-  if (filters.location) clauses.push(Prisma.sql`l.province = ${filters.location}`)
+  const location = normalizeProvinceFilter(filters.location)
+  if (location) clauses.push(Prisma.sql`l.province = ${location}`)
   if (filters.condition) clauses.push(Prisma.sql`LOWER(l.condition) = LOWER(${filters.condition})`)
+  if (filters.negotiable !== undefined) clauses.push(Prisma.sql`l.negotiable = ${filters.negotiable}`)
   if (filters.priceMin !== undefined) clauses.push(Prisma.sql`l.price >= ${filters.priceMin}`)
   if (filters.priceMax !== undefined) clauses.push(Prisma.sql`l.price <= ${filters.priceMax}`)
   return Prisma.join(clauses, " AND ")
@@ -571,6 +584,7 @@ export async function getFeaturedListings() {
   const listings = await prisma.listing.findMany({
     where: {
       status: ListingStatus.ACTIVE,
+      deletedAt: null,
       expiresAt: { gt: now },
       seller: {
         OR: [
@@ -618,6 +632,7 @@ export async function getListings(filters: ListingFilters) {
         OR l.title % ${q}
       )
       AND l.status = 'ACTIVE'
+      AND l."deletedAt" IS NULL
       AND (l."expiresAt" IS NULL OR l."expiresAt" > NOW())
       ORDER BY 
         CASE WHEN l."bumpedAt" >= ${todayStart} THEN 0 ELSE 1 END,
@@ -646,6 +661,7 @@ export async function getListings(filters: ListingFilters) {
         OR l.title % ${q}
       )
       AND l.status = 'ACTIVE'
+      AND l."deletedAt" IS NULL
       AND (l."expiresAt" IS NULL OR l."expiresAt" > NOW())
     `
     const total = Number(countResult[0]?.count || 0)
@@ -813,6 +829,7 @@ export async function getListingLocations() {
   const rows = await prisma.listing.findMany({
     where: {
       status: ListingStatus.ACTIVE,
+      deletedAt: null,
       province: { not: "" },
     },
     distinct: ["province"],
@@ -826,10 +843,12 @@ export async function getListing(idOrSlug: string) {
   const listing = await prisma.listing.findFirst({
     where: {
       OR: [{ id: idOrSlug }, { slug: idOrSlug }],
+      status: ListingStatus.ACTIVE,
+      deletedAt: null,
     },
     include: FULL_LISTING_INCLUDE,
   })
-  if (!listing || listing.status !== ListingStatus.ACTIVE) {
+  if (!listing) {
     throw createHttpError(404, "Listing not found")
   }
 
@@ -838,6 +857,7 @@ export async function getListing(idOrSlug: string) {
       where: {
         sellerId: listing.sellerId,
         status: ListingStatus.ACTIVE,
+        deletedAt: null,
       },
     }),
     prisma.conversation.count({
@@ -915,6 +935,7 @@ export async function createListing(
       price: data.price,
       createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
       status: ListingStatus.ACTIVE,
+      deletedAt: null,
     },
     select: { id: true },
   })
@@ -1071,7 +1092,7 @@ export async function publishDraft(userId: string, role: string, listingId: stri
   if (listing.status !== ListingStatus.DRAFT) throw createHttpError(400, "Listing is not a draft")
   const published = await prisma.listing.update({
     where: { id: listingId },
-    data: { status: ListingStatus.ACTIVE },
+    data: { status: ListingStatus.ACTIVE, deletedAt: null },
     include: FULL_LISTING_INCLUDE,
   })
   await Promise.all([
@@ -1082,11 +1103,22 @@ export async function publishDraft(userId: string, role: string, listingId: stri
 }
 
 export async function deleteListing(userId: string, role: string, listingId: string) {
+  // Soft delete is irreversible: status=REMOVED + deletedAt=now
+  // Hard delete: admin only, removes DB row
   await assertListingOwner(userId, role, listingId)
+  const images = await prisma.listingImage.findMany({
+    where: { listingId },
+    select: { url: true, thumbUrl: true },
+  })
   await prisma.listing.update({
     where: { id: listingId },
-    data: { status: ListingStatus.REMOVED },
+    data: { status: ListingStatus.REMOVED, deletedAt: new Date() },
   })
+  try {
+    await Promise.all(images.flatMap((image) => [image.url, image.thumbUrl].filter(Boolean).map((value) => deleteFromR2(value))))
+  } catch (err) {
+    console.error({ event: "r2_delete_error", listingId, err })
+  }
   return { success: true }
 }
 
@@ -1152,8 +1184,8 @@ export async function createLead(
 }
 
 export async function saveListing(userId: string, listingId: string) {
-  const listing = await prisma.listing.findUnique({
-    where: { id: listingId },
+  const listing = await prisma.listing.findFirst({
+    where: { id: listingId, status: ListingStatus.ACTIVE, deletedAt: null },
     select: { price: true },
   })
   if (!listing) throw createHttpError(404, "Listing not found")
@@ -1179,7 +1211,7 @@ export async function unsaveListing(userId: string, listingId: string) {
 
 export async function getSavedListings(userId: string) {
   const savedListings = await prisma.savedListing.findMany({
-    where: { userId },
+    where: { userId, listing: { status: ListingStatus.ACTIVE, deletedAt: null } },
     orderBy: { createdAt: "desc" },
     include: {
       listing: {
@@ -1196,8 +1228,8 @@ export async function getSavedListings(userId: string) {
 }
 
 export async function getRelated(listingId: string, limit = 4) {
-  const listing = await prisma.listing.findUnique({
-    where: { id: listingId },
+  const listing = await prisma.listing.findFirst({
+    where: { id: listingId, status: ListingStatus.ACTIVE, deletedAt: null },
     select: { categorySlug: true, subcategorySlug: true },
   })
   if (!listing) throw createHttpError(404, "Listing not found")
@@ -1205,6 +1237,7 @@ export async function getRelated(listingId: string, limit = 4) {
   const baseWhere: Prisma.ListingWhereInput = {
     id: { not: listingId },
     status: ListingStatus.ACTIVE,
+    deletedAt: null,
   }
   const sameSubcategory = listing.subcategorySlug
     ? await prisma.listing.findMany({
@@ -1231,8 +1264,8 @@ export async function getRelated(listingId: string, limit = 4) {
 }
 
 export async function getSimilarListings(listingId: string) {
-  const listing = await prisma.listing.findUnique({
-    where: { id: listingId },
+  const listing = await prisma.listing.findFirst({
+    where: { id: listingId, status: ListingStatus.ACTIVE, deletedAt: null },
     select: { categorySlug: true },
   })
   if (!listing) throw createHttpError(404, "Listing not found")
@@ -1242,6 +1275,7 @@ export async function getSimilarListings(listingId: string) {
       id: { not: listingId },
       categorySlug: listing.categorySlug,
       status: ListingStatus.ACTIVE,
+      deletedAt: null,
     },
     take: 6,
     orderBy: { createdAt: "desc" },
@@ -1254,6 +1288,7 @@ export async function getListingsByUser(userId: string, status?: string) {
   const listings = await prisma.listing.findMany({
     where: {
       sellerId: userId,
+      deletedAt: null,
       status: status
         ? status.toUpperCase() as ListingStatus
         : { not: ListingStatus.REMOVED },
@@ -1292,16 +1327,22 @@ export async function bumpListing(userId: string, role: string, listingId: strin
 }
 
 export async function incrementView(listingId: string, sessionId?: string) {
-  const sessionKey = sessionId ? `${listingId}:${sessionId}` : ""
-  if (sessionKey && viewedSessions.has(sessionKey)) {
-    const listing = await prisma.listing.findUnique({
-      where: { id: listingId },
-      select: { viewCount: true },
-    })
-    return listing?.viewCount || 0
+  const sessionKey = sessionId ? `viewed:${sessionId}:${listingId}` : ""
+  if (sessionKey) {
+    try {
+      const marked = await redis.set(sessionKey, "1", "EX", 24 * 60 * 60, "NX")
+      if (!marked) {
+        const listing = await prisma.listing.findUnique({
+          where: { id: listingId },
+          select: { viewCount: true },
+        })
+        return listing?.viewCount || 0
+      }
+    } catch (error) {
+      console.warn("[Listings] Failed to check Redis viewed-session key:", error)
+    }
   }
 
-  if (sessionKey) viewedSessions.add(sessionKey)
   const [listing] = await prisma.$transaction([
     prisma.listing.update({
       where: { id: listingId },

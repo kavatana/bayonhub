@@ -232,7 +232,7 @@ export default function AccountPage() {
       <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
         <aside className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
           <label className="group mx-auto grid h-28 w-28 cursor-pointer place-items-center overflow-hidden rounded-full bg-primary/10 text-2xl font-black text-primary">
-            {avatar ? <img alt={t("account.avatar")} className="h-full w-full object-cover" src={avatar} /> : initials(profile?.name)}
+            {avatar ? <img alt={t("account.avatar")} className="h-full w-full object-cover" loading="lazy" src={avatar} /> : initials(profile?.name)}
             <input accept="image/*" className="sr-only" onChange={changeAvatar} type="file" />
             <span className="absolute rounded-full bg-neutral-950/70 p-2 text-white opacity-0 transition group-hover:opacity-100">
               <Camera className="h-5 w-5" aria-hidden="true" />

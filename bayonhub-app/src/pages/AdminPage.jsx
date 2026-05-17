@@ -461,8 +461,12 @@ function adminDate(value) {
 }
 
 function paymentStatusLabel(status, t) {
+  if (status === "PAID") return t("payment.paid")
   if (status === "APPROVED") return t("payment.approved")
   if (status === "REJECTED") return t("payment.rejected")
+  if (status === "EXPIRED") return t("payment.expiredStatus")
+  if (status === "FAILED") return t("payment.failed")
+  if (status === "REFUNDED") return t("admin.payment.refunded")
   return t("payment.pending")
 }
 
@@ -525,7 +529,9 @@ export default function AdminPage() {
   const [selectedUser, setSelectedUser] = useState(null)
   const [approvePayment, setApprovePayment] = useState(null)
   const [rejectPayment, setRejectPayment] = useState(null)
+  const [refundPayment, setRefundPayment] = useState(null)
   const [rejectNote, setRejectNote] = useState("")
+  const [refundNote, setRefundNote] = useState("")
   const [previewImage, setPreviewImage] = useState("")
   const [data, setData] = useState({
     dashboard: null,
@@ -656,6 +662,14 @@ export default function AdminPage() {
     await runAction(() => client.post(`/api/admin/payments/${rejectPayment.id}/reject`, { reviewNote: rejectNote.trim() }))
     setRejectPayment(null)
     setRejectNote("")
+  }
+
+  async function refundSelectedPayment(event) {
+    event.preventDefault()
+    if (!refundPayment || !refundNote.trim()) return
+    await runAction(() => client.post(`/api/admin/payments/${refundPayment.id}/refund`, { refundNote: refundNote.trim() }))
+    setRefundPayment(null)
+    setRefundNote("")
   }
 
   async function giftSelectedUser(userId, giftType) {
@@ -926,7 +940,7 @@ export default function AdminPage() {
         <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {["PENDING", "APPROVED", "REJECTED"].map((status) => (
+              {["PENDING", "PAID", "APPROVED", "REJECTED", "EXPIRED", "FAILED", "REFUNDED"].map((status) => (
                 <button
                   className={`rounded-full px-4 py-2 text-sm font-black transition ${
                     paymentStatus === status ? "bg-primary text-white" : "bg-neutral-100 text-neutral-600"
@@ -983,8 +997,16 @@ export default function AdminPage() {
                         </div>
                       ) : (
                         <div className="grid gap-1">
-                          <span className="font-black text-neutral-700">{paymentStatusLabel(payment.status, t)}</span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-black text-neutral-700">{paymentStatusLabel(payment.status, t)}</span>
+                            {["PAID", "APPROVED"].includes(payment.status) ? (
+                              <Button onClick={() => setRefundPayment(payment)} size="sm" variant="secondary">
+                                {t("admin.payment.markRefunded")}
+                              </Button>
+                            ) : null}
+                          </div>
                           {payment.reviewNote ? <span className="text-xs font-bold text-neutral-500">{payment.reviewNote}</span> : null}
+                          {payment.refundNote ? <span className="text-xs font-bold text-neutral-500">{payment.refundNote}</span> : null}
                         </div>
                       )}
                     </td>
@@ -1134,6 +1156,24 @@ export default function AdminPage() {
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
             <Button onClick={() => setRejectPayment(null)} type="button" variant="secondary">{t("ui.cancel")}</Button>
             <Button disabled={!rejectNote.trim()} type="submit" variant="danger">{t("admin.reject")}</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal onClose={() => setRefundPayment(null)} open={Boolean(refundPayment)} title={t("admin.payment.markRefunded")}>
+        <form className="grid gap-4" onSubmit={refundSelectedPayment}>
+          <label className="grid gap-2 text-sm font-bold text-neutral-700">
+            {t("admin.payment.refundNote")}
+            <textarea
+              className="min-h-28 rounded-xl border border-neutral-200 px-3 py-2 outline-none focus:border-primary"
+              onChange={(event) => setRefundNote(event.target.value)}
+              required
+              value={refundNote}
+            />
+          </label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button onClick={() => setRefundPayment(null)} type="button" variant="secondary">{t("ui.cancel")}</Button>
+            <Button disabled={!refundNote.trim()} type="submit" variant="danger">{t("admin.payment.markRefunded")}</Button>
           </div>
         </form>
       </Modal>

@@ -1,13 +1,10 @@
 import type { Request, Response, RequestHandler } from "express"
 import rateLimit, { ipKeyGenerator } from "express-rate-limit"
 
-// In-memory store for tracking failed login attempts for IP auto-block (F1.5)
-// Key: IP address, Value: { count, firstFailAt, blockedUntil? }
-const loginFailStore = new Map<string, { count: number; firstFailAt: number; blockedUntil?: number }>()
+import { redis } from "../config/redis"
 
-const FAIL_WINDOW_MS = 60 * 60 * 1000    // 1 hour
+const LOGIN_FAIL_TTL_SECONDS = 15 * 60
 const MAX_FAILS_BEFORE_BLOCK = 20
-const BLOCK_DURATION_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 function getClientIp(req: Request): string {
   return (
@@ -22,50 +19,59 @@ function cloudflareKeyGenerator(req: Request): string {
   return ipKeyGenerator(getClientIp(req))
 }
 
+function userOrIpKeyGenerator(req: Request): string {
+  return req.user?.id || cloudflareKeyGenerator(req)
+}
+
+const abuseLimitMessage = {
+  error: true,
+  message: "Rate limit exceeded. Please try again later.",
+}
+
 /** Called by loginUser on a failed password attempt (F1.5) */
-export function recordLoginFailure(ip: string): void {
+export async function recordLoginFailure(ip: string): Promise<void> {
   if (process.env.NODE_ENV === "development") return
 
-  const now = Date.now()
-  const entry = loginFailStore.get(ip)
-
-  if (!entry) {
-    loginFailStore.set(ip, { count: 1, firstFailAt: now })
-    return
-  }
-
-  // Reset window if older than FAIL_WINDOW_MS
-  if (now - entry.firstFailAt > FAIL_WINDOW_MS) {
-    loginFailStore.set(ip, { count: 1, firstFailAt: now })
-    return
-  }
-
-  entry.count += 1
-
-  if (entry.count >= MAX_FAILS_BEFORE_BLOCK && !entry.blockedUntil) {
-    entry.blockedUntil = now + BLOCK_DURATION_MS
-    console.log(`[SECURITY] IP auto-blocked: ${ip} at ${new Date().toISOString()} (${entry.count} failed attempts)`)
+  try {
+    const key = `loginFail:${ip}`
+    const attempts = await redis.incr(key)
+    const ttl = await redis.ttl(key)
+    if (ttl === -1) await redis.expire(key, LOGIN_FAIL_TTL_SECONDS)
+    if (attempts >= MAX_FAILS_BEFORE_BLOCK) {
+      console.log(`[SECURITY] IP login blocked: ${ip} at ${new Date().toISOString()} (${attempts} failed attempts)`)
+    }
+  } catch (error) {
+    console.warn("[SECURITY] Failed to record login failure:", error)
   }
 }
 
 /** Called by loginUser on success to clear failure record */
-export function clearLoginFailures(ip: string): void {
-  loginFailStore.delete(ip)
+export async function clearLoginFailures(ip: string): Promise<void> {
+  try {
+    await redis.del(`loginFail:${ip}`)
+  } catch (error) {
+    console.warn("[SECURITY] Failed to clear login failures:", error)
+  }
 }
 
 /** Middleware that rejects blocked IPs before rate limiter runs (F1.5) */
-export const ipBlockMiddleware: RequestHandler = (req, res, next) => {
+export const ipBlockMiddleware: RequestHandler = async (req, res, next) => {
   if (process.env.NODE_ENV === "development") return next()
 
-  const ip = getClientIp(req)
-  const entry = loginFailStore.get(ip)
-  if (entry?.blockedUntil && entry.blockedUntil > Date.now()) {
-    return res.status(429).json({
-      error: "IP_BLOCKED",
-      message: "Too many failed login attempts. Your IP has been blocked for 24 hours.",
-    })
+  try {
+    const ip = getClientIp(req)
+    const attempts = Number(await redis.get(`loginFail:${ip}`) || 0)
+    if (attempts >= MAX_FAILS_BEFORE_BLOCK) {
+      return res.status(429).json({
+        error: "IP_BLOCKED",
+        message: "Too many failed login attempts. Your IP has been temporarily blocked.",
+      })
+    }
+    next()
+  } catch (error) {
+    console.warn("[SECURITY] Failed to check login block:", error)
+    next()
   }
-  next()
 }
 
 /** Export helper so login controller can extract IP (F1.5) */
@@ -103,6 +109,15 @@ export const otpLimiter = rateLimit({
     error: "OTP_RATE_LIMIT",
     message: "Too many attempts. Try again in 10 minutes.",
   },
+})
+
+export const otpVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: cloudflareKeyGenerator,
+  message: abuseLimitMessage,
 })
 
 // F1.3 — Global API rate limit: 100 req/min per IP
@@ -161,6 +176,51 @@ export const contactLimiter = rateLimit({
   legacyHeaders: false,
 })
 
+export const conversationCreateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userOrIpKeyGenerator,
+  message: abuseLimitMessage,
+})
+
+export const messageSendLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userOrIpKeyGenerator,
+  message: abuseLimitMessage,
+})
+
+export const paymentSubmitLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userOrIpKeyGenerator,
+  message: abuseLimitMessage,
+})
+
+export const khqrGenerateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userOrIpKeyGenerator,
+  message: abuseLimitMessage,
+})
+
+export const reportLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userOrIpKeyGenerator,
+  message: abuseLimitMessage,
+})
+
 export const forgotPasswordLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 3,
@@ -169,4 +229,3 @@ export const forgotPasswordLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 })
-

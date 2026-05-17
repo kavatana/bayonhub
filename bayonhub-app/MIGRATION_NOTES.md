@@ -1965,3 +1965,112 @@ Production readiness: 9.5/10
 - `bayonhub-app/src/components/dashboard/MyAdsTab.jsx` — replaced the remaining inline Plus membership calculation with the Zustand selector.
 - `bayonhub-app/src/pages/CategoryPage.jsx` — changed the mobile filter sheet to a flex layout with independently scrolling filters and a fixed Apply/Reset row.
 - `bayonhub-app/src/pages/InboxPage.jsx` — added Dashboard-style one-shot auth modal and pending-action handling for unauthenticated access.
+
+## Audit Remediation Groups 2-5 — 2026-05-14
+
+- `bayonhub-app/src/api/users.js` — added bearer-token config to the authenticated phone OTP verification caller.
+- `bayonhub-app/src/lib/translations.js` — added requested EN/KM launch-audit keys plus inbox/payment status copy used by the fixes.
+- `bayonhub-app/src/components/posting/PostAdWizard.jsx` — localized category tile labels by active language and lazy-loaded the review cover image.
+- `bayonhub-app/src/pages/InboxPage.jsx` — added a visible fetch error state with retry CTA.
+- `bayonhub-app/src/pages/UpgradePage.jsx` — added pending payment next-step messaging and lazy-loaded the KHQR image.
+- `bayonhub-app/src/components/listing/ListingDetail.jsx` — translated condition labels and lazy-loaded the share preview image.
+- `bayonhub-app/src/components/listing/ListingListItem.jsx` — translated condition labels in list rows.
+- `bayonhub-app/src/components/auth/AuthModal.jsx` — replaced hardcoded Telegram hex colors with Tailwind color utilities.
+- `bayonhub-app/src/pages/StorefrontPage.jsx` — replaced hardcoded color utilities and lazy-loaded reviewer avatars.
+- `bayonhub-app/src/pages/CategoryPage.jsx` — lazy-loaded map popup listing images.
+- `bayonhub-app/src/pages/AccountPage.jsx` — lazy-loaded the account avatar image.
+- `bayonhub-app/src/components/layout/Navbar.jsx` — lazy-loaded search suggestion images.
+- `bayonhub-app/src/api/auth.js` — gated the local fallback OTP console log behind `import.meta.env.DEV`.
+- `bayonhub-api/src/modules/messages/service.ts` — replaced per-conversation unread-count queries with a single grouped Prisma count.
+
+## Audit Remediation Prompt 2 Groups 6-11 — 2026-05-17
+
+- `bayonhub-api/src/modules/listings/router.ts` — wrapped listings route success/error responses in the frontend envelope.
+- `bayonhub-api/src/modules/users/router.ts` — wrapped users route responses and excluded the Telegram webhook.
+- `bayonhub-api/src/modules/messages/router.ts` — wrapped conversation route responses.
+- `bayonhub-api/src/modules/messages/notifications.router.ts` — wrapped notification route responses.
+- `bayonhub-api/src/modules/storefront/router.ts` — wrapped storefront route responses.
+- `bayonhub-api/src/modules/payments/router.ts` — wrapped payment route responses while excluding ABA/KHQR webhooks.
+- `bayonhub-api/src/modules/kyc/router.ts` — wrapped KYC route responses.
+- `bayonhub-app/src/api/listings.js`, `src/api/users.js`, `src/api/messages.js`, `src/api/notifications.js`, and `src/api/storefront.js` — added envelope unwrapping at the API module boundary.
+- `bayonhub-app/src/api/client.js` — kept a compatibility unwrap at the shared API boundary for existing direct client callers.
+- `bayonhub-api/src/modules/merchant/router.ts` — blocked API-key callers from updating merchant profiles and logged denied attempts for audit.
+- `bayonhub-api/src/modules/listings/controller.ts` and `src/modules/listings/service.ts` — parsed and applied the frontend `negotiable` search filter alongside existing `condition` support.
+- `bayonhub-app/src/components/dashboard/MyAdsTab.jsx` — added seller listing expiry countdowns from existing `expiresAt` data.
+- `bayonhub-app/src/pages/StorefrontPage.jsx` — added storefront-specific empty state and own-store `/post` CTA.
+- `bayonhub-app/src/lib/translations.js` — added EN/KM expiry and storefront empty-state strings.
+- `bayonhub-app/package.json`, `bayonhub-api/package.json`, and lockfiles — moved build/type packages from dependencies to devDependencies.
+- `bayonhub-app/.env.example` — removed unused `VITE_R2_PUBLIC_URL` and added `VITE_VAPID_PUBLIC_KEY` plus `VITE_APP_VERSION`.
+
+## Audit 2 Prompt 3A — 2026-05-17
+
+- `bayonhub-api/railway-start.sh` — removed production startup seeding and documented manual development seeding.
+- `bayonhub-api/src/lib/otp.ts` — added Redis failed-attempt tracking and lockout for password-reset OTP verification.
+- `bayonhub-api/src/modules/auth/service.ts` — added DB OTP failed-attempt tracking, expired refresh-token deletion on refresh, and replay-protection TODO where family tracking is absent.
+- `bayonhub-api/src/modules/auth/router.ts` — added OTP verify route limiters to both OTP verification endpoints.
+- `bayonhub-api/src/middleware/rateLimiter.ts` — added per-route limiters for OTP verification, conversations, messages, payment submission, KHQR generation, and listing reports.
+- `bayonhub-api/src/modules/messages/router.ts` — rate-limited conversation creation and REST message sending.
+- `bayonhub-api/src/modules/payments/router.ts` — rate-limited payment submission and KHQR generation.
+- `bayonhub-api/src/modules/listings/router.ts` — rate-limited listing reports.
+- `bayonhub-api/src/lib/scheduler.ts` — added a daily expired refresh-token cleanup job in the existing scheduler style.
+
+## Audit 2 Prompt 3B — 2026-05-17
+
+- `bayonhub-api/src/modules/merchant/router.ts` — added merchant public-field filtering, owner/admin update checks, and API-key onboarding binding enforcement.
+- `bayonhub-api/src/modules/listings/service.ts` — canonicalized seller soft delete to `status=REMOVED` plus `deletedAt=now` and added `deletedAt=null` to public listing reads.
+- `bayonhub-api/src/modules/search/router.ts` — added `deletedAt` filtering to search suggestions.
+- `bayonhub-api/src/modules/storefront/service.ts` — excluded soft-deleted listings from storefront listing includes.
+- `bayonhub-api/src/modules/sellers/service.ts` — excluded soft-deleted listings from seller counts and seller listing reads.
+- `bayonhub-api/src/modules/stats/router.ts` — excluded soft-deleted listings from public platform listing stats.
+- `bayonhub-api/src/modules/sitemap/router.ts` — excluded soft-deleted listings from sitemap and OG image reads.
+- `bayonhub-api/src/modules/admin/service.ts` — excluded soft-deleted listings from active listing counts and active-listing moderation updates.
+- `bayonhub-api/prisma/schema.prisma` — added the requested cascade policies and Plus notification dedupe fields; `npx prisma validate` passed and `npx prisma migrate status` reported the database schema is up to date.
+- `bayonhub_pre_3B_20260517_1728.sql` — created a local pre-3B SQL backup before the schema migration step.
+
+## Audit 2 Prompt 3C — 2026-05-17
+
+- `bayonhub-api/src/middleware/rateLimiter.ts` — replaced in-memory login failure tracking with Redis `loginFail:{ip}` keys and async middleware checks.
+- `bayonhub-api/src/modules/auth/service.ts` — awaited Redis-backed login failure recording and clearing at every login call site.
+- `bayonhub-api/src/modules/listings/service.ts` — replaced the unbounded viewed-session set with Redis `viewed:{sessionId}:{listingId}` keys using `SET NX` and a 24-hour TTL.
+- `bayonhub-api/src/lib/scheduler.ts` — returned scheduler handles from `startScheduler()` and added `stopScheduler()` cleanup for cron and interval jobs.
+- `bayonhub-api/src/jobs/listingExpiry.ts` — tracked listing-expiry cron handles and exported `stopListingExpiryJob()`.
+- `bayonhub-api/src/server.ts` — added graceful shutdown for HTTP, scheduler jobs, listing expiry jobs, Socket.io, Prisma, Redis, plus global crash handlers.
+- `bayonhub-api/src/app.ts` — added `X-Request-Id`, JSON Morgan request logs for all requests, and structured 500 error logging.
+
+## Audit 2 Prompt 3D — 2026-05-17
+
+- `bayonhub-api/src/modules/messages/service.ts` — notified the other conversation participant for every REST message send.
+- `bayonhub-api/src/modules/messages/socket.ts` — notified the other conversation participant for Socket.io message sends.
+- `bayonhub-api/src/modules/admin/service.ts` — added listing, KYC, account-ban notifications, signed payment screenshot responses, and best-effort R2 cleanup for hard-deleted listings.
+- `bayonhub-api/src/lib/scheduler.ts` — added the daily Plus expiring-soon and expired notification job using the Plus notification dedupe fields.
+- `bayonhub-api/src/lib/s3.ts` — added URL/key normalization for R2 deletion and configurable private document signed URL TTL.
+- `bayonhub-api/src/modules/listings/service.ts` — deleted listing image and thumbnail objects after seller soft delete without blocking the DB update.
+- `bayonhub-api/src/modules/users/service.ts` — deleted listing thumbnails during account deletion storage cleanup.
+- `bayonhub-api/src/modules/payments/service.ts` — stored new payment screenshots as private R2 object keys.
+- `bayonhub-app/public/icons/apple-touch-icon.png` — generated a 180x180 Apple touch icon from the existing 192px icon.
+- `bayonhub-app/vite.config.js` — reduced stale API cache windows for listings and search while leaving other Workbox rules unchanged.
+- Verification: API lint/build PASS; app lint/build PASS; largest app JS chunk 314.56 KB; Three.js chunk 145.45 KB.
+
+## Prompt 4 Full Launch Certification — 2026-05-17
+
+- `bayonhub-api/prisma/schema.prisma` and `prisma/migrations/20260517182708_audit3_indexes/` — added launch feed/location indexes for active listing, category, province, promoted, district, price, and view-count queries.
+- `bayonhub-api/prisma/schema.prisma` and `prisma/migrations/20260517182749_audit3_admin_audit_log/` — added durable `AdminAuditLog` storage and user relation.
+- `bayonhub-api/prisma/schema.prisma` and `prisma/migrations/20260517182911_audit3_payment_refund/` — added payment refund tracking fields.
+- `bayonhub-api/src/modules/admin/audit.ts`, `router.ts`, and `service.ts` — wrote admin audit rows to DB, added audit calls for moderation paths, paginated admin lists, and added payment refund handling.
+- `bayonhub-api/src/lib/cambodiaProvinces.ts`, `src/modules/listings/validators.ts`, and `src/modules/listings/service.ts` — added Cambodia province validation, lat/lng bounds validation, and slug-to-display province normalization.
+- `bayonhub-api/src/modules/auth/oauth.ts`, `src/app.ts`, `src/server.ts`, `src/config/env.ts`, and `.env.example` — moved OAuth callbacks to `API_BASE_URL`, added www CORS support, hardened production env validation, extended health checks, and preserved dev origins.
+- `bayonhub-api/src/modules/payments/router.ts` — made ABA webhooks fail closed when the secret is missing and added KHQR pending-payment idempotency.
+- `bayonhub-api/src/middleware/adminAuth.ts`, `src/modules/auth/router.ts`, `controller.ts`, and `service.ts` — added admin IP allowlist and Redis-backed admin 2FA step-up using the existing OTP path.
+- `bayonhub-api/src/modules/users/service.ts`, `src/modules/kyc/router.ts`, and `src/lib/scheduler.ts` — added KYC R2 cleanup on account deletion, safe resubmission cleanup, and daily rejected-document retention cleanup.
+- `bayonhub-api/scripts/launch-check.ts`, `scripts/smoke-launch.ts`, `scripts/perf-check.ts`, and `package.json` — added launch, smoke, and performance verification scripts.
+- `bayonhub-app/src/pages/TermsPage.jsx`, `PrivacyPage.jsx`, `PostingRulesPage.jsx`, `StorefrontPage.jsx`, `AdminPage.jsx`, `src/App.jsx`, and `src/lib/translations.js` — removed legal draft labels, added posting rules, storefront OG/meta tags, refund UI strings, and EN/KM translations.
+- `bayonhub-app/src/lib/locations.js`, `src/components/layout/Footer.jsx`, `src/components/listing/ListingDetail.jsx`, `src/components/search/SearchFilters.jsx`, and `src/components/ui/MapView.jsx` — normalized province links, added listing-detail map rendering only when coordinates exist, added OSM attribution, and added the province filter label.
+- `bayonhub-app/src/components/ConsentBanner.jsx` and `src/components/layout/Layout.jsx` — added the cookie/localStorage consent banner and management modal.
+- Verification: Prisma validate PASS; migrate status PASS; API lint/build PASS; app lint/build PASS; smoke PASS with credentialed auth/admin checks SKIPPED; perf check PASS; largest app JS chunk 314.56 KB; Three.js chunk 145.45 KB.
+- Launch-check status: PARTIAL — database, Redis, R2, and `/health` PASS after starting the API locally; local `.env` is missing `API_BASE_URL` and `FRONTEND_URL_WWW`, so `npm run launch:check` exits FAIL until those env vars are set.
+
+## Launch Check Configuration — 2026-05-17
+
+- `bayonhub-api/.env` — Added `API_BASE_URL=https://api.bayonhub.com` and `FRONTEND_URL_WWW=https://www.bayonhub.com` to local configuration for launch verification.
+- `launch-check` — Verified the launch check script now passes all gates (environment variables, public URL formats, PostgreSQL database connection, Redis ping, Cloudflare R2 upload-read-delete cycle, and API `/health` endpoints).
+

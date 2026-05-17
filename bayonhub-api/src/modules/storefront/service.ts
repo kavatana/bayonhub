@@ -53,7 +53,7 @@ export const getStorefrontBySlug = async (slug: string) => {
     include: {
       merchantProfile: true,
       listings: {
-        where: { status: "ACTIVE" },
+        where: { status: "ACTIVE", deletedAt: null },
         include: {
           images: {
             orderBy: { order: "asc" },
@@ -88,7 +88,7 @@ export const getStorefrontById = async (id: string) => {
     include: {
       merchantProfile: true,
       listings: {
-        where: { status: "ACTIVE" },
+        where: { status: "ACTIVE", deletedAt: null },
         include: {
           images: {
             orderBy: { order: "asc" },

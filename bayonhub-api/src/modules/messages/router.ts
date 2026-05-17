@@ -1,6 +1,7 @@
-import { Router } from "express"
+import { Router, type RequestHandler } from "express"
 
 import { requireAuth } from "../../middleware/auth"
+import { conversationCreateLimiter, messageSendLimiter } from "../../middleware/rateLimiter"
 import {
   getOrCreateConversation,
   getMyConversations,
@@ -11,13 +12,32 @@ import {
 
 const router = Router()
 
+const responseEnvelope: RequestHandler = (_req, res, next) => {
+  const originalJson = res.json.bind(res)
+  res.json = (body?: unknown) => {
+    if (res.statusCode >= 400) {
+      const errorBody = body && typeof body === "object" ? body as { message?: unknown; error?: unknown } : {}
+      const message = typeof errorBody.message === "string"
+        ? errorBody.message
+        : typeof errorBody.error === "string"
+          ? errorBody.error
+          : "An error occurred"
+      return originalJson({ error: true, message })
+    }
+    return originalJson({ data: body ?? null })
+  }
+  next()
+}
+
+router.use(responseEnvelope)
+
 function getRouteId(value: string | string[] | undefined) {
   if (Array.isArray(value)) return value[0] || ""
   return value || ""
 }
 
 // POST /api/conversations — create or get existing conversation
-router.post("/", requireAuth, async (req, res, next) => {
+router.post("/", requireAuth, conversationCreateLimiter, async (req, res, next) => {
   try {
     const { listingId, sellerId } = req.body
     if (!sellerId) {
@@ -58,7 +78,7 @@ router.get("/:id/messages", requireAuth, async (req, res, next) => {
 })
 
 // POST /api/conversations/:id/messages — send a message
-router.post("/:id/messages", requireAuth, async (req, res, next) => {
+router.post("/:id/messages", requireAuth, messageSendLimiter, async (req, res, next) => {
   try {
     const conversationId = getRouteId(req.params.id)
     const { body } = req.body

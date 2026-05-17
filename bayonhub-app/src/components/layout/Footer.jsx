@@ -2,7 +2,10 @@ import { Languages, Music2, Send, Video, Sun, Moon } from "lucide-react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "../../hooks/useTranslation"
 import { CATEGORIES } from "../../lib/categories"
+import { slugToDisplayName } from "../../lib/locations"
 import { useUIStore } from "../../store/useUIStore"
+
+const provinceQuery = (slug) => encodeURIComponent(slugToDisplayName(slug))
 
 const socialLinks = [
   { id: "facebook", href: "https://facebook.com", labelKey: "footer.socialFacebook", Icon: FacebookMark },
@@ -12,14 +15,14 @@ const socialLinks = [
 ]
 
 const locationLinks = [
-  { key: "footer.locationCarsPhnomPenh", to: "/category/vehicles?province=phnom-penh" },
-  { key: "footer.locationJobsPhnomPenh", to: "/category/jobs?province=phnom-penh" },
-  { key: "footer.locationHousesSiemReap", to: "/category/house-land?province=siem-reap" },
-  { key: "footer.locationPhonesPhnomPenh", to: "/category/phones-tablets?province=phnom-penh" },
-  { key: "footer.locationMotorbikesPhnomPenh", to: "/category/vehicles?province=phnom-penh" },
-  { key: "footer.locationApartmentsPhnomPenh", to: "/category/house-land?province=phnom-penh" },
-  { key: "footer.locationJobsSiemReap", to: "/category/jobs?province=siem-reap" },
-  { key: "footer.locationElectronicsPhnomPenh", to: "/category/electronics?province=phnom-penh" },
+  { key: "footer.locationCarsPhnomPenh", to: `/category/vehicles?province=${provinceQuery("phnom-penh")}` },
+  { key: "footer.locationJobsPhnomPenh", to: `/category/jobs?province=${provinceQuery("phnom-penh")}` },
+  { key: "footer.locationHousesSiemReap", to: `/category/house-land?province=${provinceQuery("siem-reap")}` },
+  { key: "footer.locationPhonesPhnomPenh", to: `/category/phones-tablets?province=${provinceQuery("phnom-penh")}` },
+  { key: "footer.locationMotorbikesPhnomPenh", to: `/category/vehicles?province=${provinceQuery("phnom-penh")}` },
+  { key: "footer.locationApartmentsPhnomPenh", to: `/category/house-land?province=${provinceQuery("phnom-penh")}` },
+  { key: "footer.locationJobsSiemReap", to: `/category/jobs?province=${provinceQuery("siem-reap")}` },
+  { key: "footer.locationElectronicsPhnomPenh", to: `/category/electronics?province=${provinceQuery("phnom-penh")}` },
 ]
 
 const companyLinks = [

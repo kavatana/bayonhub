@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client"
 import { z } from "zod"
 
 import { prisma } from "../../lib/prisma"
-import { processAndUpload } from "../../lib/s3"
+import { deleteFromR2, processAndUpload } from "../../lib/s3"
 import { getTelegramBotUsername } from "../../lib/telegram"
 import { stripTags } from "../../lib/sanitize"
 
@@ -461,8 +461,24 @@ export async function deleteMe(userId: string): Promise<{ success: true }> {
   // 1. Gather listing image URLs for cloud storage cleanup (before DB delete)
   const listings = await prisma.listing.findMany({
     where: { sellerId: userId },
-    include: { images: { select: { url: true } } },
+    include: { images: { select: { url: true, thumbUrl: true } } },
   })
+  const kycApplications = await prisma.kYCApplication.findMany({
+    where: { userId },
+    select: { id: true, idFrontKey: true, idBackKey: true, selfieKey: true },
+  })
+
+  try {
+    await Promise.all(
+      kycApplications.flatMap((application) =>
+        [application.idFrontKey, application.idBackKey, application.selfieKey]
+          .filter((key): key is string => Boolean(key))
+          .map((key) => deleteFromR2(key)),
+      ),
+    )
+  } catch (err) {
+    console.error({ event: "kyc_r2_delete_error", userId, err })
+  }
 
   // 2. Prisma transaction — delete in FK dependency order
   await prisma.$transaction(async (tx) => {
@@ -559,14 +575,10 @@ export async function deleteMe(userId: string): Promise<{ success: true }> {
 
   // 3. Best-effort cloud storage cleanup for listing images
   // (fire-and-forget — DB is already clean at this point)
-  const { deleteFromStorage } = await import("../../lib/s3")
-  const allImageUrls = listings.flatMap((l) => l.images.map((img) => img.url))
+  const allImageUrls = listings.flatMap((l) => l.images.flatMap((img) => [img.url, img.thumbUrl].filter(Boolean)))
   await Promise.allSettled(
     allImageUrls.map((url) => {
-      // Extract the R2 key from the full public URL
-      const r2PublicBase = process.env.R2_PUBLIC_URL || ""
-      const key = r2PublicBase ? url.replace(`${r2PublicBase}/`, "") : url
-      return deleteFromStorage(key)
+      return deleteFromR2(url)
     }),
   )
 

@@ -392,7 +392,7 @@ export default function Navbar() {
                       type="button"
                     >
                       {item.image ? (
-                        <img alt={title} className="h-8 w-8 rounded-lg object-cover" src={item.image} />
+                        <img alt={title} className="h-8 w-8 rounded-lg object-cover" loading="lazy" src={item.image} />
                       ) : (
                         <span className="grid h-8 w-8 place-items-center rounded-lg bg-neutral-100 text-xs font-black text-neutral-400">
                           {t("footer.logoMark")}

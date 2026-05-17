@@ -42,6 +42,7 @@ router.get("/suggestions", async (req, res, next) => {
         OR title % ${q}
       )
       AND status = 'ACTIVE'
+      AND "deletedAt" IS NULL
       ORDER BY 
         ts_rank(search_vector, websearch_to_tsquery('english', ${q})) DESC,
         similarity(title, ${q}) DESC,
@@ -53,7 +54,7 @@ router.get("/suggestions", async (req, res, next) => {
       ids.length === 0
         ? []
         : await prisma.listing.findMany({
-            where: { id: { in: ids } },
+            where: { id: { in: ids }, status: "ACTIVE", deletedAt: null },
             select: {
               id: true,
               title: true,

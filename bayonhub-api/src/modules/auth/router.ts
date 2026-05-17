@@ -6,6 +6,7 @@ import {
   forgotPasswordLimiter,
   ipBlockMiddleware,
   loginLimiter,
+  otpVerifyLimiter,
   otpLimiter,
   registerLimiter,
 } from "../../middleware/rateLimiter"
@@ -18,7 +19,9 @@ import {
   register,
   resetPassword,
   sendPhoneOtp,
+  sendAdminTwoFactor,
   sendOtp,
+  verifyAdminTwoFactor,
   verifyPhoneOtp,
   verifyOtp,
 } from "./controller"
@@ -38,9 +41,11 @@ router.post("/telegram-webhook", telegramWebhookHandler)
 
 router.post("/register", registerLimiter, validateRegister, register)
 router.post("/send-otp", forgotPasswordLimiter, otpLimiter, validateSendOtp, sendOtp)
-router.post("/verify-otp", validateVerifyOtp, verifyOtp)
+router.post("/verify-otp", otpVerifyLimiter, validateVerifyOtp, verifyOtp)
 router.post("/otp/send", forgotPasswordLimiter, otpLimiter, validateSendOtp, sendPhoneOtp)
-router.post("/otp/verify", validateVerifyOtp, requireAuth, verifyPhoneOtp)
+router.post("/otp/verify", otpVerifyLimiter, validateVerifyOtp, requireAuth, verifyPhoneOtp)
+router.post("/admin/2fa/send", requireAuth, otpLimiter, sendAdminTwoFactor)
+router.post("/admin/2fa/verify", requireAuth, otpVerifyLimiter, verifyAdminTwoFactor)
 router.put("/reset-password", authLimiter, validateResetPassword, resetPassword)
 // F1.1 — 5 attempts / 15 min + IP auto-block after 20 failures
 router.post("/login", ipBlockMiddleware, loginLimiter, validateLogin, login)

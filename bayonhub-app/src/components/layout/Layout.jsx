@@ -6,6 +6,7 @@ const PostAdWizard = lazy(() => import("../posting/PostAdWizard"))
 const AuthModal = lazy(() => import("../auth/AuthModal"))
 const FeedbackTab = lazy(() => import("../ui/FeedbackTab"))
 import AuthListener from "../auth/AuthListener"
+import ConsentBanner from "../ConsentBanner"
 import OfflineIndicator from "../ui/OfflineIndicator"
 import Spinner from "../ui/Spinner"
 import Footer from "./Footer"
@@ -111,6 +112,7 @@ export default function Layout({ children }) {
       <div className="relative z-10 flex min-h-screen flex-col">
         <AuthListener />
         <OfflineIndicator />
+        <ConsentBanner />
         
         {/* Connectivity Guard Banners */}
         {((!isFullyOnline || apiUnavailable) && !isBannerDismissed) && (
