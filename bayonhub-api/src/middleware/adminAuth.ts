@@ -3,8 +3,6 @@ import type { Request, RequestHandler } from "express"
 import { env } from "../config/env"
 import { redis } from "../config/redis"
 
-let allowlistWarningLogged = false
-
 function getRealClientIp(req: Request): string {
   return (
     (req.headers["cf-connecting-ip"] as string) ||
@@ -26,10 +24,6 @@ function adminIpSet(): Set<string> {
 export const adminIpAllowlist: RequestHandler = (req, res, next) => {
   const allowedIps = adminIpSet()
   if (!allowedIps.size) {
-    if (!allowlistWarningLogged) {
-      allowlistWarningLogged = true
-      console.warn("[admin] ADMIN_IP_ALLOWLIST is not set - admin routes are accessible from any IP")
-    }
     next()
     return
   }

@@ -10,6 +10,7 @@ import { useAuthStore } from "../store/useAuthStore"
 import Button from "../components/ui/Button"
 import Modal from "../components/ui/Modal"
 import PageTransition from "../components/ui/PageTransition"
+import Admin2FAModal from "../components/admin/Admin2FAModal"
 
 const TABS = ["listings", "imageReview", "reports", "users", "kyc", "import", "stats"]
 
@@ -694,6 +695,7 @@ export default function AdminPage() {
 
   return (
     <PageTransition className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+      <Admin2FAModal />
       <Helmet>
         <title>{t("admin.title")} | BayonHub</title>
       </Helmet>

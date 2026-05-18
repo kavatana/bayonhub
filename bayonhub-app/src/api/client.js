@@ -60,6 +60,8 @@ if (import.meta.env.DEV && import.meta.env.VITE_API_URL) {
 
 let isRefreshing = false
 let refreshQueue = []
+const ADMIN_2FA_MESSAGE = "Admin 2FA required"
+const ADMIN_2FA_EVENT = "bayonhub:admin-2fa-required"
 
 const ENVELOPE_PATH_PREFIXES = [
   "/api/listings",
@@ -109,6 +111,23 @@ function normalizeErrorEnvelope(error) {
   return error
 }
 
+function isAdminTwoFactorRequired(error) {
+  const message = error.response?.data?.message || error.response?.data?.error
+  return error.response?.status === 403 && message === ADMIN_2FA_MESSAGE
+}
+
+function requestAdminTwoFactor(originalRequest) {
+  if (typeof window === "undefined" || originalRequest._admin2faRetry) {
+    return Promise.reject(new Error(ADMIN_2FA_MESSAGE))
+  }
+  originalRequest._admin2faRetry = true
+  return new Promise((resolve, reject) => {
+    const request = { originalRequest, resolve, reject }
+    window.__bayonhubAdmin2FAQueue = [...(window.__bayonhubAdmin2FAQueue || []), request]
+    window.dispatchEvent(new CustomEvent(ADMIN_2FA_EVENT, { detail: request }))
+  })
+}
+
 function resolveRefreshQueue() {
   refreshQueue.forEach((pending) => pending.resolve())
   refreshQueue = []
@@ -147,6 +166,10 @@ client.interceptors.response.use(
         window.dispatchEvent(new CustomEvent("bayonhub:api-unavailable"))
       }
       return Promise.reject(error)
+    }
+
+    if (isAdminTwoFactorRequired(error)) {
+      return requestAdminTwoFactor(originalRequest)
     }
 
     // CSRF Retry Logic: If 403 Forbidden, we likely missing a CSRF cookie.

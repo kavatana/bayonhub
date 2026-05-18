@@ -21,6 +21,7 @@ import {
   markAsSold,
   publishDraft,
   reportListing,
+  revealListingPhone,
   saveDraft,
   saveListing,
   searchListings,
@@ -72,6 +73,7 @@ router.patch("/:id/sold", requireAuth, markAsSold)
 router.post("/:id/bump", requireAuth, bumpListing)
 router.delete("/:id", requireAuth, deleteListing)
 router.post("/:id/report", optionalAuth, reportLimiter, reportListing)
+router.post("/:id/reveal", requireAuth, contactLimiter, revealListingPhone)
 router.post("/:id/lead", optionalAuth, contactLimiter, createLead)
 router.post("/:id/save", requireAuth, saveListing)
 router.delete("/:id/save", requireAuth, unsaveListing)

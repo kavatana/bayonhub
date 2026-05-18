@@ -1183,6 +1183,24 @@ export async function createLead(
   return lead
 }
 
+export async function revealListingPhone(listingId: string, userId: string): Promise<{ phone: string }> {
+  const listing = await prisma.listing.findFirst({
+    where: {
+      id: listingId,
+      status: ListingStatus.ACTIVE,
+      deletedAt: null,
+    },
+    select: {
+      seller: { select: { phone: true } },
+    },
+  })
+  if (!listing) throw createHttpError(404, "Listing not found")
+  if (!listing.seller.phone) throw createHttpError(404, "Phone not provided")
+
+  await createLead(listingId, userId, LeadType.CALL, { phone: listing.seller.phone })
+  return { phone: listing.seller.phone }
+}
+
 export async function saveListing(userId: string, listingId: string) {
   const listing = await prisma.listing.findFirst({
     where: { id: listingId, status: ListingStatus.ACTIVE, deletedAt: null },

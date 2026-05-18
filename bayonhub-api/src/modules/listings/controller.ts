@@ -24,6 +24,7 @@ import {
   markSold as markSoldService,
   publishDraft as publishDraftService,
   reportListing as reportListingService,
+  revealListingPhone as revealListingPhoneService,
   saveDraft as saveDraftService,
   saveListing as saveListingService,
   searchListings as searchListingsService,
@@ -261,6 +262,16 @@ export const createLead: RequestHandler = async (req, res, next) => {
       offerPrice: req.body.offerPrice,
     })
     res.status(201).json(lead)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export const revealListingPhone: RequestHandler = async (req, res, next) => {
+  try {
+    if (!req.user) throw createHttpError(401, "Unauthorized")
+    const result = await revealListingPhoneService(getParamId(req.params.id), req.user.id)
+    res.status(200).json(result)
   } catch (error) {
     next(error)
   }

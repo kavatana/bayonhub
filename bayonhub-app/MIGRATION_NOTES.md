@@ -2074,3 +2074,18 @@ Production readiness: 9.5/10
 - `bayonhub-api/.env` — Added `API_BASE_URL=https://api.bayonhub.com` and `FRONTEND_URL_WWW=https://www.bayonhub.com` to local configuration for launch verification.
 - `launch-check` — Verified the launch check script now passes all gates (environment variables, public URL formats, PostgreSQL database connection, Redis ping, Cloudflare R2 upload-read-delete cycle, and API `/health` endpoints).
 
+## Prompt 5 Critical UX Fixes — 2026-05-18
+
+- `bayonhub-app/src/components/admin/Admin2FAModal.jsx`, `src/api/client.js`, and `src/pages/AdminPage.jsx` — added the admin 2FA step-up modal, queued request replay, and 403 interception for `Admin 2FA required`.
+- `bayonhub-app/src/pages/CategoryPage.jsx`, `src/api/listings.js`, and `src/components/listing/ListingDetail.jsx` — fixed province display-name forwarding, search payload unwrapping, and phone reveal wiring to the backend reveal endpoint.
+- `bayonhub-api/src/modules/listings/controller.ts`, `router.ts`, and `service.ts` — added authenticated `POST /api/listings/:id/reveal`, returning the seller phone and creating a call lead.
+- `bayonhub-app/src/components/sections/PricingSection.jsx` and `src/lib/translations.js` — displayed the exact backend Free and Plus listing/photo limits in EN and KM.
+- `bayonhub-api/src/middleware/adminAuth.ts` and `src/server.ts` — moved the missing `ADMIN_IP_ALLOWLIST` warning to a single startup log.
+- `bayonhub-api/prisma/seed-plus.ts` and `package.json` — added a manual development-only `seed:plus` script with a Plus user and Phnom Penh coordinate listing.
+- Verification: API lint/build PASS; app lint/build PASS; largest app JS chunk 314.56 KB; Three.js chunk 145.45 KB; local category/search/pricing browser checks PASS. Auth-dependent phone reveal and admin 2FA browser checks were blocked locally because the database is missing the `User.plusExpiredNotifiedAt` column while the Prisma schema expects it; no migration was run because Prompt 5 forbids Prisma migrations.
+
+## Prompt 5 Unblock — 2026-05-18
+
+- Added migration: `20260518102059_add_plus_notification_fields` (`add_plus_notification_fields`).
+- Columns: `plusExpiredNotifiedAt`, `plusExpiringNotifiedAt`.
+- Verification: Prisma migrate status/validate PASS; API dev server started cleanly; `seed:plus` ran successfully; phone reveal, report listing submit, and admin 2FA browser checks PASS; API lint/build PASS; app lint/build PASS; largest app JS chunk 314.56 KB; Three.js chunk 145.45 KB.

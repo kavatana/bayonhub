@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Check } from "lucide-react"
 import ABAPayModal from "../payments/ABAPayModal"
 import { useTranslation } from "../../hooks/useTranslation"
 import { PROMOTION_STATES } from "../../lib/promotionStates"
@@ -19,6 +20,7 @@ export default function PricingSection() {
       textKey: "pricing.starterText",
       priceKey: "pricing.starterPrice",
       ctaKey: "pricing.getStarted",
+      featureKeys: ["pricing.free.listingLimit", "pricing.free.photoLimit"],
       featured: false,
       action: "post",
     },
@@ -27,6 +29,7 @@ export default function PricingSection() {
       textKey: "pricing.boostText",
       priceKey: "pricing.boostPrice",
       ctaKey: "pricing.boostNow",
+      featureKeys: ["pricing.plus.listingLimit", "pricing.plus.photoLimit"],
       featured: true,
       action: "boost",
     },
@@ -35,6 +38,7 @@ export default function PricingSection() {
       textKey: "pricing.businessText",
       priceKey: "pricing.businessPrice",
       ctaKey: "pricing.contactUs",
+      featureKeys: ["pricing.plus.listingLimit", "pricing.plus.photoLimit"],
       featured: false,
       action: "contact",
     },
@@ -83,6 +87,14 @@ export default function PricingSection() {
               <p className={plan.featured ? "mt-3 flex-1 text-red-50" : "mt-3 flex-1 text-neutral-600"}>
                 {t(plan.textKey)}
               </p>
+              <ul className={plan.featured ? "mt-4 grid gap-2 text-sm font-bold text-red-50" : "mt-4 grid gap-2 text-sm font-bold text-neutral-700"}>
+                {plan.featureKeys.map((featureKey) => (
+                  <li className="flex items-start gap-2" key={featureKey}>
+                    <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>{t(featureKey)}</span>
+                  </li>
+                ))}
+              </ul>
               <strong className="mt-6 block text-3xl font-black">{t(plan.priceKey)}</strong>
               <button
                 className={`mt-4 rounded-xl px-5 py-2.5 text-sm font-black transition ${

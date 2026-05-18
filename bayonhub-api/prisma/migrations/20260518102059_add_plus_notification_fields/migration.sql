@@ -1,0 +1,3 @@
+ALTER TABLE "User"
+ADD COLUMN IF NOT EXISTS "plusExpiredNotifiedAt" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS "plusExpiringNotifiedAt" TIMESTAMP(3);

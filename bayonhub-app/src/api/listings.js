@@ -1,7 +1,7 @@
 import client, { hasApiBackend, STORAGE_KEYS } from "./client"
 import { CATEGORIES } from "../lib/categories"
 import { storage } from "../lib/storage"
-import { PROVINCES } from "../lib/locations"
+import { PROVINCES, slugToDisplayName } from "../lib/locations"
 import { useAuthStore } from "../store/useAuthStore"
 
 const fallbackImage =
@@ -11,6 +11,12 @@ function unwrapEnvelope(payload) {
   if (payload && typeof payload === "object" && !Array.isArray(payload) && Object.prototype.hasOwnProperty.call(payload, "data")) {
     return payload.data
   }
+  return payload
+}
+
+function unwrapSearchPayload(payload) {
+  if (Array.isArray(payload)) return { data: payload }
+  if (payload?.data && typeof payload.data === "object" && !Array.isArray(payload.data)) return payload.data
   return payload
 }
 
@@ -523,20 +529,24 @@ function findSubcategoryByValue(category, value) {
   )
 }
 
-function provinceSlug(value) {
+function provinceDisplayName(value) {
+  if (!value) return value
+  const text = String(value)
   const province = PROVINCES.find((item) =>
-    [item.id, item.slug, item.label.en].includes(value),
+    [item.id, item.slug, item.label.en].includes(text),
   )
-  return province?.slug || value
+  if (province) return province.label.en
+  if (text.includes("-") && text === text.toLowerCase()) return slugToDisplayName(text)
+  return text
 }
 
 function toBackendParams(params = {}) {
   const next = { ...params }
   if (next.location && !next.province) {
-    next.province = provinceSlug(next.location)
+    next.province = provinceDisplayName(next.location)
     delete next.location
   }
-  if (next.province) next.province = provinceSlug(next.province)
+  if (next.province) next.province = provinceDisplayName(next.province)
   if (next.category) {
     const category = findCategoryByValue(next.category)
     const subcategoryCategory = category ? null : findCategoryForSubcategory(next.category)
@@ -603,7 +613,7 @@ function listingFormData(data) {
   appendIfPresent(formData, "currency", data.currency || "USD")
   appendIfPresent(formData, "categorySlug", data.categorySlug || category?.slug || data.category)
   appendIfPresent(formData, "subcategorySlug", data.subcategorySlug || subcategory?.slug)
-  appendIfPresent(formData, "province", provinceSlug(data.province || data.location))
+  appendIfPresent(formData, "province", provinceDisplayName(data.province || data.location))
   appendIfPresent(formData, "district", data.district)
   appendIfPresent(formData, "addressDetail", data.addressDetail)
   appendIfPresent(formData, "condition", data.condition)
@@ -756,7 +766,7 @@ export async function searchListings(params = {}) {
         }
       })
       const response = await client.get(`/api/listings/search?${query.toString()}`)
-      const data = unwrapEnvelope(response.data)
+      const data = unwrapSearchPayload(response.data)
       return {
         data: (data.data || []).map(normalizeListing),
         total: data.total || 0,
@@ -1030,6 +1040,15 @@ export async function createLead(id, type, data = {}, metadata = {}) {
   }
   storage.set(STORAGE_KEYS.leads, [lead, ...leads])
   return lead
+}
+
+export async function revealListingPhone(id) {
+  if (hasApiBackend()) {
+    const response = await client.post(`/api/listings/${id}/reveal`)
+    return unwrapEnvelope(response.data)
+  }
+  const listing = getMockListings().find((item) => String(item.id) === String(id))
+  return { phone: listing?.phone || listing?.seller?.phone || null }
 }
 
 export async function saveListing(id) {

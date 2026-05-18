@@ -33,6 +33,7 @@ import { rateLimiter } from "../../lib/rateLimiter"
 import { cn, formatPrice, getImageSizes, getListingImage, getSrcSet, telegramShare, sellerUrl, timeAgo } from "../../lib/utils"
 import { sanitizeText } from "../../lib/sanitize"
 import { buildLeadPayload } from "../../lib/validation"
+import { revealListingPhone } from "../../api/listings"
 import { useAuthStore } from "../../store/useAuthStore"
 import { useListingStore } from "../../store/useListingStore"
 import { useUIStore } from "../../store/useUIStore"
@@ -117,6 +118,7 @@ export default function ListingDetail({ listing }) {
   const [brokenImages, setBrokenImages] = useState({})
   const [isSubmittingReport, setIsSubmittingReport] = useState(false)
   const [isSubmittingOffer, setIsSubmittingOffer] = useState(false)
+  const [revealedPhone, setRevealedPhone] = useState("")
   const mainImageRef = useRef(null)
   const createLead = useListingStore((state) => state.createLead)
   const reportListing = useListingStore((state) => state.reportListing)
@@ -146,7 +148,7 @@ export default function ListingDetail({ listing }) {
       Promise.resolve().then(() => setReportOpen(true))
     }
   }, [openReportListingId, listing.id, setOpenReportListingId])
-  const phone = listing.phone || null
+  const phone = revealedPhone || listing.phone || null
   const hasPhone = Boolean(phone)
   const telegramUsername = listing.seller?.telegramUsername || listing.username
   const whatsappNumber = listing.seller?.whatsappNumber || phone
@@ -360,12 +362,22 @@ export default function ListingDetail({ listing }) {
     toast.error(result.error === "BUMP_LIMIT" ? t("bump.limit") : t("plus.plusRequired"))
   }
 
-  function handleRevealPhone() {
+  async function handleRevealPhone() {
     if (!hasPhone) return
+    if (!isAuthenticated) return
     if (!canPerformContact("CALL")) return
-    createLead(listing.id, buildLeadPayload("CALL", { phone }))
-    trackLead("CALL")
-    recordContact("CALL")
+    try {
+      const result = await revealListingPhone(listing.id)
+      if (result?.phone) {
+        setRevealedPhone(result.phone)
+        trackLead("CALL")
+        recordContact("CALL")
+        return
+      }
+      toast.error(t("ui.error"))
+    } catch {
+      toast.error(t("ui.error"))
+    }
   }
 
   async function submitReport(event) {

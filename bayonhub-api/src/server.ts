@@ -74,6 +74,9 @@ async function start(): Promise<void> {
 
   server.listen(PORT, async () => {
     console.info(`[Server] BayonHub API running on http://localhost:${PORT}`)
+    if (!process.env.ADMIN_IP_ALLOWLIST) {
+      console.warn("[admin] ADMIN_IP_ALLOWLIST is not set - admin routes accessible from any IP")
+    }
     schedulerHandles = startScheduler()
     startListingExpiryJob()
 

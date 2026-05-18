@@ -20,7 +20,7 @@ import { useClickAway } from "../hooks/useClickAway"
 import { useTranslation } from "../hooks/useTranslation"
 import { CAR_BODY_TYPES, CAR_BRANDS, findCategory, findSubcategory } from "../lib/categories"
 import { getFormSchema } from "../lib/categoryForms"
-import { getDistrictsForProvince, PROVINCES } from "../lib/locations"
+import { getDistrictsForProvince, PROVINCES, slugToDisplayName } from "../lib/locations"
 import { canonicalUrl } from "../lib/seo"
 import { cn, formatPrice, getListingImage, listingUrl } from "../lib/utils"
 import { translate } from "../lib/translations"
@@ -285,6 +285,7 @@ export default function CategoryPage() {
   const selectedProvince = useUIStore((state) => state.selectedProvince)
   const setSelectedProvince = useUIStore((state) => state.setSelectedProvince)
   const [searchParams, setSearchParams] = useSearchParams()
+  const urlProvince = searchParams.get("province") || ""
   const [view, setView] = useState(() => searchParams.get("view") || "grid")
   const [sort, setSort] = useState(() => searchParams.get("sort") || "newest")
   const [filterOpen, setFilterOpen] = useState(false)
@@ -462,6 +463,11 @@ export default function CategoryPage() {
     page: Number(searchParams.get("page") || 1),
     limit: 20,
   }), [activeCategory, activeSubcategory?.slug, conditions, price, quickCondition, searchParams, selectedProvince, sort])
+
+  useEffect(() => {
+    if (!urlProvince) return
+    setSelectedProvince(slugToDisplayName(urlProvince))
+  }, [setSelectedProvince, urlProvince])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
