@@ -36,6 +36,11 @@ Ensure your latest code is pushed to the `main` branch.
    - `JWT_REFRESH_SECRET`: (Generate a different 64-char string)
    - `FRONTEND_URL`: `https://bayonhub.com`
    - `FRONTEND_URL_WWW`: `https://www.bayonhub.com`
+   - `ABA_WEBHOOK_SECRET`: `dummy_secret_for_portfolio`
+   - `R2_ACCOUNT_ID`: `dummy`
+   - `R2_ACCESS_KEY_ID`: `dummy`
+   - `R2_SECRET_ACCESS_KEY`: `dummy`
+   - `R2_BUCKET_NAME`: `dummy`
 5. Click **Create Web Service**. Render will build and deploy.
 6. Copy your Render URL: `https://bayonhub-api-xxxx.onrender.com`
 
