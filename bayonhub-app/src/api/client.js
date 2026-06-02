@@ -178,10 +178,11 @@ client.interceptors.response.use(
       originalRequest._csrfRetry = true
       try {
         await client.get("/health")
-        return client(originalRequest)
       } catch (csrfError) {
-        return Promise.reject(csrfError)
+        // Ignore errors from /health (e.g. 503 Degraded).
+        // The browser still processes the Set-Cookie header!
       }
+      return client(originalRequest)
     }
 
     if (error.response?.status !== 401 || originalRequest._retry || originalRequest.skipAuthRefresh) {
