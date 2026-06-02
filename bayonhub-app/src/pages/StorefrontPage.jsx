@@ -436,7 +436,7 @@ export default function StorefrontPage() {
                     <div className="text-center py-20 bg-neutral-50 rounded-3xl border-2 border-dashed border-neutral-200">
                       <Star className="h-12 w-12 text-neutral-300 mx-auto mb-4" />
                       <h3 className="text-xl font-black text-neutral-900">{t("review.noReviews")}</h3>
-                      <p className="text-neutral-500 font-bold mt-2">{t("review.placeholder")}</p>
+                      <p className="text-neutral-500 font-bold mt-2">{t("review.emptyText")}</p>
                     </div>
                   )}
                 </div>

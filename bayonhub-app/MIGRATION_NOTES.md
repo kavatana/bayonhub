@@ -1,5 +1,30 @@
 # BayonHub Migration Notes
 
+## Prompt 6 Master Polish Pass — Phase 1 — 2026-05-22
+
+- `src/components/home/HeroSection.jsx` — Replaced the desktop HeroOrb placeholder visual with a real listing-data product collage, reduced hero variants to two grounded messages, kept Post Free Ad as the primary CTA, and removed weak hero stats.
+- `src/pages/HomePage.jsx` — Removed the low-value new-today strip plus homepage category/trending count pills so early-stage or sparse metrics no longer undermine trust.
+- `src/components/layout/Navbar.jsx` — Rendered mega-menu category and subcategory labels from the bilingual category config instead of translation-key lookups that could leak raw keys.
+- `src/lib/translations.js` — Added missing EN/KM category keys and replaced visible coming-soon/payment-placeholder wording with neutral, factual runtime copy.
+
+## Prompt 6 Master Polish Pass — Phase 2 — 2026-05-22
+
+- `src/pages/HomePage.jsx` — Removed weak recently viewed, trending, near-you, and app-install sections; kept the homepage focused on hero, categories, featured/latest listings, trust, and a lightweight seller upgrade CTA.
+- `src/components/sections/PricingSection.jsx` — Simplified homepage pricing to two seller paths, removed the heavy contact-sales card, and improved dark-mode readability for the remaining cards.
+- `src/components/auth/AuthModal.jsx` — Polished modal shell, close control, tabs, OAuth presentation, and offline fallback behavior so unavailable OAuth options are not shown without an API URL.
+- `src/components/posting/PostAdWizard.jsx` — Tightened the post modal shell, Step 1 category cards, dark-mode borders, and disabled Continue state for a more deliberate posting flow.
+- `src/lib/translations.js` — Reworded EN/KM trust and pricing copy to avoid overclaiming payments, safety, scale, or enterprise readiness.
+
+## Prompt 6 Master Polish Pass — Phase 3 — 2026-05-22
+
+- `src/main.jsx` — Fixed persisted dark-mode initialization so the app reads the same JSON localStorage format used by the UI store.
+- `src/components/layout/Navbar.jsx` — Improved dark-mode nav, search dropdown, mega menu, mobile search, mobile bottom nav, and mobile location selector surfaces.
+- `src/components/listing/ListingCard.jsx` — Improved dark-mode listing-card fallback, save, and share controls for better card readability.
+- `src/components/ui/FeedbackTab.jsx` — Reduced the mobile feedback tab to an icon button and replaced the visible placeholder textarea copy with translated factual copy.
+- `src/components/storefront/ReviewModal.jsx` — Replaced the shared review placeholder key usage with a dedicated translated comment prompt.
+- `src/pages/StorefrontPage.jsx` — Replaced empty review copy that reused the placeholder key with a factual no-reviews message.
+- `src/lib/translations.js` — Added EN/KM feedback and review prompt keys used by the first-touch cleanup.
+
 ## Sprint A Execution — May 5, 2026
 
 ### Store Updates

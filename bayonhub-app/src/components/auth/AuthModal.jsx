@@ -121,22 +121,20 @@ export default function AuthModal() {
       <Overlay
         ariaLabel={title}
         backdropClassName="z-[90] grid p-0 md:place-items-center md:p-4"
-        className="flex h-full w-full flex-col overflow-auto bg-white p-0 shadow-2xl md:h-auto md:max-w-2xl md:flex-row md:rounded-2xl dark:bg-neutral-900"
+        className="flex h-full w-full flex-col overflow-auto bg-white p-0 shadow-2xl md:h-auto md:max-w-2xl md:flex-row md:rounded-2xl md:border md:border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900"
         onClose={close}
         open={open}
       >
-        {/* Left Column: Content */}
-        <div className="flex flex-1 flex-col p-5 md:w-3/5">
+        <div className="flex flex-1 flex-col p-5 md:w-3/5 md:p-6">
           <header className="flex items-center justify-between gap-4">
             <h2 className="text-xl font-black text-neutral-900 dark:text-white">{title}</h2>
-            <button className="grid h-11 w-10 place-items-center rounded-full border border-neutral-200 dark:border-neutral-700" onClick={close} type="button" aria-label={t("ui.close")}>
+            <button className="grid h-11 w-11 place-items-center rounded-full border border-neutral-200 text-neutral-500 transition hover:border-primary hover:text-primary dark:border-neutral-700 dark:text-neutral-300" onClick={close} type="button" aria-label={t("ui.close")}>
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
           </header>
           {children}
         </div>
 
-        {/* Right Column: Decorative (Desktop Only) */}
         <div
           className="hidden md:block md:w-2/5 rounded-r-2xl bg-bayon-line bg-bayon-line-6 min-h-[400px]"
           aria-hidden="true"
@@ -333,20 +331,22 @@ export default function AuthModal() {
 
   function renderSocialLoginOptions() {
     const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:4000"
+    const oauthAvailable = Boolean(import.meta.env.VITE_API_URL)
+    if (!oauthAvailable) return null
     
     return (
       <div>
         <div className="relative my-4">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-neutral-200" />
+            <div className="w-full border-t border-neutral-200 dark:border-neutral-700" />
           </div>
-          <div className="relative flex justify-center text-xs text-neutral-400">
-            <span className="bg-white px-3">{t("auth.orContinueWith")}</span>
+          <div className="relative flex justify-center text-xs font-bold text-neutral-400">
+            <span className="bg-white px-3 dark:bg-neutral-900">{t("auth.orContinueWith")}</span>
           </div>
         </div>
         <div className="grid gap-2">
           <Button
-            className="w-full border border-neutral-200 text-blue-600 hover:border-blue-600 hover:bg-blue-600 hover:text-white"
+            className="h-11 w-full rounded-xl border border-neutral-200 text-blue-600 hover:border-blue-600 hover:bg-blue-600 hover:text-white dark:border-neutral-700 dark:text-blue-300"
             onClick={() => {
               window.location.href = `${apiUrl}/api/auth/facebook`
             }}
@@ -357,7 +357,7 @@ export default function AuthModal() {
             {t("auth.facebookLogin")}
           </Button>
           <Button
-            className="w-full border border-neutral-300 text-neutral-700 hover:bg-neutral-50"
+            className="h-11 w-full rounded-xl border border-neutral-300 text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
             onClick={() => {
               window.location.href = `${apiUrl}/api/auth/google`
             }}
@@ -494,12 +494,12 @@ export default function AuthModal() {
     <>
       {!otpStep ? (
         <>
-          <div className="mt-5 grid grid-cols-2 rounded-xl bg-neutral-100 p-1">
+          <div className="mt-5 grid grid-cols-2 rounded-xl bg-neutral-100 p-1 dark:bg-neutral-800">
             {[
               ["login", t("auth.login")],
               ["register", t("auth.register")],
             ].map(([value, label]) => (
-              <button className={`rounded-lg px-3 py-2 text-sm font-black ${tab === value ? "bg-white text-primary shadow-sm" : "text-neutral-500"}`} key={value} onClick={() => setTab(value)} type="button">
+              <button className={`rounded-lg px-3 py-2 text-sm font-black ${tab === value ? "bg-white text-primary shadow-sm dark:bg-neutral-950" : "text-neutral-500 dark:text-neutral-300"}`} key={value} onClick={() => setTab(value)} type="button">
                 {label}
               </button>
             ))}
@@ -550,10 +550,10 @@ export default function AuthModal() {
                   {errors.confirmPassword ? <span className="text-xs text-red-600">{errors.confirmPassword}</span> : null}
                 </label>
                 <div>
-                  <p className="mb-2 text-sm font-bold text-neutral-700">{t("auth.languagePreference")}</p>
+                  <p className="mb-2 text-sm font-bold text-neutral-700 dark:text-neutral-200">{t("auth.languagePreference")}</p>
                   <div className="flex gap-2">
                     {["km", "en"].map((code) => (
-                      <button className={`rounded-full px-4 py-2 text-sm font-black ${form.language === code ? "bg-primary text-white" : "bg-neutral-100 text-neutral-600"}`} key={code} onClick={() => update("language", code)} type="button">
+                      <button className={`rounded-full px-4 py-2 text-sm font-black ${form.language === code ? "bg-primary text-white" : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"}`} key={code} onClick={() => update("language", code)} type="button">
                         {t(`lang.${code}`)}
                       </button>
                     ))}
@@ -565,7 +565,7 @@ export default function AuthModal() {
                 </label>
               </>
             )}
-            <Button loading={loading} type="submit">
+            <Button className="h-12 rounded-xl font-black" loading={loading} type="submit">
               {tab === "login" ? t("auth.continue") : t("auth.register")}
             </Button>
             {renderSocialLoginOptions()}

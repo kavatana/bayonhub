@@ -91,7 +91,7 @@ export default function ReviewModal({ open, onClose, sellerId, listingId }) {
           </label>
           <textarea
             className="w-full min-h-[100px] rounded-xl border border-neutral-200 p-3 outline-none focus:border-primary"
-            placeholder={t("review.placeholder")}
+            placeholder={t("review.commentPlaceholder")}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
           />

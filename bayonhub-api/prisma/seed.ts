@@ -153,7 +153,7 @@ async function main() {
 
   console.log("Created users")
 
-  const TOTAL_LISTINGS = 1200
+  const TOTAL_LISTINGS = 60
   const listings = []
 
   console.log(`Generating ${TOTAL_LISTINGS} listings...`)

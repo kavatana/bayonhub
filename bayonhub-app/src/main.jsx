@@ -12,8 +12,17 @@ import Toast from './components/ui/Toast.jsx'
 // Register GSAP plugins once globally so lazy-loaded page chunks share the same instance
 gsap.registerPlugin(ScrollTrigger, useGSAP)
 
-const savedTheme = localStorage.getItem('bayonhub:theme') || 'light'
-if (savedTheme === 'dark') document.documentElement.classList.add('dark')
+function readSavedTheme() {
+  const rawTheme = localStorage.getItem('bayonhub:theme')
+  if (!rawTheme) return 'light'
+  try {
+    return JSON.parse(rawTheme)
+  } catch {
+    return rawTheme
+  }
+}
+
+if (readSavedTheme() === 'dark') document.documentElement.classList.add('dark')
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

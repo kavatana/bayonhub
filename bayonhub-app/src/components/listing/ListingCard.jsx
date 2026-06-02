@@ -72,7 +72,7 @@ function ListingCard({ listing }) {
         {/* Image */}
         <div className="relative aspect-[4/3] overflow-hidden bg-neutral-100 dark:bg-neutral-700">
           {imageBroken ? (
-            <div className="grid h-full w-full place-items-center bg-neutral-200 text-neutral-400">
+            <div className="grid h-full w-full place-items-center bg-neutral-200 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-500">
               <Camera className="h-10 w-10" aria-hidden="true" />
             </div>
           ) : (
@@ -132,7 +132,7 @@ function ListingCard({ listing }) {
                 "grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-all duration-200",
                 saved
                   ? "border-primary/30 bg-primary/5 text-primary shadow-[0_0_8px_rgba(229,57,53,0.2)]"
-                  : "border-neutral-200 text-neutral-400 hover:border-primary/40 hover:bg-primary/5 hover:text-primary",
+                  : "border-neutral-200 text-neutral-400 hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-neutral-700 dark:text-neutral-500",
               )}
               onClick={(event) => {
                 event.preventDefault()
@@ -212,7 +212,7 @@ function ListingCard({ listing }) {
             </div>
             <button
               aria-label={t("listing.share")}
-              className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-500 transition hover:border-primary/40 hover:text-primary"
+              className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1 text-xs font-semibold text-neutral-500 transition hover:border-primary/40 hover:text-primary dark:border-neutral-700 dark:text-neutral-300"
               onClick={shareListing}
               type="button"
             >

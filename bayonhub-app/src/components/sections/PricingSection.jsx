@@ -33,15 +33,6 @@ export default function PricingSection() {
       featured: true,
       action: "boost",
     },
-    {
-      titleKey: "pricing.business",
-      textKey: "pricing.businessText",
-      priceKey: "pricing.businessPrice",
-      ctaKey: "pricing.contactUs",
-      featureKeys: ["pricing.plus.listingLimit", "pricing.plus.photoLimit"],
-      featured: false,
-      action: "contact",
-    },
   ]
 
   function handleCta(plan) {
@@ -59,9 +50,6 @@ export default function PricingSection() {
       }
       return
     }
-    if (plan.action === "contact") {
-      window.open("https://t.me/bayonhub", "_blank", "noopener,noreferrer")
-    }
   }
 
   return (
@@ -70,24 +58,24 @@ export default function PricingSection() {
 
       <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 bg-bayon-line bg-bayon-line-5">
         <div className="max-w-3xl">
-          <h2 className="text-3xl font-black text-neutral-900">{t("pricing.title")}</h2>
-          <p className="mt-3 leading-7 text-neutral-600">{t("pricing.subtitle")}</p>
+          <h2 className="text-3xl font-black text-neutral-900 dark:text-neutral-100">{t("pricing.title")}</h2>
+          <p className="mt-3 leading-7 text-neutral-600 dark:text-neutral-400">{t("pricing.subtitle")}</p>
         </div>
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
           {plans.map((plan) => (
             <article
               className={
                 plan.featured
                   ? "noise-overlay relative flex flex-col overflow-hidden rounded-2xl bg-primary p-5 text-white shadow-lg"
-                  : "noise-overlay relative flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm"
+                  : "noise-overlay relative flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
               }
               key={plan.titleKey}
             >
               <h3 className="text-xl font-black">{t(plan.titleKey)}</h3>
-              <p className={plan.featured ? "mt-3 flex-1 text-red-50" : "mt-3 flex-1 text-neutral-600"}>
+              <p className={plan.featured ? "mt-3 flex-1 text-red-50" : "mt-3 flex-1 text-neutral-600 dark:text-neutral-400"}>
                 {t(plan.textKey)}
               </p>
-              <ul className={plan.featured ? "mt-4 grid gap-2 text-sm font-bold text-red-50" : "mt-4 grid gap-2 text-sm font-bold text-neutral-700"}>
+              <ul className={plan.featured ? "mt-4 grid gap-2 text-sm font-bold text-red-50" : "mt-4 grid gap-2 text-sm font-bold text-neutral-700 dark:text-neutral-300"}>
                 {plan.featureKeys.map((featureKey) => (
                   <li className="flex items-start gap-2" key={featureKey}>
                     <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />

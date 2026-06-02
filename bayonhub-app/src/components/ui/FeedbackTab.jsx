@@ -38,12 +38,13 @@ export default function FeedbackTab() {
   return (
     <>
       <button
+        aria-label={t("ui.feedback")}
         onClick={() => setOpen(true)}
-        className="fixed bottom-24 right-4 z-40 flex items-center gap-2 rounded-full bg-primary p-3 text-sm font-bold text-white shadow-xl transition hover:scale-110 active:scale-95 md:bottom-auto md:right-0 md:top-1/2 md:rounded-none md:rounded-tl-xl md:rounded-bl-xl md:px-4 md:py-2 md:-translate-y-1/2 md:-rotate-90 md:[transform-origin:bottom_right]"
+        className="fixed bottom-24 right-3 z-40 grid h-12 w-12 place-items-center rounded-full bg-primary text-sm font-bold text-white shadow-xl transition hover:scale-105 active:scale-95 md:bottom-auto md:right-0 md:top-1/2 md:flex md:h-auto md:w-auto md:items-center md:gap-2 md:rounded-none md:rounded-tl-xl md:rounded-bl-xl md:px-4 md:py-2 md:-translate-y-1/2 md:-rotate-90 md:[transform-origin:bottom_right]"
         type="button"
       >
         <MessageSquare className="h-5 w-5 md:h-4 md:w-4" aria-hidden="true" />
-        <span className="md:inline">{t("ui.feedback")}</span>
+        <span className="hidden md:inline">{t("ui.feedback")}</span>
       </button>
 
       <Modal open={open} onClose={() => setOpen(false)} title={t("ui.feedback")}>
@@ -57,7 +58,7 @@ export default function FeedbackTab() {
                 onMouseEnter={() => setHoverRating(star)}
                 onMouseLeave={() => setHoverRating(0)}
                 onClick={() => setRating(star)}
-                aria-label={`Rate ${star} stars`}
+                aria-label={t("ui.rateStars", { count: star })}
               >
                 <Star
                   className={cn(
@@ -71,7 +72,7 @@ export default function FeedbackTab() {
           </div>
           <textarea
             className="h-32 w-full resize-none rounded-xl border border-neutral-200 p-3 text-sm outline-none focus:border-primary dark:bg-neutral-800 dark:border-neutral-700 dark:text-white"
-            placeholder="..."
+            placeholder={t("ui.feedbackPlaceholder")}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
           />

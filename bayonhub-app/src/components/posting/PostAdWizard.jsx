@@ -480,22 +480,22 @@ export default function PostAdWizard({
         ref={panelRef}
         ariaLabel={t("post.title")}
         backdropClassName="z-[80] grid p-0 md:place-items-center md:p-4"
-        className="flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl md:h-[88vh] md:max-w-2xl md:rounded-2xl"
+        className="flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl md:h-[88vh] md:max-w-2xl md:rounded-2xl md:border md:border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900"
         onClose={closeWizard}
         open={open}
       >
-        <header className="shrink-0 border-b border-neutral-100 p-4">
+        <header className="shrink-0 border-b border-neutral-100 p-4 dark:border-neutral-800">
           <div className="mb-4 flex items-center justify-between gap-4">
             <button
               aria-label={t("a11y.closeModal")}
-              className="grid h-10 w-10 place-items-center rounded-full border border-neutral-200 text-neutral-500"
+              className="grid h-10 w-10 place-items-center rounded-full border border-neutral-200 text-neutral-500 transition hover:border-primary hover:text-primary dark:border-neutral-700 dark:text-neutral-300"
               onClick={closeWizard}
               type="button"
             >
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
             <div className="text-center">
-              <h2 className="text-lg font-black text-neutral-900">{t("post.title")}</h2>
+              <h2 className="text-lg font-black text-neutral-900 dark:text-white">{t("post.title")}</h2>
               {showDraftSaved && !isSuccess ? (
                 <p className="text-[10px] font-bold text-emerald-600 flex items-center justify-center gap-1 opacity-100 transition-opacity duration-300">
                   <Check className="h-3.5 w-3.5" aria-hidden="true" />
@@ -508,12 +508,12 @@ export default function PostAdWizard({
           {!isSuccess && <StepIndicator currentStep={step} steps={steps} />}
         </header>
 
-        <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
           {showDraftBanner && (
-            <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl bg-primary/5 p-4 border border-primary/20">
+            <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl bg-primary/5 p-4 border border-primary/20 dark:bg-primary/10">
               <div className="flex-1">
-                <p className="text-sm font-bold text-neutral-900">{t("post.draftFound")}</p>
-                <p className="text-xs text-neutral-500">{t("post.draftFoundSub")}</p>
+                <p className="text-sm font-bold text-neutral-900 dark:text-white">{t("post.draftFound")}</p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">{t("post.draftFoundSub")}</p>
               </div>
               <div className="flex gap-2">
                 <Button size="sm" variant="ghost" onClick={discardDraft}>{t("ui.discard")}</Button>
@@ -526,7 +526,7 @@ export default function PostAdWizard({
               <label className="relative block">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" aria-hidden="true" />
                 <input
-                  className="h-12 w-full rounded-2xl border border-neutral-200 bg-neutral-50 pl-11 pr-4 text-base font-semibold outline-none focus:border-primary focus:bg-white"
+                  className="h-12 w-full rounded-2xl border border-neutral-200 bg-neutral-50 pl-11 pr-4 text-base font-semibold outline-none transition focus:border-primary focus:bg-white dark:border-neutral-700 dark:bg-neutral-800 dark:text-white dark:placeholder-neutral-500 dark:focus:bg-neutral-800"
                   onChange={(event) => setCategorySearch(event.target.value)}
                   placeholder={t("filter.search")}
                   value={categorySearch}
@@ -541,7 +541,7 @@ export default function PostAdWizard({
                       aria-pressed={active}
                       className={cn(
                         "flex min-h-24 items-center gap-4 rounded-2xl border p-4 text-left transition",
-                        active ? "border-primary bg-primary text-white shadow-lg shadow-primary/20" : "border-neutral-200 bg-white text-neutral-800 hover:border-primary/40 hover:bg-primary/5",
+                        active ? "border-primary bg-primary text-white shadow-lg shadow-primary/20" : "border-neutral-200 bg-white text-neutral-800 hover:border-primary/40 hover:bg-primary/5 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:border-primary/60 dark:hover:bg-primary/10",
                       )}
                       key={item.id}
                       onClick={() => selectSchemaCategory(item.id)}
@@ -552,7 +552,7 @@ export default function PostAdWizard({
                       </span>
                       <span className="min-w-0">
                         <span className="block text-base font-black leading-8">{item.label[language]}</span>
-                        <span className={cn("block text-xs font-bold", active ? "text-white/80" : "text-neutral-500")}>
+                        <span className={cn("block text-xs font-bold", active ? "text-white/80" : "text-neutral-500 dark:text-neutral-400")}>
                           {language === "km" ? item.label.en : item.label.km}
                         </span>
                       </span>
@@ -561,7 +561,7 @@ export default function PostAdWizard({
                 })}
               </div>
               {selectionPath ? (
-                <p className="rounded-xl bg-neutral-50 p-3 text-sm font-bold text-neutral-700">
+                <p className="rounded-xl bg-neutral-50 p-3 text-sm font-bold text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
                   {t("post.selectionPath")}: <span className="text-primary">{selectionPath}</span>
                 </p>
               ) : null}
@@ -872,7 +872,7 @@ export default function PostAdWizard({
         </div>
 
         {!isSuccess && (
-          <footer className="flex shrink-0 items-center gap-3 border-t border-neutral-100 p-4">
+          <footer className="flex shrink-0 items-center gap-3 border-t border-neutral-100 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
             {step > 0 ? (
               <Button onClick={() => goTo(step - 1)} variant="secondary">
                 <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -880,7 +880,7 @@ export default function PostAdWizard({
               </Button>
             ) : null}
             {step < steps.length - 1 ? (
-              <Button className="ml-auto" disabled={step === 0 && !data.categoryId} onClick={() => goTo(step + 1)}>
+              <Button className="ml-auto min-w-32" disabled={step === 0 && !data.categoryId} onClick={() => goTo(step + 1)}>
                 {t("ui.continue")}
               </Button>
             ) : (

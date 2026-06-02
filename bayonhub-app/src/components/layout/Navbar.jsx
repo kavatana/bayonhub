@@ -79,7 +79,7 @@ function getSuggestionImage(listing) {
 
 function getCategoryLabel(categorySlug, language) {
   const category = CATEGORIES.find((item) => item.slug === categorySlug || item.id === categorySlug || item.label.en === categorySlug)
-  return category?.label?.[language] || categorySlug
+  return category?.label?.[language] || category?.label?.en || ""
 }
 
 function hasActiveFilters(filters) {
@@ -203,12 +203,14 @@ export default function Navbar() {
 
   useEffect(() => {
     if (!navRef.current) return
+    const solidBackground = theme === "dark" ? "rgba(23,23,23,0.92)" : "rgba(255,255,255,0.82)"
+    const homeBackground = theme === "dark" ? "rgba(23,23,23,0.84)" : "rgba(255,255,255,0)"
     gsap.to(navRef.current, {
-      backgroundColor: scrolled || !isHome ? "rgba(255,255,255,0.82)" : "rgba(255,255,255,0)",
+      backgroundColor: scrolled || !isHome ? solidBackground : homeBackground,
       duration: 0.3,
       ease: "power2.out",
     })
-  }, [isHome, scrolled])
+  }, [isHome, scrolled, theme])
 
   useEffect(() => {
     document.documentElement.classList.toggle("font-khmer", language === "km")
@@ -369,7 +371,7 @@ export default function Navbar() {
   const navTone = heroTop ? "text-white hover:text-white/80" : "text-neutral-700 hover:text-primary dark:text-neutral-300 dark:hover:text-white"
 
   const searchDropdown = (
-    <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 shadow-2xl">
+    <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 dark:text-white">
       <div className="grid gap-4">
         {query.trim() ? (
           <section>
@@ -382,7 +384,7 @@ export default function Navbar() {
                     <button
                       className={cn(
                         "flex items-center gap-3 rounded-xl px-3 py-2 text-left transition",
-                        activeSuggestion === index ? "bg-primary text-white" : "hover:bg-neutral-100",
+                        activeSuggestion === index ? "bg-primary text-white" : "hover:bg-neutral-100 dark:hover:bg-neutral-800",
                       )}
                       key={item.id}
                       onMouseDown={(event) => {
@@ -439,7 +441,7 @@ export default function Navbar() {
             <div className="mt-2 grid gap-1">
               {recentSearches.map((item) => (
                 <button
-                  className="rounded-xl px-3 py-2 text-left text-sm font-semibold transition hover:bg-neutral-100"
+                  className="rounded-xl px-3 py-2 text-left text-sm font-semibold transition hover:bg-neutral-100 dark:hover:bg-neutral-800"
                   key={item}
                   onMouseDown={(event) => {
                     event.preventDefault()
@@ -457,8 +459,8 @@ export default function Navbar() {
           <p className="text-xs font-black uppercase tracking-widest text-neutral-400">{t("nav.trending")}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {trending.map((item) => (
-              <button
-                className="rounded-full bg-neutral-100 px-3 py-1.5 text-xs font-bold text-neutral-700 transition hover:bg-primary hover:text-white"
+                <button
+                className="rounded-full bg-neutral-100 px-3 py-1.5 text-xs font-bold text-neutral-700 transition hover:bg-primary hover:text-white dark:bg-neutral-800 dark:text-neutral-300"
                 key={item}
                 onMouseDown={(event) => {
                   event.preventDefault()
@@ -490,10 +492,10 @@ export default function Navbar() {
               BH
             </span>
             <span className="hidden xs:block">
-              <strong className={cn("block text-base font-black leading-none", heroTop ? "text-white" : "text-neutral-900")}>
+              <strong className={cn("block text-base font-black leading-none", heroTop ? "text-white" : "text-neutral-900 dark:text-white")}>
                 {t("app.name")}
               </strong>
-              <small className={cn("block text-[11px] font-semibold", heroTop ? "text-white/75" : "text-neutral-500")}>
+              <small className={cn("block text-[11px] font-semibold", heroTop ? "text-white/75" : "text-neutral-500 dark:text-neutral-400")}>
                 {t("app.tagline")}
               </small>
             </span>
@@ -616,7 +618,7 @@ export default function Navbar() {
               aria-label={t("nav.openSearch")}
               className={cn(
                 "grid h-10 w-10 place-items-center rounded-full border transition lg:hidden",
-                heroTop ? "border-white/30 text-white" : "border-neutral-200 bg-white text-neutral-700",
+                heroTop ? "border-white/30 text-white" : "border-neutral-200 bg-white text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300",
               )}
               onClick={() => setMobileSearchOpen(true)}
               type="button"
@@ -628,7 +630,7 @@ export default function Navbar() {
                 aria-label={t("nav.notifications")}
                 className={cn(
                   "relative grid h-10 w-10 place-items-center rounded-full border transition",
-                  heroTop ? "border-white/30 text-white" : "border-neutral-200 bg-white text-neutral-700",
+                  heroTop ? "border-white/30 text-white" : "border-neutral-200 bg-white text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300",
                 )}
                 onClick={() => {
                   if (!isAuthenticated) {
@@ -703,7 +705,7 @@ export default function Navbar() {
             <button
               className={cn(
                 "hidden rounded-full border px-3 py-2 text-sm font-black transition sm:block",
-                heroTop ? "border-white/30 text-white" : "border-neutral-200 bg-white text-neutral-700",
+                heroTop ? "border-white/30 text-white" : "border-neutral-200 bg-white text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300",
               )}
               onClick={() => setLanguage(language === "km" ? "en" : "km")}
               type="button"
@@ -720,7 +722,7 @@ export default function Navbar() {
                 : <Moon size={16} className="text-neutral-600" />
               }
             </button>
-            <Button className="hidden lg:inline-flex" onClick={openPostFlow}>
+            <Button className="hidden whitespace-nowrap lg:inline-flex" onClick={openPostFlow}>
               <Plus className="h-4 w-4" aria-hidden="true" />
               {t("nav.postFreeAd")}
             </Button>
@@ -737,7 +739,7 @@ export default function Navbar() {
                   <ChevronDown className={cn("h-4 w-4 opacity-50 transition-transform", userMenuOpen && "rotate-180")} />
                 </button>
               ) : (
-                <Button onClick={() => toggleAuthModal(true)} variant="secondary" className="h-11">
+                <Button onClick={() => toggleAuthModal(true)} variant="secondary" className="h-11 whitespace-nowrap">
                   <LogIn className="h-4 w-4" aria-hidden="true" />
                   {t("nav.login")}
                 </Button>
@@ -798,7 +800,7 @@ export default function Navbar() {
         {megaOpen ? (
           <div
             ref={megaRef}
-            className="absolute left-0 right-0 top-full hidden border-y border-neutral-100 bg-white shadow-2xl lg:block"
+            className="absolute left-0 right-0 top-full hidden border-y border-neutral-100 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900 lg:block"
             onMouseEnter={openMega}
             onMouseLeave={closeMega}
           >
@@ -806,21 +808,21 @@ export default function Navbar() {
               {CATEGORIES.map((category) => {
                 const Icon = iconMap[category.icon] || Grid2X2
                 return (
-                  <section data-mega-column key={category.id} className="rounded-xl p-3 hover:bg-neutral-50">
-                    <Link className="flex items-center gap-3 font-black text-neutral-900" to={`/category/${category.slug}`}>
+                  <section data-mega-column key={category.id} className="rounded-xl p-3 hover:bg-neutral-50 dark:hover:bg-neutral-800">
+                    <Link className="flex items-center gap-3 font-black text-neutral-900 dark:text-white" to={`/category/${category.slug}`}>
                       <span className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
                         <Icon className="h-5 w-5" aria-hidden="true" />
                       </span>
-                      {t(`category.${category.id}`)}
+                      {category.label[language]}
                     </Link>
                     <div className="mt-3 grid gap-2 pl-12">
                       {category.subcategories.slice(0, 5).map((subcategory) => (
                         <Link
-                           className="text-sm font-semibold text-neutral-500 transition hover:text-primary"
+                           className="text-sm font-semibold text-neutral-500 transition hover:text-primary dark:text-neutral-400"
                            key={subcategory.id}
                            to={`/category/${category.slug}/${subcategory.slug}`}
                         >
-                          {t(`category.${subcategory.id}`)}
+                          {subcategory.label[language]}
                         </Link>
                       ))}
                     </div>
@@ -833,17 +835,17 @@ export default function Navbar() {
       </header>
 
       {mobileSearchOpen ? (
-        <div className="fixed inset-0 z-[70] bg-white p-4 md:hidden">
+        <div className="fixed inset-0 z-[70] bg-white p-4 dark:bg-neutral-950 md:hidden">
           <div className="flex items-center gap-3">
             <button
               aria-label={t("nav.searchBack")}
-              className="grid h-11 w-11 place-items-center rounded-full border border-neutral-200"
+              className="grid h-11 w-11 place-items-center rounded-full border border-neutral-200 dark:border-neutral-700 dark:text-neutral-200"
               onClick={() => setMobileSearchOpen(false)}
               type="button"
             >
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
-            <h2 className="text-lg font-black text-neutral-900">{t("nav.mobileSearchTitle")}</h2>
+            <h2 className="text-lg font-black text-neutral-900 dark:text-white">{t("nav.mobileSearchTitle")}</h2>
           </div>
           <form
             className="relative mt-5"
@@ -896,7 +898,7 @@ export default function Navbar() {
         <nav
           aria-label={t("nav.mobileNavigation")}
           className={cn(
-            "fixed inset-x-0 bottom-0 z-50 border-t border-neutral-200 bg-white px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] transition-transform lg:hidden",
+            "fixed inset-x-0 bottom-0 z-50 border-t border-neutral-200 bg-white px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] transition-transform dark:border-neutral-800 dark:bg-neutral-900 lg:hidden",
             bottomHidden && "translate-y-full",
           )}
         >
@@ -921,13 +923,13 @@ export default function Navbar() {
                 className={cn(
                   "relative flex h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-black transition-all",
                   item.col,
-                  active ? "text-teal-600" : "text-neutral-500 hover:text-neutral-900",
+                  active ? "text-teal-600 dark:text-teal-400" : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white",
                 )}
                 onClick={() => (item.action ? item.action() : navigate(item.path))}
                 type="button"
               >
                 {active ? <span className="absolute top-1 h-1 w-6 rounded-full bg-teal-600" aria-hidden="true" /> : null}
-                <div className={cn("grid h-8 w-14 place-items-center rounded-full transition-colors", active && "bg-teal-50")}>
+                <div className={cn("grid h-8 w-14 place-items-center rounded-full transition-colors", active && "bg-teal-50 dark:bg-teal-950/40")}>
                   <Icon className="h-5 w-5" aria-hidden="true" />
                 </div>
                 <span className={cn("transition-opacity", active ? "opacity-100" : "opacity-80")}>{item.label}</span>
@@ -951,17 +953,17 @@ export default function Navbar() {
         <div ref={mobileLocationRef} className="relative">
           <button
             onClick={() => setLocationOpen((current) => !current)}
-            className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/95 px-3 py-2 text-xs font-bold text-neutral-600 shadow-sm backdrop-blur-md active:scale-95 transition-transform"
+            className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white/95 px-3 py-2 text-xs font-bold text-neutral-600 shadow-sm backdrop-blur-md active:scale-95 transition-transform dark:border-neutral-700 dark:bg-neutral-900/95 dark:text-neutral-300"
           >
             <MapPin className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
             {selectedProvinceLabel}
             <ChevronDown className="h-3 w-3 opacity-50" />
           </button>
           {locationOpen ? (
-            <div className="absolute left-0 mt-2 grid max-h-80 min-w-56 gap-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-2 text-neutral-900 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="absolute left-0 mt-2 grid max-h-80 min-w-56 gap-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-2 text-neutral-900 shadow-2xl animate-in fade-in zoom-in-95 duration-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white">
               <button
                 className={cn(
-                  "rounded-xl px-3 py-2 text-left text-sm font-bold hover:bg-neutral-50",
+                  "rounded-xl px-3 py-2 text-left text-sm font-bold hover:bg-neutral-50 dark:hover:bg-neutral-800",
                   selectedProvince === "all" && "bg-primary/10 text-primary",
                 )}
                 onClick={() => {
@@ -975,7 +977,7 @@ export default function Navbar() {
               {PROVINCES.map((province) => (
                 <button
                   className={cn(
-                    "rounded-xl px-3 py-2 text-left text-sm font-bold hover:bg-neutral-50",
+                    "rounded-xl px-3 py-2 text-left text-sm font-bold hover:bg-neutral-50 dark:hover:bg-neutral-800",
                     selectedProvince === province.label.en && "bg-primary/10 text-primary",
                   )}
                   key={province.id}
