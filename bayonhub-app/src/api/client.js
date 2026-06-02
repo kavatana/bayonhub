@@ -44,7 +44,7 @@ export const STORAGE_KEYS = {
 
 const client = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 60000, // 60 seconds (Required for Render Free Tier cold starts)
   headers: {
     "Content-Type": "application/json",
   },
