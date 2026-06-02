@@ -13,7 +13,7 @@ export function setCsrfCookie(req: Request, res: Response, next: NextFunction) {
     res.cookie(COOKIE_NAME, crypto.randomUUID(), {
       httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 30 * 24 * 60 * 60 * 1000,
     })
   }

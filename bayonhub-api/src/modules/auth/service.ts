@@ -18,7 +18,7 @@ const cookieOptions = {
   httpOnly: true,
   secure: isProduction,
   sameSite: isProduction ? "none" : "lax",
-  domain: isProduction ? ".bayonhub.com" : undefined,
+  domain: undefined,
   path: "/",
 } as const
 
