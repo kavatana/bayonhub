@@ -9,12 +9,8 @@ const productionRequired = [
   "JWT_REFRESH_SECRET",
   "DATABASE_URL",
   "REDIS_URL",
-  "ABA_WEBHOOK_SECRET",
-  "R2_ACCOUNT_ID",
-  "R2_ACCESS_KEY_ID",
-  "R2_SECRET_ACCESS_KEY",
-  "R2_BUCKET_NAME",
 ] as const
+
 
 if (nodeEnv === "production") {
   productionRequired.forEach((key) => {
@@ -80,4 +76,8 @@ export const env = {
   vapidPrivateKey: optionalEnv("VAPID_PRIVATE_KEY"),
   vapidSubject: process.env.VAPID_SUBJECT || "mailto:admin@bayonhub.com",
   merchantApiKeys: merchantApiKeysRaw ? merchantApiKeysRaw.split(",").map((key) => key.trim()).filter(Boolean) : [],
+}
+
+if (!env.adminIpAllowlist) {
+  console.warn("[Env] ADMIN_IP_ALLOWLIST is not set. All IPs will be allowed for admin routes.")
 }
