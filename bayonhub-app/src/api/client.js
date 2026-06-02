@@ -149,7 +149,7 @@ client.interceptors.request.use((config) => {
   const { token } = window.authStore?.getState() || {}
   if (token) config.headers["Authorization"] = `Bearer ${token}`
   
-  const csrfToken = getCookieValue("XSRF-TOKEN")
+  const csrfToken = (typeof window !== "undefined" && window.__csrfToken) || getCookieValue("XSRF-TOKEN")
   if (csrfToken) config.headers["x-xsrf-token"] = csrfToken
   return config
 })
@@ -177,8 +177,14 @@ client.interceptors.response.use(
     if (error.response?.status === 403 && !originalRequest._csrfRetry) {
       originalRequest._csrfRetry = true
       try {
-        await client.get("/health")
+        const res = await client.get("/health")
+        if (res.data?.csrfToken && typeof window !== "undefined") {
+          window.__csrfToken = res.data.csrfToken
+        }
       } catch (csrfError) {
+        if (csrfError.response?.data?.csrfToken && typeof window !== "undefined") {
+          window.__csrfToken = csrfError.response.data.csrfToken
+        }
         // Ignore errors from /health (e.g. 503 Degraded).
         // The browser still processes the Set-Cookie header!
       }
