@@ -23,8 +23,6 @@ const required = [
   "REDIS_URL",
   "JWT_SECRET",
   "JWT_REFRESH_SECRET",
-  "JWT_EXPIRES_IN",
-  "JWT_REFRESH_EXPIRES_IN",
   "PORT",
 ] as const
 
@@ -48,8 +46,8 @@ export const env = {
   redisUrl: process.env.REDIS_URL!,
   jwtSecret: process.env.JWT_SECRET!,
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET!,
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN!,
-  jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN!,
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || "15m",
+  jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "30d",
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
   frontendUrlWww: process.env.FRONTEND_URL_WWW || null,
   apiBaseUrl: process.env.API_BASE_URL || "https://api.bayonhub.com",
