@@ -9,14 +9,17 @@ const WEBHOOK_PATHS = new Set([
 ])
 
 export function setCsrfCookie(req: Request, res: Response, next: NextFunction) {
-  if (!req.cookies?.[COOKIE_NAME]) {
-    res.cookie(COOKIE_NAME, crypto.randomUUID(), {
+  let token = req.cookies?.[COOKIE_NAME]
+  if (!token) {
+    token = crypto.randomUUID()
+    res.cookie(COOKIE_NAME, token, {
       httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 30 * 24 * 60 * 60 * 1000,
     })
   }
+  res.locals.csrfToken = token
   next()
 }
 

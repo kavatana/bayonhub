@@ -208,6 +208,7 @@ const healthHandler = async (_req: Request, res: express.Response) => {
     timestamp: new Date().toISOString(),
     responseMs: Date.now() - startTime,
     version: process.env.npm_package_version || "1.0.0",
+    csrfToken: res.locals.csrfToken,
   })
 }
 
