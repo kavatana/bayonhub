@@ -7,14 +7,13 @@ import { translate } from "../lib/translations"
 import { useUIStore } from "./useUIStore"
 
 const FOLLOWING_KEY = "bayonhub:following"
-const canUseLocalAuthToken = !IS_PRODUCTION && !API_BASE_URL
-const initialToken = canUseLocalAuthToken ? storage.get(STORAGE_KEYS.authToken, null) : null
-const initialUser = API_BASE_URL ? null : storage.get(STORAGE_KEYS.authUser, null)
+const canUseLocalAuthToken = true
+const initialToken = storage.get(STORAGE_KEYS.authToken, null)
+const initialUser = storage.get(STORAGE_KEYS.authUser, null)
 
-function persistUser(user) {
-  if (!API_BASE_URL) {
-    storage.set(STORAGE_KEYS.authUser, user)
-  }
+function persistUser(user, token) {
+  storage.set(STORAGE_KEYS.authUser, user)
+  if (token) storage.set(STORAGE_KEYS.authToken, token)
 }
 
 function authErrorMessage(key) {
@@ -34,7 +33,7 @@ export const useAuthStore = create((set, get) => ({
     set({ loading: true, error: null })
     try {
       const { user, accessToken } = await loginApi(phone, password)
-      get().setUser(user)
+      get().setUser(user, accessToken)
       set({
         token: accessToken,
         isAuthenticated: true,
@@ -52,7 +51,7 @@ export const useAuthStore = create((set, get) => ({
     set({ loading: true, error: null })
     try {
       const { user, accessToken } = await registerApi(data)
-      get().setUser(user)
+      get().setUser(user, accessToken)
       set({
         token: accessToken,
         isAuthenticated: true,
@@ -115,7 +114,7 @@ export const useAuthStore = create((set, get) => ({
     set({ loading: true })
     try {
       const { user, accessToken } = await getProfile()
-      persistUser(user)
+      persistUser(user, accessToken)
       set({ 
         user, 
         token: accessToken, 
@@ -124,12 +123,9 @@ export const useAuthStore = create((set, get) => ({
       })
       return user
     } catch {
-      set({ 
-        user: null, 
-        token: null, 
-        isAuthenticated: false, 
-        loading: false 
-      })
+      // Don't clear local storage on network error if it's just a 503
+      // but for now, we just clear auth state on 401.
+      get().clearAuthState()
       return null
     }
   },
@@ -149,9 +145,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   clearAuthState: () => {
-    if (!API_BASE_URL) {
-      storage.remove(STORAGE_KEYS.authToken)
-    }
+    storage.remove(STORAGE_KEYS.authToken)
     storage.remove(STORAGE_KEYS.authUser)
     set({
       user: null,
@@ -162,15 +156,15 @@ export const useAuthStore = create((set, get) => ({
   },
 
 
-  setUser: (user) => {
-    persistUser(user)
+  setUser: (user, token) => {
+    persistUser(user, token || get().token)
     set({ user, isAuthenticated: Boolean(user) })
   },
 
   updateUser: (patch) => {
-    const current = API_BASE_URL ? get().user : storage.get(STORAGE_KEYS.authUser, null)
+    const current = get().user || storage.get(STORAGE_KEYS.authUser, null)
     const user = { ...current, ...patch }
-    persistUser(user)
+    persistUser(user, get().token)
     set({ user, isAuthenticated: Boolean(user) })
     return user
   },

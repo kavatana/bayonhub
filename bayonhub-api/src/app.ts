@@ -25,7 +25,7 @@ import sitemapRouter from "./modules/sitemap/router"
 import storefrontRouter from "./modules/storefront/router"
 import statsRouter from "./modules/stats/router"
 import { apiLimiter, publicListingsLimiter } from "./middleware/rateLimiter"
-import { setCsrfCookie, verifyCsrfToken } from "./middleware/csrf"
+// CSRF Disabled for Cross-Origin SPA Bearer Auth
 import prerenderMiddleware from "./middleware/prerender"
 import path from "path"
 import fs from "fs"
@@ -124,8 +124,8 @@ app.use(
 )
 app.use(cookieParser())
 app.use(passport.initialize())
-app.use(setCsrfCookie)
-app.use(verifyCsrfToken)
+// app.use(setCsrfCookie)
+// app.use(verifyCsrfToken)
 const ABA_WEBHOOK_PATHS = new Set(["/api/payments/aba-webhook", "/api/payments/khqr/webhook"])
 app.use("/api/payments/aba-webhook", express.raw({ type: "*/*", limit: "10kb" }))
 app.use("/api/payments/khqr/webhook", express.raw({ type: "*/*", limit: "10kb" }))

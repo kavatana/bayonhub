@@ -146,7 +146,7 @@ client.interceptors.request.use((config) => {
   // Use dynamically imported store to avoid circular dependency if possible, 
   // or just use a getter if we can't import it here.
   // Actually, we can just import it at the top.
-  const { token } = window.authStore?.getState() || {}
+  const token = (typeof window !== "undefined" && window.authStore?.getState()?.token) || readStorage(STORAGE_KEYS.authToken, null)
   if (token) config.headers["Authorization"] = `Bearer ${token}`
   
   const csrfToken = (typeof window !== "undefined" && window.__csrfToken) || getCookieValue("XSRF-TOKEN")
@@ -250,10 +250,6 @@ export function readStorage(key, fallback) {
 }
 
 export function writeStorage(key, value) {
-  if (IS_PRODUCTION && key === STORAGE_KEYS.authToken) {
-    console.error("[BayonHub] Refused to store auth token in localStorage in production.")
-    return
-  }
   storage.set(key, value)
 }
 
