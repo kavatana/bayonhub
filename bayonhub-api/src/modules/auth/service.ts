@@ -9,7 +9,7 @@ import { generateUserSlug } from "../../lib/slug"
 import { sendLocalSms } from "../../lib/sms"
 import { prisma } from "../../lib/prisma"
 import { redis } from "../../config/redis"
-import { recordLoginFailure, clearLoginFailures } from "../../middleware/rateLimiter"
+
 import { safeUser } from "../../utils/safeUser"
 
 const isProduction = process.env.NODE_ENV === "production"
