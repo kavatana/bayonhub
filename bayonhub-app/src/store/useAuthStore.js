@@ -111,20 +111,27 @@ export const useAuthStore = create((set, get) => ({
   },
 
   loadProfile: async () => {
+    const existingToken = get().token
+    if (!existingToken && !storage.get(STORAGE_KEYS.authToken, null)) {
+      // No token at all, skip the API call
+      set({ loading: false })
+      return null
+    }
     set({ loading: true })
     try {
-      const { user, accessToken } = await getProfile()
-      persistUser(user, accessToken)
+      const user = await getProfile()
+      if (!user || !user.id) {
+        get().clearAuthState()
+        return null
+      }
+      persistUser(user, existingToken)
       set({ 
         user, 
-        token: accessToken, 
-        isAuthenticated: Boolean(user), 
+        isAuthenticated: true, 
         loading: false 
       })
       return user
     } catch {
-      // Don't clear local storage on network error if it's just a 503
-      // but for now, we just clear auth state on 401.
       get().clearAuthState()
       return null
     }

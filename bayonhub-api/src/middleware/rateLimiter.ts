@@ -80,14 +80,10 @@ export { getClientIp }
 // F1.1 — Login rate limit: 5 attempts per 15 minutes per IP
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: cloudflareKeyGenerator,
-  message: {
-    error: "TOO_MANY_ATTEMPTS",
-    message: "Too many login attempts. Try again in 15 minutes.",
-  },
+  message: { error: "Too many login attempts. Please try again in 15 minutes." },
 })
 
 // Legacy alias kept so other imports don't break
@@ -99,6 +95,14 @@ export const authLimiter = rateLimit({
 })
 
 // F1.2 — OTP rate limit: 3 attempts per 10 minutes per IP
+export const kycLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many KYC attempts. Please try again later." },
+})
+
 export const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 3,
@@ -123,7 +127,7 @@ export const otpVerifyLimiter = rateLimit({
 // F1.3 — Global API rate limit: 100 req/min per IP
 export const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 100,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: cloudflareKeyGenerator,
@@ -136,7 +140,7 @@ export const apiLimiter = rateLimit({
 // F1.3 — Higher limit for read-heavy public listing routes: 300 req/min
 export const publicListingsLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 300,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: cloudflareKeyGenerator,

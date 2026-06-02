@@ -133,6 +133,7 @@ export async function getProfile() {
   }
   try {
     const response = await client.get("/api/auth/me", { skipAuthRefresh: true, skipAuthExpired: true })
+    // /api/auth/me returns a flat user object directly
     return response.data
   } catch {
     return null

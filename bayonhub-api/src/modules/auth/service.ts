@@ -179,6 +179,18 @@ export async function registerUser(
   return { user: { ...user, slug }, accessToken: tokens.accessToken }
 }
 
+export async function recordLoginFailure(ip: string): Promise<void> {
+  // Disabled Redis dependency for portfolio stability
+}
+
+export async function clearLoginFailures(ip: string): Promise<void> {
+  // Disabled Redis dependency for portfolio stability
+}
+
+export async function checkLoginFailures(ip: string): Promise<void> {
+  // Disabled Redis dependency for portfolio stability
+}
+
 export async function sendOTP(phone: string): Promise<{ success: true }> {
   const user = await prisma.user.findUnique({ where: { phone }, select: { id: true, email: true, name: true } })
   if (!user) throw createHttpError(404, "User not found")
