@@ -128,7 +128,7 @@ export default function NotificationsPage() {
       </div>
 
       {totalPages > 1 ? (
-        <div className="mt-6 flex items-center justify-between rounded-2xl border border-neutral-200 bg-white p-3">
+        <div className="mt-6 flex items-center justify-between rounded-2xl border border-neutral-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-900">
           <Button disabled={page <= 1} onClick={() => goToPage(page - 1)} size="sm" variant="secondary">
             {t("pagination.previous")}
           </Button>

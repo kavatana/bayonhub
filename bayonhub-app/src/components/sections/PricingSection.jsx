@@ -1,18 +1,16 @@
-import { useState } from "react"
 import { Check } from "lucide-react"
-import ABAPayModal from "../payments/ABAPayModal"
+import { useNavigate } from "react-router-dom"
 import { useTranslation } from "../../hooks/useTranslation"
-import { PROMOTION_STATES } from "../../lib/promotionStates"
 import { useUIStore } from "../../store/useUIStore"
 import { useAuthStore } from "../../store/useAuthStore"
 
 export default function PricingSection() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const toggleAuthModal = useUIStore((state) => state.toggleAuthModal)
   const togglePostModal = useUIStore((state) => state.togglePostModal)
   const setPendingAction = useUIStore((state) => state.setPendingAction)
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
-  const [khqrPlan, setKhqrPlan] = useState(null)
 
   const plans = [
     {
@@ -25,13 +23,24 @@ export default function PricingSection() {
       action: "post",
     },
     {
-      titleKey: "pricing.boost",
-      textKey: "pricing.boostText",
-      priceKey: "pricing.boostPrice",
-      ctaKey: "pricing.boostNow",
-      featureKeys: ["pricing.plus.listingLimit", "pricing.plus.photoLimit"],
+      titleKey: "pricing.plus",
+      textKey: "pricing.plusText",
+      priceKey: "pricing.plusPrice",
+      ctaKey: "pricing.plusCta",
+      featureKeys: [
+        "pricing.plus.listingLimit",
+        "pricing.plus.photoLimit",
+        "pricing.plus.duration",
+        "pricing.plus.badge",
+        "pricing.plus.storefront",
+        "pricing.plus.analytics",
+        "pricing.plus.homepage",
+        "pricing.plus.bumpToTop",
+        "pricing.plus.priorityRanking",
+        "pricing.plus.contactLinks",
+      ],
       featured: true,
-      action: "boost",
+      action: "plus",
     },
   ]
 
@@ -41,12 +50,12 @@ export default function PricingSection() {
       togglePostModal(true)
       return
     }
-    if (plan.action === "boost") {
+    if (plan.action === "plus") {
       if (!isAuthenticated) {
         setPendingAction({ type: "post" })
         toggleAuthModal(true)
       } else {
-        setKhqrPlan(PROMOTION_STATES.BOOST)
+        navigate("/upgrade")
       }
       return
     }
@@ -54,7 +63,6 @@ export default function PricingSection() {
 
   return (
     <>
-      {khqrPlan ? <ABAPayModal onClose={() => setKhqrPlan(null)} open={Boolean(khqrPlan)} promotionState={khqrPlan} /> : null}
 
       <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 bg-bayon-line bg-bayon-line-5">
         <div className="max-w-3xl">

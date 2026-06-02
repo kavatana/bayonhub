@@ -323,7 +323,7 @@ export default function SearchPage() {
                   ))}
                 </div>
               )}
-              <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white p-3">
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-900">
                 <Button disabled={searchPage <= 1} onClick={() => goToPage(searchPage - 1)} size="sm" variant="secondary">
                   {t("pagination.previous")}
                 </Button>
